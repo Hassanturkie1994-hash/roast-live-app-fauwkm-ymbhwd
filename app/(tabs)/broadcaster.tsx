@@ -45,6 +45,22 @@ export default function BroadcasterScreen() {
     }
   }, [user]);
 
+  // Request permissions on mount
+  useEffect(() => {
+    const requestPerms = async () => {
+      if (!permission?.granted) {
+        console.log('📷 Requesting camera permissions...');
+        const result = await requestPermission();
+        if (result.granted) {
+          console.log('✅ Camera permissions granted');
+        } else {
+          console.log('❌ Camera permissions denied');
+        }
+      }
+    };
+    requestPerms();
+  }, []);
+
   useEffect(() => {
     if (isLive) {
       timerIntervalRef.current = setInterval(() => {
@@ -92,7 +108,13 @@ export default function BroadcasterScreen() {
   }, [isLive, currentStream?.id, subscribeToViewerUpdates]);
 
   if (!permission) {
-    return <View style={commonStyles.container} />;
+    return (
+      <View style={commonStyles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading camera...</Text>
+        </View>
+      </View>
+    );
   }
 
   if (!permission.granted) {
@@ -105,6 +127,9 @@ export default function BroadcasterScreen() {
           color={colors.textSecondary}
         />
         <Text style={styles.permissionText}>We need your permission to use the camera</Text>
+        <Text style={styles.permissionSubtext}>
+          Camera and microphone access are required to broadcast live streams
+        </Text>
         <GradientButton title="Grant Permission" onPress={requestPermission} />
       </View>
     );
@@ -168,6 +193,8 @@ export default function BroadcasterScreen() {
       if (result.ingest.webRTC_url) {
         setWebRTCUrl(result.ingest.webRTC_url);
         console.log('📺 WebRTC URL set:', result.ingest.webRTC_url);
+      } else {
+        console.log('⚠️ No WebRTC URL available, using camera preview only');
       }
 
       console.log('📺 Stream details:', {
@@ -254,16 +281,27 @@ export default function BroadcasterScreen() {
 
   return (
     <View style={commonStyles.container}>
-      {isLive && webRTCUrl ? (
+      {/* Camera View - Always show when not streaming or when streaming without WebRTC */}
+      {(!isLive || !webRTCUrl) && (
+        <CameraView 
+          style={styles.camera} 
+          facing={facing}
+          videoQuality="1080p"
+        />
+      )}
+
+      {/* WebRTC Publisher - Only show when streaming with WebRTC URL */}
+      {isLive && webRTCUrl && (
         <WebRTCLivePublisher
           rtcPublishUrl={webRTCUrl}
           facing={facing}
           isCameraOn={isCameraOn}
           onStreamStarted={() => console.log('WebRTC stream started')}
-          onStreamError={(error) => console.error('WebRTC error:', error)}
+          onStreamError={(error) => {
+            console.error('WebRTC error:', error);
+            Alert.alert('Streaming Error', error.message);
+          }}
         />
-      ) : (
-        <CameraView style={styles.camera} facing={facing} />
       )}
 
       <View style={styles.overlay}>
@@ -412,6 +450,16 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
   permissionContainer: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -419,10 +467,17 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   permissionText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  permissionSubtext: {
+    fontSize: 14,
+    fontWeight: '400',
     color: colors.textSecondary,
     textAlign: 'center',
+    lineHeight: 20,
   },
   topBar: {
     flexDirection: 'row',

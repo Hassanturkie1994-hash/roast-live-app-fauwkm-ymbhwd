@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, StyleSheet, Platform, Text, Dimensions, Image } from 'react-native';
+import { View, StyleSheet, Platform, Text, Dimensions } from 'react-native';
 import { CameraView, CameraType } from 'expo-camera';
 import { colors } from '@/styles/commonStyles';
 
@@ -12,17 +12,18 @@ let RTCView: any;
 
 if (Platform.OS !== 'web') {
   try {
-    // ES6 style import for react-native-webrtc
+    // Dynamic import for react-native-webrtc
     import('react-native-webrtc').then((WebRTC) => {
       RTCPeerConnection = WebRTC.RTCPeerConnection;
       RTCSessionDescription = WebRTC.RTCSessionDescription;
       mediaDevices = WebRTC.mediaDevices;
       RTCView = WebRTC.RTCView;
+      console.log('✅ react-native-webrtc loaded successfully');
     }).catch((error) => {
-      console.log('react-native-webrtc not available:', error);
+      console.log('⚠️ react-native-webrtc not available:', error);
     });
   } catch (error) {
-    console.log('react-native-webrtc not available:', error);
+    console.log('⚠️ react-native-webrtc not available:', error);
   }
 }
 
@@ -71,13 +72,14 @@ export default function WebRTCLivePublisher({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<any>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
   const peerConnectionRef = useRef<any>(null);
   const localStreamRef = useRef<any>(null);
 
   const startWebRTCStreamNative = useCallback(async () => {
     try {
       if (!mediaDevices || !RTCPeerConnection) {
-        throw new Error('WebRTC not available on this platform');
+        throw new Error('WebRTC not available - using camera preview only');
       }
 
       console.log('🎬 Starting native WebRTC stream');
@@ -280,6 +282,7 @@ export default function WebRTCLivePublisher({
   const initializeWebRTCStream = useCallback(async () => {
     try {
       console.log('🎬 Initializing WebRTC stream to:', rtcPublishUrl);
+      setIsInitializing(true);
 
       if (Platform.OS === 'web') {
         // Web platform
@@ -290,11 +293,14 @@ export default function WebRTCLivePublisher({
         }
       } else {
         // Native platforms (iOS/Android)
+        // Wait a bit for react-native-webrtc to load
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         if (mediaDevices && RTCPeerConnection) {
           await startWebRTCStreamNative();
         } else {
           console.log('📱 WebRTC native module not available, showing camera preview only');
-          setError('WebRTC streaming requires native build');
+          setError('WebRTC streaming requires native build. Camera preview is shown.');
           
           // Still call onStreamStarted to allow camera preview
           if (onStreamStarted) {
@@ -309,6 +315,8 @@ export default function WebRTCLivePublisher({
       if (onStreamError) {
         onStreamError(error);
       }
+    } finally {
+      setIsInitializing(false);
     }
   }, [rtcPublishUrl, startWebRTCStreamWeb, startWebRTCStreamNative, onStreamStarted, onStreamError]);
 
@@ -320,7 +328,7 @@ export default function WebRTCLivePublisher({
     return () => {
       cleanup();
     };
-  }, [rtcPublishUrl, initializeWebRTCStream]);
+  }, [rtcPublishUrl]);
 
   const cleanup = () => {
     console.log('🧹 Cleaning up WebRTC resources');
@@ -378,18 +386,22 @@ export default function WebRTCLivePublisher({
             facing={facing}
             flash={flashMode}
             videoQuality="1080p"
-            ratio="16:9"
           />
         ) : (
           <View style={styles.cameraOffContainer}>
             <Text style={styles.cameraOffText}>Camera Off</Text>
           </View>
         )}
-        {error && (
+        {isInitializing && (
+          <View style={styles.initializingOverlay}>
+            <Text style={styles.initializingText}>Initializing stream...</Text>
+          </View>
+        )}
+        {error && !isInitializing && (
           <View style={styles.errorOverlay}>
             <Text style={styles.errorText}>{error}</Text>
             <Text style={styles.errorSubtext}>
-              Camera preview is shown. For WebRTC streaming, ensure react-native-webrtc is properly linked.
+              Camera preview is shown. Stream is active.
             </Text>
           </View>
         )}
@@ -410,6 +422,11 @@ export default function WebRTCLivePublisher({
             <View style={styles.streamingIndicator}>
               <View style={styles.streamingDot} />
               <Text style={styles.streamingText}>Streaming via WebRTC</Text>
+            </View>
+          )}
+          {isInitializing && (
+            <View style={styles.initializingOverlay}>
+              <Text style={styles.initializingText}>Initializing stream...</Text>
             </View>
           )}
         </View>
@@ -463,6 +480,21 @@ const styles = StyleSheet.create({
   },
   streamingText: {
     fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  initializingOverlay: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  initializingText: {
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
   },

@@ -2,10 +2,68 @@
 {
   "expo": {
     "name": "Roast Live",
-    "slug": "Roast Live",
+    "slug": "roast-live",
     "owner": "hasselite",
     "scheme": "roastlive",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hasselite.roastlive",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Roast Live needs access to your camera to broadcast live streams.",
+        "NSMicrophoneUsageDescription": "Roast Live needs access to your microphone to broadcast live audio.",
+        "NSPhotoLibraryUsageDescription": "Roast Live needs access to your photo library to share images."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "com.hasselite.roastlive",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Roast Live needs access to your camera to broadcast live streams.",
+          "microphonePermission": "Roast Live needs access to your microphone to broadcast live audio.",
+          "recordAudioAndroid": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
     "extra": {
+      "router": {
+        "origin": false
+      },
       "eas": {
         "projectId": "b1994843-ea99-4a51-8db1-d1049a44b5b7"
       }
