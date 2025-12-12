@@ -18,8 +18,8 @@ export default function TabLayout() {
       label: 'Explore',
     },
     {
-      name: 'golive',
-      route: '/(tabs)/golive',
+      name: 'broadcaster',
+      route: '/(tabs)/broadcaster',
       icon: 'add-circle',
       label: 'Go Live',
       isCenter: true,
@@ -48,7 +48,8 @@ export default function TabLayout() {
       >
         <Stack.Screen key="home" name="(home)" />
         <Stack.Screen key="explore" name="explore" />
-        <Stack.Screen key="golive" name="golive" />
+        <Stack.Screen key="broadcaster" name="broadcaster" />
+        <Stack.Screen key="broadcasterscreen" name="broadcasterscreen" />
         <Stack.Screen key="inbox" name="inbox" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>

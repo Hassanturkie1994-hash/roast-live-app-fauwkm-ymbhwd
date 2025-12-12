@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { router } from 'expo-router';
-import RoastIcon from '@/components/icons/RoastIcon';
+import RoastIcon from '@/components/Icons/RoastIcon';
 import GradientButton from '@/components/GradientButton';
 import RoastLiveLogo from '@/components/RoastLiveLogo';
 import { useAuth } from '@/contexts/AuthContext';
