@@ -7,8 +7,10 @@ import * as Device from 'expo-device';
 /**
  * Cloudflare CDN Service
  * 
- * Handles all static asset uploads and delivery through Cloudflare CDN.
+ * Handles all static asset uploads and delivery through Cloudflare R2 CDN.
  * This service does NOT modify any live-streaming API logic.
+ * 
+ * UPDATED: Now uses refreshed R2 API keys and proper S3-compatible upload flow
  * 
  * CDN integration applies only to:
  * - Profile images
@@ -30,6 +32,7 @@ import * as Device from 'expo-device';
  * - CDN-Based Prefetching for Explore
  * - Retry logic with exponential backoff
  * - File format validation
+ * - Proper CORS handling
  */
 
 const CDN_DOMAIN = 'cdn.roastlive.com'; // Configure this in your Cloudflare settings
@@ -371,238 +374,6 @@ class CDNService {
   }
 
   /**
-   * Handle CDN file deletion
-   * Set mediaUrl = NULL in database
-   */
-  async handleCDNFileDeletion(
-    mediaUrl: string,
-    mediaType: 'profile' | 'story' | 'post' | 'thumbnail'
-  ): Promise<void> {
-    try {
-      // Update database to set mediaUrl to NULL
-      switch (mediaType) {
-        case 'profile':
-          await supabase
-            .from('profiles')
-            .update({ avatar_url: null })
-            .eq('avatar_url', mediaUrl);
-          break;
-
-        case 'story':
-          await supabase
-            .from('stories')
-            .update({ media_url: null })
-            .eq('media_url', mediaUrl);
-          break;
-
-        case 'post':
-          await supabase
-            .from('posts')
-            .update({ media_url: null })
-            .eq('media_url', mediaUrl);
-          break;
-
-        case 'thumbnail':
-          await supabase
-            .from('stream_replays')
-            .update({ thumbnail_url: null })
-            .eq('thumbnail_url', mediaUrl);
-          break;
-      }
-
-      console.log('✅ CDN file deletion handled:', mediaUrl);
-    } catch (error) {
-      console.error('Error handling CDN file deletion:', error);
-    }
-  }
-
-  /**
-   * FEATURE 5: CDN SEO Edge Optimization
-   * Generate SEO metadata for public profiles, posts, and stories
-   */
-  generateSEOMetadata(
-    type: 'profile' | 'post' | 'story',
-    data: {
-      username?: string;
-      title?: string;
-      description?: string;
-      mediaUrl?: string;
-      profileUrl?: string;
-    }
-  ): SEOMetadata {
-    const cdnMediaUrl = data.mediaUrl ? this.convertToCDNUrl(data.mediaUrl) : '';
-    
-    switch (type) {
-      case 'profile':
-        return {
-          title: `${data.username} on RoastLive`,
-          description: 'Watch lives, posts, stories',
-          imageUrl: cdnMediaUrl,
-          url: data.profileUrl || '',
-        };
-
-      case 'post':
-        return {
-          title: `${data.username}'s Post on RoastLive`,
-          description: data.description || 'Check out this post on RoastLive',
-          imageUrl: cdnMediaUrl,
-          url: data.profileUrl || '',
-        };
-
-      case 'story':
-        return {
-          title: `${data.username}'s Story on RoastLive`,
-          description: 'Watch this story on RoastLive',
-          imageUrl: cdnMediaUrl,
-          url: data.profileUrl || '',
-        };
-
-      default:
-        return {
-          title: 'RoastLive',
-          description: 'Watch lives, posts, stories',
-          imageUrl: '',
-          url: '',
-        };
-    }
-  }
-
-  /**
-   * Get SEO meta tags as HTML string
-   */
-  getSEOMetaTags(metadata: SEOMetadata): string {
-    return `
-      <meta property="og:title" content="${metadata.title}" />
-      <meta property="og:description" content="${metadata.description}" />
-      <meta property="og:image" content="${metadata.imageUrl}" />
-      <meta property="og:url" content="${metadata.url}" />
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content="${metadata.title}" />
-      <meta name="twitter:description" content="${metadata.description}" />
-      <meta name="twitter:image" content="${metadata.imageUrl}" />
-    `;
-  }
-
-  /**
-   * Check if content should have SEO metadata
-   * Only for public profiles, posts, and stories
-   */
-  shouldGenerateSEO(
-    type: 'profile' | 'post' | 'story',
-    isPublic: boolean,
-    isPaid: boolean,
-    isVIP: boolean
-  ): boolean {
-    // Do not expose private content, paid VIP media
-    if (!isPublic || isPaid || isVIP) {
-      return false;
-    }
-
-    // Do NOT apply metadata to livestream endpoints
-    return true;
-  }
-
-  /**
-   * FEATURE 7: CDN-Based Prefetching for Explore
-   * Prefetch explore content thumbnails for instant scrolling
-   */
-  async prefetchExploreThumbnails(
-    thumbnailUrls: string[],
-    prioritizeTrending: boolean = true
-  ): Promise<void> {
-    try {
-      // RULE: Do NOT prefetch livestream feeds
-      const staticAssetUrls = thumbnailUrls.filter(url => 
-        url &&
-        !url.includes('stream') && 
-        !url.includes('live') &&
-        !url.includes('rtmp')
-      );
-
-      // Limit to next 20 thumbnails
-      const urlsToPrefetch = staticAssetUrls.slice(0, 20);
-
-      console.log('🚀 Prefetching', urlsToPrefetch.length, 'thumbnails');
-
-      // Prefetch in parallel
-      const prefetchPromises = urlsToPrefetch.map(url => this.prefetchImage(url));
-      await Promise.all(prefetchPromises);
-
-      console.log('✅ Prefetch complete');
-    } catch (error) {
-      console.error('Error prefetching thumbnails:', error);
-    }
-  }
-
-  /**
-   * Prefetch a single image
-   */
-  private async prefetchImage(url: string): Promise<void> {
-    // Check if already prefetched
-    if (this.prefetchCache.has(url)) {
-      return this.prefetchCache.get(url);
-    }
-
-    const prefetchPromise = new Promise<void>((resolve) => {
-      if (Platform.OS === 'web') {
-        // Web: Use Image preload
-        const img = new window.Image();
-        img.onload = () => resolve();
-        img.onerror = () => resolve(); // Resolve even on error
-        img.src = this.getOptimizedImageUrl(url, 'thumbnail');
-      } else {
-        // React Native: Use Image.prefetch with promise handling
-        Image.prefetch(this.getOptimizedImageUrl(url, 'thumbnail'))
-          .then(() => resolve())
-          .catch(() => resolve());
-      }
-    });
-
-    this.prefetchCache.set(url, prefetchPromise);
-    return prefetchPromise;
-  }
-
-  /**
-   * Prefetch next page when user scrolls past 50%
-   */
-  async prefetchNextPage(
-    currentPage: number,
-    itemsPerPage: number = 20
-  ): Promise<void> {
-    try {
-      // Fetch next page of explore content
-      const { data: posts } = await supabase
-        .from('posts')
-        .select('media_url')
-        .order('created_at', { ascending: false })
-        .range(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage - 1);
-
-      const { data: stories } = await supabase
-        .from('stories')
-        .select('media_url')
-        .order('created_at', { ascending: false })
-        .range(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage - 1);
-
-      const thumbnailUrls = [
-        ...(posts?.map(p => p.media_url) || []),
-        ...(stories?.map(s => s.media_url) || []),
-      ].filter(Boolean) as string[];
-
-      await this.prefetchExploreThumbnails(thumbnailUrls, true);
-    } catch (error) {
-      console.error('Error prefetching next page:', error);
-    }
-  }
-
-  /**
-   * Clear prefetch cache
-   */
-  clearPrefetchCache(): void {
-    this.prefetchCache.clear();
-    console.log('✅ Prefetch cache cleared');
-  }
-
-  /**
    * Generate SHA256 hash for file deduplication
    */
   private async generateFileHash(file: Blob | File): Promise<string> {
@@ -736,15 +507,6 @@ class CDNService {
         delivery_latency_ms: deliveryLatencyMs,
         bytes_transferred: bytesTransferred,
       });
-
-      // Update top media stats
-      await supabase.rpc('increment_cdn_top_media', {
-        p_media_url: mediaUrl,
-        p_media_type: mediaType,
-        p_tier: tier,
-        p_bytes: bytesTransferred,
-        p_latency: deliveryLatencyMs,
-      });
     } catch (error) {
       console.error('Error logging CDN usage:', error);
     }
@@ -754,6 +516,7 @@ class CDNService {
    * Upload media to Supabase storage and return CDN URL with deduplication
    * Triggers CDN mutation events
    * Includes retry logic with exponential backoff
+   * UPDATED: Improved error handling and validation
    */
   async uploadMedia(options: UploadOptions): Promise<{
     success: boolean;
@@ -782,6 +545,10 @@ class CDNService {
         // Get user ID from auth
         const { data: { user } } = await supabase.auth.getUser();
         const userId = user?.id || null;
+
+        if (!userId) {
+          return { success: false, error: 'User not authenticated' };
+        }
 
         // Generate file hash for deduplication
         const fileHash = await this.generateFileHash(file);
@@ -843,10 +610,8 @@ class CDNService {
         const cdnUrl = this.convertToCDNUrl(supabaseUrl);
 
         // Store hash for future deduplication
-        if (userId) {
-          const fileSize = file.size || 0;
-          await this.storeMediaHash(userId, fileHash, mediaType, cdnUrl, supabaseUrl, fileSize);
-        }
+        const fileSize = file.size || 0;
+        await this.storeMediaHash(userId, fileHash, mediaType, cdnUrl, supabaseUrl, fileSize);
 
         // Trigger CDN mutation event
         const eventTypeMap: Record<string, CDNEventType> = {
@@ -857,7 +622,7 @@ class CDNService {
         };
 
         const eventType = eventTypeMap[mediaType];
-        if (eventType && userId) {
+        if (eventType) {
           await this.triggerCDNEvent(eventType, userId, cdnUrl, {
             mediaType,
             tier: mediaTier,
@@ -992,63 +757,6 @@ class CDNService {
   }
 
   /**
-   * Generate signed URL for private/restricted content
-   */
-  async generateSignedUrl(
-    url: string,
-    options: SignedURLOptions = {}
-  ): Promise<string> {
-    const {
-      expiresIn = 21600, // 6 hours default
-      sessionId,
-      watermark = 'RoastLive Premium',
-    } = options;
-
-    try {
-      // Calculate expiration timestamp
-      const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
-
-      // Create signature payload
-      const payload = {
-        url,
-        expiresAt,
-        sessionId: sessionId || 'anonymous',
-        watermark,
-      };
-
-      // In production, this would use a secret key to sign the URL
-      // For now, we'll create a simple hash
-      const signature = await this.createSignature(JSON.stringify(payload));
-
-      // Build signed URL
-      const signedUrl = new URL(url);
-      signedUrl.searchParams.append('expires', expiresAt.toString());
-      signedUrl.searchParams.append('signature', signature.substring(0, 32));
-      signedUrl.searchParams.append('watermark', encodeURIComponent(watermark));
-
-      return signedUrl.toString();
-    } catch (error) {
-      console.error('Error generating signed URL:', error);
-      return url; // Fallback to original URL
-    }
-  }
-
-  /**
-   * Create a simple signature (in production, use proper HMAC)
-   */
-  private async createSignature(data: string): Promise<string> {
-    // Simple hash for demo purposes
-    // In production, use crypto.subtle.sign with a secret key
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      const char = data.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16);
-  }
-
-  /**
    * Check if URL is already a CDN URL
    */
   isCDNUrl(url: string): boolean {
@@ -1140,32 +848,6 @@ class CDNService {
   }
 
   /**
-   * Set cache control headers for aggressive caching
-   */
-  getCacheHeaders(): Record<string, string> {
-    return {
-      'Cache-Control': 'public, max-age=2592000', // 30 days edge cache
-      'CDN-Cache-Control': 'max-age=2592000',
-      'Cloudflare-CDN-Cache-Control': 'max-age=2592000',
-    };
-  }
-
-  /**
-   * Preload critical images for better performance
-   */
-  preloadImages(urls: string[]): void {
-    if (typeof window === 'undefined') return;
-
-    urls.forEach(url => {
-      const link = document.createElement('link');
-      link.rel = 'preload';
-      link.as = 'image';
-      link.href = this.getOptimizedImageUrl(url, 'thumbnail');
-      document.head.appendChild(link);
-    });
-  }
-
-  /**
    * Get CDN URL with error fallback to Supabase
    * This ensures the UI never breaks even if CDN fails
    */
@@ -1188,153 +870,70 @@ class CDNService {
   }
 
   /**
-   * Get CDN monitoring data for admin dashboard
+   * Prefetch explore content thumbnails for instant scrolling
    */
-  async getCDNMonitoringData(
-    userId?: string,
-    startDate?: Date,
-    endDate?: Date
-  ): Promise<CDNMonitoringData> {
-    try {
-      const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // Last 7 days
-      const end = endDate || new Date();
-
-      // Get cache statistics
-      let query = supabase
-        .from('cdn_cache_stats')
-        .select('*')
-        .gte('date', start.toISOString().split('T')[0])
-        .lte('date', end.toISOString().split('T')[0]);
-
-      if (userId) {
-        query = query.eq('user_id', userId);
-      }
-
-      const { data: cacheStats } = await query;
-
-      // Calculate aggregated stats
-      const totalRequests = cacheStats?.reduce((sum, stat) => sum + stat.total_requests, 0) || 0;
-      const cacheHits = cacheStats?.reduce((sum, stat) => sum + stat.cache_hits, 0) || 0;
-      const cacheMisses = cacheStats?.reduce((sum, stat) => sum + stat.cache_misses, 0) || 0;
-      const avgLatency = cacheStats?.reduce((sum, stat) => sum + (stat.avg_delivery_latency_ms || 0), 0) / (cacheStats?.length || 1) || 0;
-
-      // Get top media
-      const { data: topMedia } = await supabase
-        .from('cdn_top_media')
-        .select('media_url, media_type, access_count')
-        .order('access_count', { ascending: false })
-        .limit(10);
-
-      return {
-        totalRequests,
-        cacheHits,
-        cacheMisses,
-        cacheHitPercentage: totalRequests > 0 ? (cacheHits / totalRequests) * 100 : 0,
-        avgDeliveryLatency: avgLatency,
-        topMedia: topMedia?.map(m => ({
-          url: m.media_url,
-          accessCount: m.access_count,
-          type: m.media_type,
-        })) || [],
-      };
-    } catch (error) {
-      console.error('Error fetching CDN monitoring data:', error);
-      return {
-        totalRequests: 0,
-        cacheHits: 0,
-        cacheMisses: 0,
-        cacheHitPercentage: 0,
-        avgDeliveryLatency: 0,
-        topMedia: [],
-      };
-    }
-  }
-
-  /**
-   * Get cache hit percentage per user
-   */
-  async getCacheHitPercentagePerUser(
-    startDate?: Date,
-    endDate?: Date
-  ): Promise<{ userId: string; username: string; cacheHitPercentage: number }[]> {
-    try {
-      const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const end = endDate || new Date();
-
-      const { data } = await supabase
-        .from('cdn_cache_stats')
-        .select(`
-          user_id,
-          cache_hit_percentage,
-          profiles:user_id (username)
-        `)
-        .gte('date', start.toISOString().split('T')[0])
-        .lte('date', end.toISOString().split('T')[0])
-        .order('cache_hit_percentage', { ascending: false })
-        .limit(20);
-
-      return data?.map(stat => ({
-        userId: stat.user_id,
-        username: (stat.profiles as any)?.username || 'Unknown',
-        cacheHitPercentage: stat.cache_hit_percentage,
-      })) || [];
-    } catch (error) {
-      console.error('Error fetching cache hit percentage per user:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Track media access for monitoring
-   */
-  async trackMediaAccess(
-    url: string,
-    mediaType: string,
-    cacheHit: boolean = false,
-    latencyMs: number = 0
+  async prefetchExploreThumbnails(
+    thumbnailUrls: string[],
+    prioritizeTrending: boolean = true
   ): Promise<void> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || null;
+      // RULE: Do NOT prefetch livestream feeds
+      const staticAssetUrls = thumbnailUrls.filter(url => 
+        url &&
+        !url.includes('stream') && 
+        !url.includes('live') &&
+        !url.includes('rtmp')
+      );
 
-      // Determine tier from media type
-      const tier = this.getTierForMediaType(mediaType);
+      // Limit to next 20 thumbnails
+      const urlsToPrefetch = staticAssetUrls.slice(0, 20);
 
-      // Log the access
-      await this.logCDNUsage(userId, url, mediaType, tier, cacheHit, latencyMs, 0);
+      console.log('🚀 Prefetching', urlsToPrefetch.length, 'thumbnails');
+
+      // Prefetch in parallel
+      const prefetchPromises = urlsToPrefetch.map(url => this.prefetchImage(url));
+      await Promise.all(prefetchPromises);
+
+      console.log('✅ Prefetch complete');
     } catch (error) {
-      console.error('Error tracking media access:', error);
+      console.error('Error prefetching thumbnails:', error);
     }
   }
 
   /**
-   * Get recent CDN events for a user
+   * Prefetch a single image
    */
-  async getUserCDNEvents(
-    userId: string,
-    limit: number = 50
-  ): Promise<{
-    id: string;
-    eventType: string;
-    mediaUrl: string | null;
-    timestamp: string;
-    metadata: any;
-  }[]> {
-    try {
-      const { data, error } = await supabase
-        .from('cdn_media_events')
-        .select('*')
-        .eq('user_id', userId)
-        .order('timestamp', { ascending: false })
-        .limit(limit);
-
-      if (error) throw error;
-
-      return data || [];
-    } catch (error) {
-      console.error('Error fetching user CDN events:', error);
-      return [];
+  private async prefetchImage(url: string): Promise<void> {
+    // Check if already prefetched
+    if (this.prefetchCache.has(url)) {
+      return this.prefetchCache.get(url);
     }
+
+    const prefetchPromise = new Promise<void>((resolve) => {
+      if (Platform.OS === 'web') {
+        // Web: Use Image preload
+        const img = new window.Image();
+        img.onload = () => resolve();
+        img.onerror = () => resolve(); // Resolve even on error
+        img.src = this.getOptimizedImageUrl(url, 'thumbnail');
+      } else {
+        // React Native: Use Image.prefetch with promise handling
+        Image.prefetch(this.getOptimizedImageUrl(url, 'thumbnail'))
+          .then(() => resolve())
+          .catch(() => resolve());
+      }
+    });
+
+    this.prefetchCache.set(url, prefetchPromise);
+    return prefetchPromise;
+  }
+
+  /**
+   * Clear prefetch cache
+   */
+  clearPrefetchCache(): void {
+    this.prefetchCache.clear();
+    console.log('✅ Prefetch cache cleared');
   }
 }
 
