@@ -85,11 +85,11 @@ const darkTheme: ThemeColors = {
 };
 
 const lightImages: ThemeImages = {
-  logo: require('@/assets/images/86a2dea9-db4b-404b-b353-38433ace329f.png'), // LOGO-LIGHT-THEME.png (black ROAST)
+  logo: require('@/assets/images/final_quest_240x240.png'), // Placeholder - replace with actual light theme logo
 };
 
 const darkImages: ThemeImages = {
-  logo: require('@/assets/images/eb4234cd-94d4-45c6-9b52-1dde651790e0.png'), // NEW LOGO-DARK-THEME.png (LIVE badge logo)
+  logo: require('@/assets/images/natively-dark.png'), // Placeholder - replace with actual dark theme logo
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
