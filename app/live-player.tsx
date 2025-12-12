@@ -35,6 +35,7 @@ export default function LivePlayerScreen() {
   const [viewerCount, setViewerCount] = useState(0);
   const [hasJoinedChannel, setHasJoinedChannel] = useState(false);
   const channelRef = useRef<any>(null);
+  const playerRef = useRef<any>(null);
 
   // Create video player with HLS support
   const player = useVideoPlayer(
@@ -44,6 +45,7 @@ export default function LivePlayerScreen() {
         }
       : null,
     (player) => {
+      playerRef.current = player;
       player.loop = false;
       player.staysActiveInBackground = false;
       player.play();
@@ -153,10 +155,17 @@ export default function LivePlayerScreen() {
     }
 
     return () => {
-      player.pause();
+      // Properly cleanup player
+      if (playerRef.current) {
+        try {
+          playerRef.current.pause();
+        } catch (error) {
+          console.log('Error pausing player:', error);
+        }
+      }
       leaveViewerChannel();
     };
-  }, [streamId, fetchStream, player]);
+  }, [streamId, fetchStream]);
 
   useEffect(() => {
     if (stream && !hasJoinedChannel) {

@@ -1,8 +1,7 @@
-
 {
   "expo": {
     "name": "Roast Live",
-    "slug": "roast-live",
+    "slug": "Roast Live",
     "owner": "hasselite",
     "scheme": "roastlive",
     "version": "1.0.0",
@@ -65,5 +64,6 @@
         "origin": false
       }
     }
-  }
+  },
+  "scheme": "Roast Live"
 }

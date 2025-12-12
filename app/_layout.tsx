@@ -6,7 +6,7 @@ import { Stack, router } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { Alert } from "react-native";
+import { Alert, LogBox } from "react-native";
 import { useNetworkState } from "expo-network";
 import {
   DarkTheme,
@@ -18,6 +18,13 @@ import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+
+// Suppress specific warnings
+LogBox.ignoreLogs([
+  'expo-notifications: Android Push notifications',
+  'WebRTC native module not found',
+  'Notifications.removeNotificationSubscription',
+]);
 
 SplashScreen.preventAutoHideAsync();
 

@@ -15,8 +15,8 @@ Notifications.setNotificationHandler({
 });
 
 export function usePushNotifications(userId: string | null) {
-  const notificationListener = useRef<any>();
-  const responseListener = useRef<any>();
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
   const registrationAttempted = useRef(false);
 
   useEffect(() => {
@@ -47,11 +47,14 @@ export function usePushNotifications(userId: string | null) {
     });
 
     return () => {
+      // Use .remove() method instead of removeNotificationSubscription
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
+        notificationListener.current = null;
       }
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        responseListener.current.remove();
+        responseListener.current = null;
       }
       registrationAttempted.current = false;
     };

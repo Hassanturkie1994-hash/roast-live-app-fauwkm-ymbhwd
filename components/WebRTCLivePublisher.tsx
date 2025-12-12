@@ -5,26 +5,32 @@ import { CameraView, CameraType } from 'expo-camera';
 import { colors } from '@/styles/commonStyles';
 
 // Import WebRTC for native platforms
-let RTCPeerConnection: any;
-let RTCSessionDescription: any;
-let mediaDevices: any;
-let RTCView: any;
+let RTCPeerConnection: any = null;
+let RTCSessionDescription: any = null;
+let mediaDevices: any = null;
+let RTCView: any = null;
+let webRTCLoaded = false;
 
+// Dynamically load WebRTC only on native platforms
 if (Platform.OS !== 'web') {
-  try {
-    // Dynamic import for react-native-webrtc
-    import('react-native-webrtc').then((WebRTC) => {
+  // Use a promise to handle async import
+  const loadWebRTC = async () => {
+    try {
+      const WebRTC = await import('react-native-webrtc');
       RTCPeerConnection = WebRTC.RTCPeerConnection;
       RTCSessionDescription = WebRTC.RTCSessionDescription;
       mediaDevices = WebRTC.mediaDevices;
       RTCView = WebRTC.RTCView;
+      webRTCLoaded = true;
       console.log('✅ react-native-webrtc loaded successfully');
-    }).catch((error) => {
-      console.log('⚠️ react-native-webrtc not available:', error);
-    });
-  } catch (error) {
-    console.log('⚠️ react-native-webrtc not available:', error);
-  }
+    } catch (error) {
+      console.log('⚠️ react-native-webrtc not available - using camera preview only');
+      webRTCLoaded = false;
+    }
+  };
+
+  // Start loading immediately
+  loadWebRTC();
 }
 
 interface WebRTCLivePublisherProps {
@@ -73,8 +79,35 @@ export default function WebRTCLivePublisher({
   const [error, setError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<any>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [webRTCReady, setWebRTCReady] = useState(false);
   const peerConnectionRef = useRef<any>(null);
   const localStreamRef = useRef<any>(null);
+
+  // Wait for WebRTC to load on native platforms
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      const checkWebRTC = setInterval(() => {
+        if (webRTCLoaded) {
+          setWebRTCReady(true);
+          clearInterval(checkWebRTC);
+        }
+      }, 100);
+
+      // Timeout after 3 seconds
+      const timeout = setTimeout(() => {
+        clearInterval(checkWebRTC);
+        setWebRTCReady(false);
+        console.log('⚠️ WebRTC loading timeout - using camera preview only');
+      }, 3000);
+
+      return () => {
+        clearInterval(checkWebRTC);
+        clearTimeout(timeout);
+      };
+    } else {
+      setWebRTCReady(true);
+    }
+  }, []);
 
   const startWebRTCStreamNative = useCallback(async () => {
     try {
@@ -293,10 +326,7 @@ export default function WebRTCLivePublisher({
         }
       } else {
         // Native platforms (iOS/Android)
-        // Wait a bit for react-native-webrtc to load
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        if (mediaDevices && RTCPeerConnection) {
+        if (webRTCReady && mediaDevices && RTCPeerConnection) {
           await startWebRTCStreamNative();
         } else {
           console.log('📱 WebRTC native module not available, showing camera preview only');
@@ -318,17 +348,17 @@ export default function WebRTCLivePublisher({
     } finally {
       setIsInitializing(false);
     }
-  }, [rtcPublishUrl, startWebRTCStreamWeb, startWebRTCStreamNative, onStreamStarted, onStreamError]);
+  }, [rtcPublishUrl, webRTCReady, startWebRTCStreamWeb, startWebRTCStreamNative, onStreamStarted, onStreamError]);
 
   useEffect(() => {
-    if (rtcPublishUrl) {
+    if (rtcPublishUrl && webRTCReady) {
       initializeWebRTCStream();
     }
 
     return () => {
       cleanup();
     };
-  }, [rtcPublishUrl]);
+  }, [rtcPublishUrl, webRTCReady]);
 
   const cleanup = () => {
     console.log('🧹 Cleaning up WebRTC resources');
