@@ -1,92 +1,59 @@
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-Deno.serve(async (req: Request) => {
+serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const now = new Date().toISOString();
-
-    // Find all expired stories
-    const { data: expiredStories, error: fetchError } = await supabaseClient
-      .from('stories')
-      .select('id, media_url')
-      .lt('expires_at', now);
-
-    if (fetchError) {
-      console.error('Error fetching expired stories:', fetchError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch expired stories' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!expiredStories || expiredStories.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'No expired stories found', count: 0 }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Delete media files from storage
-    for (const story of expiredStories) {
-      if (story.media_url) {
-        try {
-          const urlParts = story.media_url.split('/');
-          const fileName = urlParts[urlParts.length - 1];
-          const bucket = 'stories';
-          
-          await supabaseClient.storage
-            .from(bucket)
-            .remove([fileName]);
-        } catch (storageError) {
-          console.error(`Error deleting media for story ${story.id}:`, storageError);
-        }
-      }
-    }
-
-    // Delete expired stories from database
-    const { error: deleteError } = await supabaseClient
+    // Delete expired stories
+    const { data, error } = await supabase
       .from('stories')
       .delete()
-      .in('id', expiredStories.map(story => story.id));
+      .lt('expires_at', new Date().toISOString())
+      .select();
 
-    if (deleteError) {
-      console.error('Error deleting expired stories:', deleteError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to delete expired stories' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (error) {
+      throw error;
     }
 
-    console.log(`Cleaned up ${expiredStories.length} expired stories`);
+    const deletedCount = data?.length || 0;
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: `Cleaned up ${expiredStories.length} expired stories`,
-        count: expiredStories.length 
+      JSON.stringify({
+        success: true,
+        message: `Deleted ${deletedCount} expired stories`,
+        deletedCount,
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      }
     );
   } catch (error) {
-    console.error('Error in cleanup-expired-stories function:', error);
+    console.error('Error cleaning up expired stories:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: false,
+        error: error.message,
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      }
     );
   }
 });

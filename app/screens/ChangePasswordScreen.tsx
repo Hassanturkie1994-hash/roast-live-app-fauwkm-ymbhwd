@@ -1,61 +1,200 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-import { useTheme } from '@react-navigation/native';
+import React, { useState } from 'react';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+} from 'react-native';
+import { router } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTheme } from '@/contexts/ThemeContext';
+import { supabase } from '@/app/integrations/supabase/client';
+import GradientButton from '@/components/GradientButton';
 
 export default function ChangePasswordScreen() {
-  const theme = useTheme();
-  const router = useRouter();
+  const { colors } = useTheme();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!currentPassword.trim()) {
+      Alert.alert('Error', 'Please enter your current password.');
+      return;
+    }
+
+    if (!newPassword.trim()) {
+      Alert.alert('Error', 'Please enter a new password.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'New password must be at least 6 characters long.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'New passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // First, verify current password by attempting to sign in
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user?.email) {
+        Alert.alert('Error', 'User email not found.');
+        setLoading(false);
+        return;
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        Alert.alert('Error', 'Current password is incorrect.');
+        setLoading(false);
+        return;
+      }
+
+      // Update password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        Alert.alert('Error', updateError.message);
+        setLoading(false);
+        return;
+      }
+
+      Alert.alert('Success', 'Password updated successfully.', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
+    } catch (error) {
+      console.error('Error changing password:', error);
+      Alert.alert('Error', 'Failed to change password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <IconSymbol
+            ios_icon_name="chevron.left"
+            android_material_icon_name="arrow_back"
+            size={24}
+            color={colors.text}
+          />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Change Password</Text>
-        <View style={{ width: 24 }} />
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Change Password</Text>
+        <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: '#666' }]}>Current Password</Text>
-          <TextInput
-            style={[styles.input, { color: theme.colors.text, borderColor: 'rgba(255,255,255,0.1)' }]}
-            placeholder="Enter current password"
-            placeholderTextColor="#666"
-            secureTextEntry
-          />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.section}>
+          <Text style={[styles.label, { color: colors.text }]}>Current Password</Text>
+          <View style={[styles.inputContainer, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+            <TextInput
+              style={[styles.input, { color: colors.text }]}
+              placeholder="Enter current password"
+              placeholderTextColor={colors.textSecondary}
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry={!showCurrentPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity onPress={() => setShowCurrentPassword(!showCurrentPassword)}>
+              <IconSymbol
+                ios_icon_name={showCurrentPassword ? 'eye.slash.fill' : 'eye.fill'}
+                android_material_icon_name={showCurrentPassword ? 'visibility_off' : 'visibility'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: '#666' }]}>New Password</Text>
-          <TextInput
-            style={[styles.input, { color: theme.colors.text, borderColor: 'rgba(255,255,255,0.1)' }]}
-            placeholder="Enter new password"
-            placeholderTextColor="#666"
-            secureTextEntry
-          />
+        <View style={styles.section}>
+          <Text style={[styles.label, { color: colors.text }]}>New Password</Text>
+          <View style={[styles.inputContainer, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+            <TextInput
+              style={[styles.input, { color: colors.text }]}
+              placeholder="Enter new password"
+              placeholderTextColor={colors.textSecondary}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry={!showNewPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)}>
+              <IconSymbol
+                ios_icon_name={showNewPassword ? 'eye.slash.fill' : 'eye.fill'}
+                android_material_icon_name={showNewPassword ? 'visibility_off' : 'visibility'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.hint, { color: colors.textSecondary }]}>
+            Password must be at least 6 characters long
+          </Text>
         </View>
 
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: '#666' }]}>Confirm New Password</Text>
-          <TextInput
-            style={[styles.input, { color: theme.colors.text, borderColor: 'rgba(255,255,255,0.1)' }]}
-            placeholder="Confirm new password"
-            placeholderTextColor="#666"
-            secureTextEntry
-          />
+        <View style={styles.section}>
+          <Text style={[styles.label, { color: colors.text }]}>Confirm New Password</Text>
+          <View style={[styles.inputContainer, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+            <TextInput
+              style={[styles.input, { color: colors.text }]}
+              placeholder="Confirm new password"
+              placeholderTextColor={colors.textSecondary}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showConfirmPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+              <IconSymbol
+                ios_icon_name={showConfirmPassword ? 'eye.slash.fill' : 'eye.fill'}
+                android_material_icon_name={showConfirmPassword ? 'visibility_off' : 'visibility'}
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <TouchableOpacity style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>Update Password</Text>
-        </TouchableOpacity>
+        <View style={styles.buttonContainer}>
+          <GradientButton
+            title={loading ? 'Updating...' : 'Update Password'}
+            onPress={handleChangePassword}
+            disabled={loading}
+          />
+        </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -67,46 +206,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  placeholder: {
+    width: 40,
   },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     paddingBottom: 120,
   },
-  inputContainer: {
-    marginBottom: 20,
+  section: {
+    marginBottom: 24,
   },
   label: {
     fontSize: 14,
-    marginBottom: 8,
+    fontWeight: '600',
+    marginBottom: 12,
   },
-  input: {
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
     paddingVertical: 12,
-    fontSize: 16,
   },
-  saveButton: {
-    backgroundColor: '#8B0000',
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 20,
+  hint: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 8,
   },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  buttonContainer: {
+    marginTop: 16,
   },
 });

@@ -1,11 +1,36 @@
 
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'expo-router';
+import { deviceBanService } from '@/app/services/deviceBanService';
 
-interface DeviceBanGuardProps {
-  children: React.ReactNode;
-}
+export function DeviceBanGuard({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [checking, setChecking] = useState(true);
 
-export default function DeviceBanGuard({ children }: DeviceBanGuardProps) {
+  useEffect(() => {
+    checkDeviceBan();
+  }, [pathname]);
+
+  const checkDeviceBan = async () => {
+    // Don't check on the access restricted screen itself
+    if (pathname === '/access-restricted') {
+      setChecking(false);
+      return;
+    }
+
+    const { banned } = await deviceBanService.isDeviceBanned();
+    
+    if (banned) {
+      router.replace('/access-restricted' as any);
+    }
+    
+    setChecking(false);
+  };
+
+  if (checking) {
+    return null; // Or a loading spinner
+  }
+
   return <>{children}</>;
 }

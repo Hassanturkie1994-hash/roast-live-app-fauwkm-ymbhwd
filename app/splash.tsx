@@ -1,22 +1,50 @@
 
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { router } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated } from 'react-native';
+import { useRouter } from 'expo-router';
+import RoastLiveLogo from '@/components/RoastLiveLogo';
+import { colors } from '@/styles/commonStyles';
 
 export default function SplashScreen() {
-  useEffect(() => {
-    // Simulate loading time
-    const timer = setTimeout(() => {
-      router.replace('/(tabs)/(home)');
-    }, 2000);
+  const router = useRouter();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
 
-    return () => clearTimeout(timer);
-  }, []);
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 4,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const timeout = setTimeout(() => {
+      router.replace('/(tabs)/(home)/');
+    }, 2500);
+
+    return () => clearTimeout(timeout);
+  }, [fadeAnim, router, scaleAnim]);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.logo}>Roast Live</Text>
-      <ActivityIndicator size="large" color="#FF6B6B" style={styles.loader} />
+      <Animated.View
+        style={[
+          styles.logoContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
+      >
+        <RoastLiveLogo size="xlarge" />
+      </Animated.View>
     </View>
   );
 }
@@ -24,17 +52,12 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: colors.background,
     alignItems: 'center',
-    backgroundColor: '#000',
+    justifyContent: 'center',
   },
-  logo: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#FF6B6B',
-    marginBottom: 20,
-  },
-  loader: {
-    marginTop: 20,
+  logoContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

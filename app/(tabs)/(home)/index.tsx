@@ -1,61 +1,345 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { useTheme } from '@react-navigation/native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  Text,
+  TouchableOpacity,
+  Image,
+  Dimensions,
+} from 'react-native';
+import { router } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
+import StreamPreviewCard from '@/components/StreamPreviewCard';
+import StoriesBar from '@/components/StoriesBar';
+import RoastLiveLogo from '@/components/RoastLiveLogo';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/app/integrations/supabase/client';
+import { Tables } from '@/app/integrations/supabase/types';
+import { queryCache } from '@/app/services/queryCache';
 
-export default function HomeScreen() {
-  const theme = useTheme();
+type Stream = Tables<'streams'>;
+
+interface Post {
+  id: string;
+  user_id: string;
+  media_url: string;
+  caption: string;
+  likes_count: number;
+  comments_count: number;
+  created_at: string;
+  profiles: {
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  };
+}
+
+const { width: screenWidth } = Dimensions.get('window');
+
+// Memoized post component
+const PostItem = React.memo(({ 
+  post, 
+  onPress,
+  colors 
+}: { 
+  post: Post; 
+  onPress: (post: Post) => void;
+  colors: any;
+}) => {
+  const handlePress = useCallback(() => {
+    onPress(post);
+  }, [post, onPress]);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-          ROAST<Text style={{ color: '#8B0000' }}>LIVE</Text>
-        </Text>
+    <TouchableOpacity
+      style={[styles.postContainer, { backgroundColor: colors.background, borderBottomColor: colors.border }]}
+      onPress={handlePress}
+      activeOpacity={0.95}
+    >
+      <View style={styles.postHeader}>
+        <Image
+          source={{
+            uri: post.profiles.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
+          }}
+          style={[styles.postAvatar, { backgroundColor: colors.backgroundAlt }]}
+        />
+        <View style={styles.postHeaderText}>
+          <Text style={[styles.postDisplayName, { color: colors.text }]}>
+            {post.profiles.display_name || post.profiles.username}
+          </Text>
+          <Text style={[styles.postUsername, { color: colors.textSecondary }]}>@{post.profiles.username}</Text>
+        </View>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity style={styles.tabActive}>
-          <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={20} color="#8B0000" />
-          <Text style={[styles.tabText, styles.tabTextActive]}>LIVE</Text>
+      <Image source={{ uri: post.media_url }} style={[styles.postImage, { backgroundColor: colors.backgroundAlt }]} />
+
+      <View style={styles.postActions}>
+        <TouchableOpacity style={styles.postAction}>
+          <IconSymbol
+            ios_icon_name="heart"
+            android_material_icon_name="favorite_border"
+            size={24}
+            color={colors.text}
+          />
+          <Text style={[styles.postActionText, { color: colors.text }]}>{post.likes_count}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tab}>
-          <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color={theme.dark ? '#666' : '#999'} />
-          <Text style={[styles.tabText, { color: theme.dark ? '#666' : '#999' }]}>POSTS</Text>
+
+        <TouchableOpacity style={styles.postAction}>
+          <IconSymbol
+            ios_icon_name="bubble.left"
+            android_material_icon_name="comment"
+            size={24}
+            color={colors.text}
+          />
+          <Text style={[styles.postActionText, { color: colors.text }]}>{post.comments_count}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.postAction}>
+          <IconSymbol
+            ios_icon_name="paperplane"
+            android_material_icon_name="send"
+            size={24}
+            color={colors.text}
+          />
         </TouchableOpacity>
       </View>
 
-      {/* Content */}
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Add Story */}
-        <View style={styles.storyContainer}>
-          <TouchableOpacity style={styles.addStoryButton}>
-            <View style={styles.addStoryCircle}>
-              <IconSymbol ios_icon_name="plus" android_material_icon_name="add" size={32} color="#666" />
-            </View>
-            <Text style={[styles.addStoryText, { color: theme.colors.text }]}>Add Story</Text>
-          </TouchableOpacity>
+      {post.caption && (
+        <View style={styles.postCaption}>
+          <Text style={[styles.postCaptionUsername, { color: colors.text }]}>@{post.profiles.username}</Text>
+          <Text style={[styles.postCaptionText, { color: colors.text }]}> {post.caption}</Text>
         </View>
+      )}
+    </TouchableOpacity>
+  );
+});
 
-        {/* Empty State */}
-        <View style={styles.emptyState}>
-          <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={80} color="#333" />
-          <Text style={[styles.emptyStateText, { color: theme.dark ? '#666' : '#999' }]}>
-            No live streams yet
+PostItem.displayName = 'PostItem';
+
+export default function HomeScreen() {
+  const { user } = useAuth();
+  const { colors } = useTheme();
+  const [streams, setStreams] = useState<Stream[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'live' | 'posts'>('live');
+
+  // Memoize fetch streams function
+  const fetchStreams = useCallback(async () => {
+    try {
+      const data = await queryCache.getCached(
+        'streams_live',
+        async () => {
+          const { data, error } = await supabase
+            .from('streams')
+            .select('*')
+            .eq('status', 'live')
+            .order('started_at', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching streams:', error);
+            return [];
+          }
+
+          return data || [];
+        },
+        30000 // 30 seconds cache for live streams
+      );
+
+      setStreams(data);
+    } catch (error) {
+      console.error('Error in fetchStreams:', error);
+    }
+  }, []);
+
+  // Memoize fetch posts function
+  const fetchPosts = useCallback(async () => {
+    try {
+      const data = await queryCache.getCached(
+        'posts_feed',
+        async () => {
+          const { data, error } = await supabase
+            .from('posts')
+            .select('*, profiles(*)')
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+          if (error) {
+            console.error('Error fetching posts:', error);
+            return [];
+          }
+
+          return data || [];
+        },
+        60000 // 1 minute cache for posts
+      );
+
+      setPosts(data as any);
+    } catch (error) {
+      console.error('Error in fetchPosts:', error);
+    }
+  }, []);
+
+  // Memoize fetch data function
+  const fetchData = useCallback(async () => {
+    if (activeTab === 'live') {
+      await fetchStreams();
+    } else {
+      await fetchPosts();
+    }
+  }, [activeTab, fetchStreams, fetchPosts]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Memoize refresh handler
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    
+    // Invalidate cache
+    if (activeTab === 'live') {
+      queryCache.invalidate('streams_live');
+    } else {
+      queryCache.invalidate('posts_feed');
+    }
+    
+    await fetchData();
+    setRefreshing(false);
+  }, [activeTab, fetchData]);
+
+  // Memoize stream press handler
+  const handleStreamPress = useCallback((stream: Stream) => {
+    router.push({
+      pathname: '/live-player',
+      params: { streamId: stream.id },
+    });
+  }, []);
+
+  // Memoize post press handler
+  const handlePostPress = useCallback((post: Post) => {
+    console.log('Post pressed:', post.id);
+  }, []);
+
+  // Memoize stream render function
+  const renderStream = useCallback(({ item }: { item: Stream }) => (
+    <StreamPreviewCard
+      stream={item}
+      onPress={() => handleStreamPress(item)}
+    />
+  ), [handleStreamPress]);
+
+  // Memoize post render function
+  const renderPost = useCallback(({ item }: { item: Post }) => (
+    <PostItem
+      post={item}
+      onPress={handlePostPress}
+      colors={colors}
+    />
+  ), [handlePostPress, colors]);
+
+  // Memoize key extractors
+  const streamKeyExtractor = useCallback((item: Stream) => item.id, []);
+  const postKeyExtractor = useCallback((item: Post) => item.id, []);
+
+  // Memoize tab change handlers
+  const handleLiveTab = useCallback(() => {
+    setActiveTab('live');
+  }, []);
+
+  const handlePostsTab = useCallback(() => {
+    setActiveTab('posts');
+  }, []);
+
+  // Memoize header component
+  const ListHeaderComponent = useMemo(() => <StoriesBar />, []);
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header with Logo */}
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <RoastLiveLogo size="small" withShadow />
+      </View>
+
+      <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'live' && { borderBottomColor: colors.brandPrimary }]}
+          onPress={handleLiveTab}
+        >
+          <IconSymbol
+            ios_icon_name="video.fill"
+            android_material_icon_name="videocam"
+            size={20}
+            color={activeTab === 'live' ? colors.brandPrimary : colors.textSecondary}
+          />
+          <Text style={[styles.tabButtonText, { color: activeTab === 'live' ? colors.brandPrimary : colors.textSecondary }]}>
+            LIVE
           </Text>
-          <Text style={[styles.emptyStateSubtext, { color: theme.dark ? '#555' : '#aaa' }]}>
-            Check back later for live content
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'posts' && { borderBottomColor: colors.brandPrimary }]}
+          onPress={handlePostsTab}
+        >
+          <IconSymbol
+            ios_icon_name="square.grid.2x2.fill"
+            android_material_icon_name="grid_view"
+            size={20}
+            color={activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary}
+          />
+          <Text style={[styles.tabButtonText, { color: activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary }]}>
+            POSTS
           </Text>
-        </View>
-      </ScrollView>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'live' ? (
+        <FlatList
+          data={streams}
+          keyExtractor={streamKeyExtractor}
+          renderItem={renderStream}
+          ListHeaderComponent={ListHeaderComponent}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.brandPrimary}
+            />
+          }
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={5}
+          windowSize={5}
+        />
+      ) : (
+        <FlatList
+          data={posts}
+          keyExtractor={postKeyExtractor}
+          renderItem={renderPost}
+          ListHeaderComponent={ListHeaderComponent}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.brandPrimary}
+            />
+          }
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={5}
+          windowSize={5}
+        />
+      )}
     </View>
   );
 }
@@ -63,91 +347,94 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 48,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-  },
-  tabsContainer: {
+  tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  tab: {
+  tabButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
     gap: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  tabActive: {
-    flex: 1,
+  tabButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  listContent: {
+    paddingBottom: 100,
+  },
+  postContainer: {
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    paddingBottom: 16,
+  },
+  postHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
-    borderBottomWidth: 3,
-    borderBottomColor: '#8B0000',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
+  postAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
   },
-  tabTextActive: {
-    color: '#8B0000',
-  },
-  scrollView: {
+  postHeaderText: {
     flex: 1,
   },
-  contentContainer: {
-    paddingBottom: 120,
-  },
-  storyContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-  },
-  addStoryButton: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  addStoryCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addStoryText: {
+  postDisplayName: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '700',
   },
-  emptyState: {
+  postUsername: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  postImage: {
+    width: screenWidth,
+    aspectRatio: 9 / 16,
+  },
+  postActions: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 40,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 16,
   },
-  emptyStateText: {
-    fontSize: 18,
+  postAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  postActionText: {
+    fontSize: 14,
     fontWeight: '600',
-    marginTop: 20,
   },
-  emptyStateSubtext: {
+  postCaption: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  postCaptionUsername: {
     fontSize: 14,
-    marginTop: 8,
-    textAlign: 'center',
+    fontWeight: '700',
+  },
+  postCaptionText: {
+    fontSize: 14,
+    fontWeight: '400',
+    flex: 1,
   },
 });

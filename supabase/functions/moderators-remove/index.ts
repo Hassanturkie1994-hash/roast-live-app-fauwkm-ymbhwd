@@ -2,108 +2,74 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser();
-
-    if (authError || !user) {
+    // Only allow POST requests
+    if (req.method !== 'POST') {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Method not allowed' }),
+        { status: 405, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if user is admin
-    const { data: userData, error: userError } = await supabaseClient
-      .from('users')
-      .select('is_admin')
-      .eq('id', user.id)
-      .single();
+    const { creator_id, moderator_id } = await req.json();
 
-    if (userError || !userData?.is_admin) {
+    // Validate required fields
+    if (!creator_id || !moderator_id) {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: Admin access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'Missing required fields: creator_id and moderator_id are required',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const { user_id } = await req.json();
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (!user_id) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required field: user_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Update user to remove moderator status
-    const { error: updateError } = await supabaseClient
-      .from('users')
-      .update({ is_moderator: false })
-      .eq('id', user_id);
-
-    if (updateError) {
-      console.error('Error updating user:', updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to update user' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Delete moderator record
-    const { error: deleteError } = await supabaseClient
+    // Remove moderator
+    const { error: deleteError } = await supabase
       .from('moderators')
       .delete()
-      .eq('user_id', user_id);
+      .eq('streamer_id', creator_id)
+      .eq('user_id', moderator_id);
 
     if (deleteError) {
-      console.error('Error deleting moderator:', deleteError);
+      console.error('Error removing moderator:', deleteError);
       return new Response(
-        JSON.stringify({ error: 'Failed to delete moderator' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: deleteError.message,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Send notification
-    await supabaseClient.from('notifications').insert({
-      user_id,
-      type: 'system',
-      title: 'Moderator Role Removed',
-      body: 'Your moderator role has been removed.',
-      is_read: false,
-    });
+    // Fetch updated moderators list
+    const { data: moderators } = await supabase
+      .from('moderators')
+      .select('*, profiles(id, username, display_name, avatar_url)')
+      .eq('streamer_id', creator_id)
+      .order('created_at', { ascending: false });
 
     return new Response(
-      JSON.stringify({ success: true, message: 'Moderator removed successfully' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: true,
+        moderators: moderators || [],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    console.error('Error in moderators-remove function:', error);
+  } catch (e) {
+    console.error('Error in moderators-remove function:', e);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: false,
+        error: e instanceof Error ? e.message : 'Unknown error occurred',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 });

@@ -2,107 +2,67 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser();
-
-    if (authError || !user) {
+    // Only allow POST requests
+    if (req.method !== 'POST') {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Method not allowed' }),
+        { status: 405, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if user is admin or moderator
-    const { data: userData, error: userError } = await supabaseClient
-      .from('users')
-      .select('is_admin, is_moderator')
-      .eq('id', user.id)
-      .single();
+    const { creator_id, banned_user_id } = await req.json();
 
-    if (userError || (!userData?.is_admin && !userData?.is_moderator)) {
+    // Validate required fields
+    if (!creator_id || !banned_user_id) {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: Admin or Moderator access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'Missing required fields: creator_id and banned_user_id are required',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const { ban_id, user_id } = await req.json();
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (!ban_id && !user_id) {
-      return new Response(
-        JSON.stringify({ error: 'Either ban_id or user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Delete ban record
-    let query = supabaseClient.from('bans').delete();
-    
-    if (ban_id) {
-      query = query.eq('id', ban_id);
-    } else {
-      query = query.eq('user_id', user_id);
-    }
-
-    const { error: deleteError } = await query;
+    // Unban user
+    const { error: deleteError } = await supabase
+      .from('banned_users')
+      .delete()
+      .eq('streamer_id', creator_id)
+      .eq('user_id', banned_user_id);
 
     if (deleteError) {
-      console.error('Error removing ban:', deleteError);
+      console.error('Error unbanning user:', deleteError);
       return new Response(
-        JSON.stringify({ error: 'Failed to remove ban' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: deleteError.message,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Send notification to unbanned user
-    const targetUserId = user_id || (await supabaseClient
-      .from('bans')
-      .select('user_id')
-      .eq('id', ban_id)
-      .single()).data?.user_id;
-
-    if (targetUserId) {
-      await supabaseClient.from('notifications').insert({
-        user_id: targetUserId,
-        type: 'moderation',
-        title: 'Ban Removed',
-        body: 'Your account ban has been lifted. Welcome back!',
-        is_read: false,
-      });
-    }
-
     return new Response(
-      JSON.stringify({ success: true, message: 'Ban removed successfully' }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: true,
+        message: 'User unbanned successfully',
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    console.error('Error in ban-remove function:', error);
+  } catch (e) {
+    console.error('Error in ban-remove function:', e);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: false,
+        error: e instanceof Error ? e.message : 'Unknown error occurred',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 });

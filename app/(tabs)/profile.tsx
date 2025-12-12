@@ -1,310 +1,637 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { useTheme } from '@react-navigation/native';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Image,
+  Dimensions,
+  Alert,
+} from 'react-native';
+import { router } from 'expo-router';
+import RoastIcon from '@/components/icons/RoastIcon';
+import GradientButton from '@/components/GradientButton';
+import RoastLiveLogo from '@/components/RoastLiveLogo';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
+import { supabase } from '@/app/integrations/supabase/client';
+
+const { width: screenWidth } = Dimensions.get('window');
+
+interface Post {
+  id: string;
+  media_url: string;
+  caption: string;
+  likes_count: number;
+  comments_count: number;
+  created_at: string;
+}
 
 export default function ProfileScreen() {
-  const theme = useTheme();
-  const router = useRouter();
+  const { user, profile, signOut } = useAuth();
+  const { colors } = useTheme();
+  const [activeTab, setActiveTab] = useState<'replays' | 'posts' | 'stories'>('replays');
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [likedPosts, setLikedPosts] = useState<Post[]>([]);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [walletBalance, setWalletBalance] = useState(0);
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/settings')}>
-          <IconSymbol ios_icon_name="gearshape" android_material_icon_name="settings" size={24} color={theme.colors.text} />
+  const fetchUserData = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const [postsData, likedData, profileData, walletData] = await Promise.all([
+        supabase
+          .from('posts')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .then(res => ({ data: res.data || [], error: res.error })),
+        supabase
+          .from('post_likes')
+          .select('post_id, posts(*)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .then(res => ({ data: res.data || [], error: res.error })),
+        supabase
+          .from('profiles')
+          .select('followers_count, following_count')
+          .eq('id', user.id)
+          .single()
+          .then(res => ({ data: res.data, error: res.error })),
+        supabase
+          .from('wallet')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
+          .then(res => ({ data: res.data, error: res.error })),
+      ]);
+
+      if (postsData.data) setPosts(postsData.data);
+      if (likedData.data) {
+        const liked = likedData.data.map((item: any) => item.posts).filter(Boolean);
+        setLikedPosts(liked);
+      }
+      if (profileData.data) {
+        setFollowersCount(profileData.data.followers_count || 0);
+        setFollowingCount(profileData.data.following_count || 0);
+      }
+      if (walletData.data) {
+        setWalletBalance(parseFloat(walletData.data.balance) || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!user) {
+      router.replace('/auth/login');
+    } else if (mounted) {
+      fetchUserData();
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [user, fetchUserData]);
+
+  const handleEditProfile = () => {
+    router.push('/screens/EditProfileScreen');
+  };
+
+  const handleSettings = () => {
+    router.push('/screens/AccountSettingsScreen');
+  };
+
+  const handleShare = () => {
+    const profileLink = profile?.unique_profile_link || `roastlive.com/@${profile?.username}`;
+    Alert.alert('Share Profile', profileLink);
+  };
+
+  const handleCreatePost = () => {
+    router.push('/screens/CreatePostScreen');
+  };
+
+  const handleCreateStory = () => {
+    router.push('/screens/CreateStoryScreen');
+  };
+
+  const handleSavedStreams = () => {
+    router.push('/screens/SavedStreamsScreen');
+  };
+
+  const handleArchivedStreams = () => {
+    router.push('/screens/ArchivedStreamsScreen');
+  };
+
+  const renderContent = () => {
+    if (activeTab === 'replays') {
+      return (
+        <View style={styles.emptyState}>
+          <RoastIcon
+            name="video"
+            size={48}
+            color={colors.textSecondary}
+          />
+          <Text style={[styles.emptyText, { color: colors.text }]}>No live replays yet</Text>
+          <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+            Your past livestreams will appear here
+          </Text>
+          <TouchableOpacity style={[styles.viewAllButton, { backgroundColor: colors.brandPrimary }]} onPress={handleArchivedStreams}>
+            <Text style={styles.viewAllButtonText}>View Stream History</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (activeTab === 'posts') {
+      if (posts.length === 0) {
+        return (
+          <View style={styles.emptyState}>
+            <RoastIcon
+              name="burned-photo"
+              size={48}
+              color={colors.textSecondary}
+            />
+            <Text style={[styles.emptyText, { color: colors.text }]}>No posts yet</Text>
+            <TouchableOpacity 
+              style={[styles.createButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+              onPress={handleCreatePost}
+            >
+              <Text style={[styles.createButtonText, { color: colors.text }]}>Create your first post</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+
+      return (
+        <View style={styles.postsGrid}>
+          {posts.map((post, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[styles.postCard, { backgroundColor: colors.card }]}
+              activeOpacity={0.8}
+            >
+              <Image source={{ uri: post.media_url }} style={styles.postImage} />
+              <View style={styles.postOverlay}>
+                <View style={styles.postStats}>
+                  <View style={styles.postStat}>
+                    <RoastIcon
+                      name="heart"
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.postStatText}>{post.likes_count}</Text>
+                  </View>
+                  <View style={styles.postStat}>
+                    <RoastIcon
+                      name="comment"
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.postStatText}>{post.comments_count}</Text>
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      );
+    }
+
+    // Stories tab
+    return (
+      <View style={styles.emptyState}>
+        <RoastIcon
+          name="hot-circle"
+          size={48}
+          color={colors.textSecondary}
+        />
+        <Text style={[styles.emptyText, { color: colors.text }]}>No story highlights</Text>
+        <TouchableOpacity 
+          style={[styles.createButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+          onPress={handleCreateStory}
+        >
+          <Text style={[styles.createButtonText, { color: colors.text }]}>Create a story</Text>
         </TouchableOpacity>
       </View>
+    );
+  };
 
-      <ScrollView 
+  if (!profile) {
+    return (
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading profile...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Header */}
-        <View style={styles.profileHeader}>
-          <View style={styles.avatarContainer}>
-            <View style={[styles.avatar, { backgroundColor: '#333' }]}>
-              <IconSymbol ios_icon_name="person.fill" android_material_icon_name="person" size={50} color="#666" />
-            </View>
-          </View>
-          
-          <Text style={[styles.name, { color: theme.colors.text }]}>HaSss</Text>
-          <Text style={[styles.username, { color: '#666' }]}>@hassan040</Text>
-          <Text style={[styles.bio, { color: theme.colors.text }]}>Hhhhhhhh</Text>
-          <Text style={[styles.link, { color: '#8B0000' }]}>roastlive.com/@hassan040</Text>
-
-          {/* Stats */}
-          <View style={styles.statsContainer}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: theme.colors.text }]}>0</Text>
-              <Text style={[styles.statLabel, { color: '#666' }]}>Followers</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: theme.colors.text }]}>0</Text>
-              <Text style={[styles.statLabel, { color: '#666' }]}>Following</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: theme.colors.text }]}>0</Text>
-              <Text style={[styles.statLabel, { color: '#666' }]}>Posts</Text>
-            </View>
-          </View>
+        <View style={[styles.logoHeader, { borderBottomColor: colors.border }]}>
+          <View style={styles.logoPlaceholder} />
+          <TouchableOpacity onPress={handleSettings} style={styles.settingsButton}>
+            <RoastIcon
+              name="heated-gear"
+              size={28}
+              color={colors.text}
+            />
+          </TouchableOpacity>
         </View>
 
-        {/* Saldo Balance */}
-        <TouchableOpacity style={styles.saldoCard}>
-          <View style={styles.saldoLeft}>
-            <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color="#8B0000" />
-            <Text style={[styles.saldoLabel, { color: theme.colors.text }]}>Saldo Balance</Text>
+        {/* Banner */}
+        {profile.banner_url && (
+          <Image source={{ uri: profile.banner_url }} style={[styles.banner, { backgroundColor: colors.backgroundAlt }]} />
+        )}
+
+        {/* Profile Header with Logo */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <RoastLiveLogo size="medium" />
           </View>
-          <View style={styles.saldoRight}>
-            <Text style={[styles.saldoAmount, { color: '#8B0000' }]}>100.00 SEK</Text>
-            <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color="#666" />
+          
+          <Image
+            source={{
+              uri: profile.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
+            }}
+            style={[styles.avatar, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
+          />
+          <Text style={[styles.displayName, { color: colors.text }]}>{profile.display_name || profile.username}</Text>
+          <Text style={[styles.username, { color: colors.textSecondary }]}>@{profile.username}</Text>
+
+          {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{profile.bio}</Text>}
+
+          {profile.unique_profile_link && (
+            <Text style={[styles.profileLink, { color: colors.brandPrimary }]}>{profile.unique_profile_link}</Text>
+          )}
+
+          <View style={styles.statsContainer}>
+            <View style={styles.stat}>
+              <Text style={[styles.statValue, { color: colors.text }]}>{formatCount(followersCount)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.stat}>
+              <Text style={[styles.statValue, { color: colors.text }]}>{formatCount(followingCount)}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
+            </View>
+            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.stat}>
+              <Text style={[styles.statValue, { color: colors.text }]}>{posts.length}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
+            </View>
           </View>
-        </TouchableOpacity>
 
-        {/* Action Buttons */}
-        <TouchableOpacity style={styles.actionButton}>
-          <IconSymbol ios_icon_name="bookmark.fill" android_material_icon_name="bookmark" size={20} color={theme.colors.text} />
-          <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>Saved Streams</Text>
-          <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color="#666" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton}>
-          <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={20} color={theme.colors.text} />
-          <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>Stream History</Text>
-          <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color="#666" />
-        </TouchableOpacity>
-
-        {/* Edit Profile Button */}
-        <TouchableOpacity style={styles.editProfileButton}>
-          <Text style={styles.editProfileButtonText}>EDIT PROFILE</Text>
-        </TouchableOpacity>
-
-        {/* Share Button */}
-        <TouchableOpacity style={styles.shareButton}>
-          <IconSymbol ios_icon_name="square.and.arrow.up" android_material_icon_name="share" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-
-        {/* Post/Story Buttons */}
-        <View style={styles.postStoryContainer}>
-          <TouchableOpacity style={styles.postStoryButton}>
-            <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color={theme.colors.text} />
-            <Text style={[styles.postStoryButtonText, { color: theme.colors.text }]}>Post</Text>
+          {/* Wallet Balance - Clickable */}
+          <TouchableOpacity 
+            style={[styles.walletCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+            onPress={() => router.push('/screens/WalletScreen')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.walletLeft}>
+              <RoastIcon name="lava-wallet" size={24} />
+              <Text style={[styles.walletLabel, { color: colors.text }]}>Saldo Balance</Text>
+            </View>
+            <View style={styles.walletRight}>
+              <Text style={[styles.walletAmount, { color: colors.brandPrimary }]}>{walletBalance.toFixed(2)} SEK</Text>
+              <RoastIcon
+                name="chevron-right"
+                size={16}
+                color={colors.textSecondary}
+              />
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.postStoryButton}>
-            <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color={theme.colors.text} />
-            <Text style={[styles.postStoryButtonText, { color: theme.colors.text }]}>Story</Text>
+
+          {/* Saved Streams Link */}
+          <TouchableOpacity 
+            style={[styles.savedStreamsCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+            onPress={handleSavedStreams}
+            activeOpacity={0.7}
+          >
+            <View style={styles.savedStreamsLeft}>
+              <RoastIcon name="video" size={24} />
+              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Saved Streams</Text>
+            </View>
+            <RoastIcon
+              name="chevron-right"
+              size={16}
+              color={colors.textSecondary}
+            />
           </TouchableOpacity>
+
+          {/* Archived Streams Link */}
+          <TouchableOpacity 
+            style={[styles.savedStreamsCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+            onPress={handleArchivedStreams}
+            activeOpacity={0.7}
+          >
+            <View style={styles.savedStreamsLeft}>
+              <RoastIcon name="history" size={24} />
+              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Stream History</Text>
+            </View>
+            <RoastIcon
+              name="chevron-right"
+              size={16}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <View style={styles.buttonRow}>
+            <View style={styles.buttonFlex}>
+              <GradientButton title="Edit Profile" onPress={handleEditProfile} size="medium" />
+            </View>
+            <TouchableOpacity 
+              style={[styles.iconButton, { backgroundColor: colors.card, borderColor: colors.border }]} 
+              onPress={handleShare}
+            >
+              <RoastIcon
+                name="share"
+                size={20}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+              onPress={handleCreatePost}
+            >
+              <RoastIcon name="burned-photo" size={24} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>Post</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+              onPress={handleCreateStory}
+            >
+              <RoastIcon name="hot-circle" size={24} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>Story</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Tabs */}
-        <View style={styles.tabsContainer}>
-          <TouchableOpacity style={styles.tabActive}>
-            <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={20} color="#8B0000" />
-            <Text style={[styles.tabText, styles.tabTextActive]}>LIVE REPLAYS</Text>
+        <View style={[styles.tabsContainer, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'replays' && { borderBottomColor: colors.brandPrimary }]}
+            onPress={() => setActiveTab('replays')}
+          >
+            <RoastIcon
+              name="video"
+              size={20}
+              color={activeTab === 'replays' ? colors.brandPrimary : colors.textSecondary}
+            />
+            <Text style={[styles.tabText, { color: activeTab === 'replays' ? colors.brandPrimary : colors.textSecondary }]}>
+              LIVE REPLAYS
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color="#666" />
-            <Text style={[styles.tabText, { color: '#666' }]}>POSTS</Text>
+
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'posts' && { borderBottomColor: colors.brandPrimary }]}
+            onPress={() => setActiveTab('posts')}
+          >
+            <RoastIcon
+              name="burned-photo"
+              size={20}
+              color={activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary}
+            />
+            <Text style={[styles.tabText, { color: activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary }]}>
+              POSTS
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <IconSymbol ios_icon_name="clock" android_material_icon_name="schedule" size={20} color="#666" />
-            <Text style={[styles.tabText, { color: '#666' }]}>STORIES</Text>
+
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'stories' && { borderBottomColor: colors.brandPrimary }]}
+            onPress={() => setActiveTab('stories')}
+          >
+            <RoastIcon
+              name="hot-circle"
+              size={20}
+              color={activeTab === 'stories' ? colors.brandPrimary : colors.textSecondary}
+            />
+            <Text style={[styles.tabText, { color: activeTab === 'stories' ? colors.brandPrimary : colors.textSecondary }]}>
+              STORIES
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Empty State */}
-        <View style={styles.emptyState}>
-          <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={80} color="#333" />
-          <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]}>No live replays yet</Text>
-          <Text style={[styles.emptyStateSubtext, { color: '#666' }]}>
-            Your past livestreams will appear here
-          </Text>
-        </View>
+        {/* Content */}
+        {renderContent()}
       </ScrollView>
     </View>
   );
 }
 
+function formatCount(count: number): string {
+  if (count >= 1000000) {
+    return `${(count / 1000000).toFixed(1)}M`;
+  }
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}K`;
+  }
+  return count.toString();
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 48,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    alignItems: 'flex-end',
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
-    paddingBottom: 120,
+    paddingTop: 60,
+    paddingBottom: 100,
   },
-  profileHeader: {
+  logoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  logoPlaceholder: {
+    width: 40,
+  },
+  settingsButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  banner: {
+    width: '100%',
+    height: 150,
+  },
+  header: {
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingTop: 24,
+    paddingBottom: 24,
   },
-  avatarContainer: {
+  logoContainer: {
     marginBottom: 16,
   },
   avatar: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 16,
+    borderWidth: 3,
   },
-  name: {
+  displayName: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginBottom: 4,
   },
   username: {
     fontSize: 16,
-    marginBottom: 8,
+    fontWeight: '600',
+    marginBottom: 12,
   },
   bio: {
     fontSize: 14,
+    fontWeight: '400',
+    textAlign: 'center',
     marginBottom: 8,
+    lineHeight: 20,
   },
-  link: {
+  profileLink: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     marginBottom: 20,
   },
   statsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    paddingVertical: 16,
+    marginBottom: 20,
   },
-  statItem: {
+  stat: {
     alignItems: 'center',
-    flex: 1,
+    paddingHorizontal: 20,
   },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  statNumber: {
+  statValue: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 14,
+    fontWeight: '400',
   },
-  saldoCard: {
+  statDivider: {
+    width: 1,
+    height: 30,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+    marginBottom: 16,
+  },
+  buttonFlex: {
+    flex: 1,
+  },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  walletCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 16,
+    width: '100%',
   },
-  saldoLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  saldoLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  saldoRight: {
+  walletLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  saldoAmount: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  walletLabel: {
+    fontSize: 14,
+    fontWeight: '600',
   },
-  actionButton: {
+  walletRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    gap: 12,
+    gap: 8,
   },
-  actionButtonText: {
+  walletAmount: {
     fontSize: 16,
-    fontWeight: '500',
-    flex: 1,
+    fontWeight: '700',
   },
-  editProfileButton: {
-    backgroundColor: '#8B0000',
-    marginHorizontal: 20,
+  savedStreamsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     marginTop: 8,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
+    width: '100%',
   },
-  editProfileButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-  },
-  shareButton: {
-    alignSelf: 'center',
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  postStoryContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 20,
-  },
-  postStoryButton: {
-    flex: 1,
+  savedStreamsLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     gap: 8,
   },
-  postStoryButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
+  savedStreamsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   tabsContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 20,
+    marginBottom: 2,
   },
   tab: {
     flex: 1,
@@ -312,39 +639,83 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    gap: 4,
-  },
-  tabActive: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 4,
-    borderBottomWidth: 3,
-    borderBottomColor: '#8B0000',
+    gap: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
   tabText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  tabTextActive: {
-    color: '#8B0000',
+  postsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 1,
+    gap: 2,
   },
   emptyState: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
-    paddingHorizontal: 40,
+    gap: 16,
   },
-  emptyStateTitle: {
+  emptyText: {
     fontSize: 18,
-    fontWeight: '600',
-    marginTop: 20,
-    marginBottom: 8,
+    fontWeight: '700',
   },
-  emptyStateSubtext: {
+  emptySubtext: {
     fontSize: 14,
+    fontWeight: '400',
     textAlign: 'center',
+  },
+  createButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  createButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  viewAllButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+  },
+  viewAllButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  postCard: {
+    width: (screenWidth - 6) / 3,
+    aspectRatio: 9 / 16,
+    position: 'relative',
+  },
+  postImage: {
+    width: '100%',
+    height: '100%',
+  },
+  postOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    padding: 8,
+    justifyContent: 'flex-end',
+  },
+  postStats: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  postStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  postStatText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

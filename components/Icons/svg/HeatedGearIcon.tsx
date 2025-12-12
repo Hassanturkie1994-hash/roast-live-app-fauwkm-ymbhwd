@@ -1,16 +1,46 @@
 
 import React from 'react';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient, Stop, Filter, FeGaussianBlur, FeMerge, FeMergeNode } from 'react-native-svg';
 
 interface IconProps {
-  size?: number;
-  color?: string;
+  size: number;
+  color: string;
+  theme?: 'light' | 'dark';
 }
 
-export default function HeatedGearIcon({ size = 24, color = '#000' }: IconProps) {
+export default function HeatedGearIcon({ size, color, theme = 'dark' }: IconProps) {
+  const glowColor = theme === 'dark' ? '#E30052' : '#A40028';
+  
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" fill={color} />
+    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <Defs>
+        <LinearGradient id="gearGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor="#A40028" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#E30052" stopOpacity="1" />
+        </LinearGradient>
+        <Filter id="gearGlow">
+          <FeGaussianBlur stdDeviation="2" result="coloredBlur"/>
+          <FeMerge>
+            <FeMergeNode in="coloredBlur"/>
+            <FeMergeNode in="SourceGraphic"/>
+          </FeMerge>
+        </Filter>
+      </Defs>
+      
+      {/* Gear teeth */}
+      <Path
+        d="M19 4H13L12 7H20L19 4ZM28 13V19L25 20V12L28 13ZM19 28H13L12 25H20L19 28ZM4 19V13L7 12V20L4 19ZM22 7L25 10L23 12L20 9L22 7ZM10 7L7 10L9 12L12 9L10 7ZM22 25L25 22L23 20L20 23L22 25ZM10 25L7 22L9 20L12 23L10 25Z"
+        fill="url(#gearGradient)"
+        filter="url(#gearGlow)"
+        strokeWidth="1"
+        stroke={glowColor}
+      />
+      
+      {/* Center circle */}
+      <Circle cx="16" cy="16" r="6" fill="url(#gearGradient)" filter="url(#gearGlow)" stroke={glowColor} strokeWidth="1.5" />
+      
+      {/* Inner circle */}
+      <Circle cx="16" cy="16" r="3" fill="#FDC830" />
     </Svg>
   );
 }

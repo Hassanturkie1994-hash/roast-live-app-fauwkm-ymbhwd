@@ -1,194 +1,553 @@
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, Modal } from 'react-native';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { colors, commonStyles } from '@/styles/commonStyles';
+import GradientButton from '@/components/GradientButton';
+import LiveBadge from '@/components/LiveBadge';
+import RoastLiveLogo from '@/components/RoastLiveLogo';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/app/integrations/supabase/client';
+import { cloudflareService } from '@/app/services/cloudflareService';
 import { router } from 'expo-router';
-import { IconSymbol } from '../../components/IconSymbol';
+import ChatOverlay from '@/components/ChatOverlay';
 
-const { width, height } = Dimensions.get('window');
+interface StreamData {
+  id: string;
+  live_input_id: string;
+  title: string;
+  status: string;
+  playback_url: string;
+}
 
-export default function BroadcasterScreenLive() {
+export default function BroadcasterScreen() {
+  const { user } = useAuth();
+  const [facing, setFacing] = useState<CameraType>('front');
+  const [permission, requestPermission] = useCameraPermissions();
   const [isLive, setIsLive] = useState(false);
-  const [viewers, setViewers] = useState(0);
+  const [viewerCount, setViewerCount] = useState(0);
+  const [liveTime, setLiveTime] = useState(0);
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [showSetup, setShowSetup] = useState(false);
+  const [streamTitle, setStreamTitle] = useState('');
+  const [currentStream, setCurrentStream] = useState<StreamData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const realtimeChannelRef = useRef<any>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const handleToggleLive = () => {
-    setIsLive(!isLive);
-    if (!isLive) {
-      setViewers(Math.floor(Math.random() * 100));
+  useEffect(() => {
+    if (!user) {
+      router.replace('/auth/login');
     }
-    console.log(`Stream ${!isLive ? 'started' : 'stopped'}`);
+  }, [user]);
+
+  useEffect(() => {
+    if (isLive) {
+      timerIntervalRef.current = setInterval(() => {
+        setLiveTime((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [isLive]);
+
+  const subscribeToViewerUpdates = useCallback(() => {
+    if (!currentStream?.id) return;
+
+    const channel = supabase
+      .channel(`stream:${currentStream.id}:broadcaster`)
+      .on('broadcast', { event: 'viewer_count' }, (payload) => {
+        console.log('👥 Viewer count update:', payload);
+        setViewerCount(payload.payload.count || 0);
+      })
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+  }, [currentStream?.id]);
+
+  useEffect(() => {
+    if (isLive && currentStream?.id) {
+      subscribeToViewerUpdates();
+    }
+    
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [isLive, currentStream?.id, subscribeToViewerUpdates]);
+
+  if (!permission) {
+    return <View style={commonStyles.container} />;
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={[commonStyles.container, styles.permissionContainer]}>
+        <IconSymbol
+          ios_icon_name="video.fill"
+          android_material_icon_name="videocam"
+          size={64}
+          color={colors.textSecondary}
+        />
+        <Text style={styles.permissionText}>We need your permission to use the camera</Text>
+        <GradientButton title="Grant Permission" onPress={requestPermission} />
+      </View>
+    );
+  }
+
+  const toggleCameraFacing = () => {
+    setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
-  const handleEndStream = () => {
-    setIsLive(false);
-    setViewers(0);
-    router.back();
+  const handleStartLiveSetup = () => {
+    if (isLive) {
+      Alert.alert(
+        'End Stream',
+        'Are you sure you want to end your live stream?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'End Stream',
+            style: 'destructive',
+            onPress: endStream,
+          },
+        ]
+      );
+    } else {
+      setShowSetup(true);
+    }
+  };
+
+  const startStream = async () => {
+    if (!streamTitle.trim()) {
+      Alert.alert('Error', 'Please enter a stream title');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to start streaming');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      console.log('🎬 Starting live stream with title:', streamTitle);
+      
+      // Call cloudflareService.startLive with correct parameters
+      const result = await cloudflareService.startLive({ 
+        title: streamTitle, 
+        userId: user.id 
+      });
+
+      console.log('✅ Stream created successfully:', result);
+
+      // Store the stream data
+      setCurrentStream(result.stream);
+      setIsLive(true);
+      setViewerCount(0);
+      setLiveTime(0);
+      setShowSetup(false);
+      setStreamTitle('');
+
+      console.log('📺 Stream details:', {
+        id: result.stream.id,
+        live_input_id: result.stream.live_input_id,
+        playback_url: result.stream.playback_url,
+        rtmps_url: result.ingest.rtmps_url,
+        stream_key: result.ingest.stream_key ? '***' : null,
+        webRTC_url: result.ingest.webRTC_url,
+      });
+
+      Alert.alert(
+        '🔴 You are LIVE!',
+        `Your stream is now broadcasting!\n\nStream ID: ${result.stream.id}\n\nViewers can watch you live!`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('❌ Error starting stream:', error);
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to start stream. Please try again.';
+      
+      Alert.alert(
+        'Cannot Start Stream',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const endStream = async () => {
+    if (!currentStream) {
+      Alert.alert('Error', 'No active stream to end');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      console.log('🛑 Ending stream:', {
+        liveInputId: currentStream.live_input_id,
+        streamId: currentStream.id,
+      });
+      
+      // Call cloudflareService.stopLive with correct parameters
+      await cloudflareService.stopLive({
+        liveInputId: currentStream.live_input_id,
+        streamId: currentStream.id,
+      });
+
+      console.log('✅ Stream ended successfully');
+
+      // Reset all state
+      setIsLive(false);
+      setViewerCount(0);
+      setLiveTime(0);
+      setCurrentStream(null);
+
+      Alert.alert('Stream Ended', 'Your live stream has been ended successfully.');
+    } catch (error) {
+      console.error('❌ Error ending stream:', error);
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to end stream. Please try again.';
+      
+      Alert.alert(
+        'Error',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.liveIndicator}>
-          {isLive && (
-            <>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
-              <Text style={styles.viewersText}>{viewers} viewers</Text>
-            </>
-          )}
+    <View style={commonStyles.container}>
+      <CameraView style={styles.camera} facing={facing} />
+
+      <View style={styles.overlay}>
+        {isLive && (
+          <>
+            <View style={styles.topBar}>
+              <LiveBadge size="small" />
+              <View style={styles.statsContainer}>
+                <View style={styles.stat}>
+                  <IconSymbol
+                    ios_icon_name="eye.fill"
+                    android_material_icon_name="visibility"
+                    size={16}
+                    color={colors.text}
+                  />
+                  <Text style={styles.statText}>{viewerCount}</Text>
+                </View>
+                <View style={styles.stat}>
+                  <IconSymbol
+                    ios_icon_name="clock.fill"
+                    android_material_icon_name="schedule"
+                    size={16}
+                    color={colors.text}
+                  />
+                  <Text style={styles.statText}>{formatTime(liveTime)}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.watermarkContainer}>
+              <RoastLiveLogo size="small" opacity={0.25} />
+            </View>
+
+            {currentStream && (
+              <ChatOverlay streamId={currentStream.id} isBroadcaster={true} />
+            )}
+          </>
+        )}
+
+        <View style={styles.controlsContainer}>
+          <View style={styles.controls}>
+            <TouchableOpacity
+              style={[styles.controlButton, !isMicOn && styles.controlButtonOff]}
+              onPress={() => setIsMicOn(!isMicOn)}
+              disabled={isLoading}
+            >
+              <IconSymbol
+                ios_icon_name={isMicOn ? 'mic.fill' : 'mic.slash.fill'}
+                android_material_icon_name={isMicOn ? 'mic' : 'mic_off'}
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.startButtonContainer}>
+              <GradientButton
+                title={isLive ? 'END STREAM' : 'GO LIVE'}
+                onPress={handleStartLiveSetup}
+                size="large"
+                disabled={isLoading}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.controlButton}
+              onPress={toggleCameraFacing}
+              disabled={isLoading}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
+                android_material_icon_name="flip_camera_ios"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
-        <TouchableOpacity 
-          style={styles.closeButton}
-          onPress={handleEndStream}
-        >
-          <IconSymbol 
-            ios_icon_name="xmark" 
-            android_material_icon_name="close" 
-            size={24} 
-            color="#fff"
-          />
-        </TouchableOpacity>
       </View>
 
-      <View style={styles.videoPreview}>
-        <View style={styles.placeholder}>
-          <IconSymbol 
-            ios_icon_name="video.fill" 
-            android_material_icon_name="videocam" 
-            size={64} 
-            color={isLive ? '#FF6B6B' : '#444'}
-          />
-          <Text style={styles.placeholderText}>
-            {isLive ? 'You are live!' : 'Camera Preview'}
-          </Text>
+      <Modal
+        visible={showSetup}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !isLoading && setShowSetup(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <RoastLiveLogo size="medium" style={styles.modalLogo} />
+            <Text style={styles.modalTitle}>Setup Your Stream</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Stream Title</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="What are you streaming?"
+                placeholderTextColor={colors.placeholder}
+                value={streamTitle}
+                onChangeText={setStreamTitle}
+                maxLength={100}
+                autoFocus
+                editable={!isLoading}
+              />
+            </View>
+
+            <View style={styles.infoBox}>
+              <IconSymbol
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.gradientEnd}
+              />
+              <Text style={styles.infoText}>
+                Your stream will be broadcast live to all viewers. Make sure you have a stable internet connection!
+              </Text>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowSetup(false)}
+                disabled={isLoading}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={styles.goLiveButtonContainer}>
+                <GradientButton
+                  title={isLoading ? 'STARTING...' : 'GO LIVE'}
+                  onPress={startStream}
+                  size="medium"
+                  disabled={isLoading}
+                />
+              </View>
+            </View>
+          </View>
         </View>
-      </View>
-
-      <View style={styles.controls}>
-        <TouchableOpacity style={styles.controlButton}>
-          <IconSymbol 
-            ios_icon_name="camera.rotate" 
-            android_material_icon_name="flip_camera_ios" 
-            size={28} 
-            color="#fff"
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.liveButton, isLive && styles.liveButtonActive]}
-          onPress={handleToggleLive}
-        >
-          <IconSymbol 
-            ios_icon_name={isLive ? "stop.fill" : "play.fill"} 
-            android_material_icon_name={isLive ? "stop" : "play_arrow"} 
-            size={32} 
-            color="#fff"
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.controlButton}>
-          <IconSymbol 
-            ios_icon_name="mic.fill" 
-            android_material_icon_name="mic" 
-            size={28} 
-            color="#fff"
-          />
-        </TouchableOpacity>
-      </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  camera: {
     flex: 1,
-    backgroundColor: '#000',
   },
-  header: {
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
-    zIndex: 10,
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+  permissionContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    gap: 20,
+  },
+  permissionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
     alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 20,
   },
-  liveIndicator: {
+  statsContainer: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  stat: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 20,
+    gap: 6,
   },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FF6B6B',
-    marginRight: 8,
-  },
-  liveText: {
-    color: '#fff',
+  statText: {
+    color: colors.text,
     fontSize: 14,
-    fontWeight: 'bold',
-    marginRight: 8,
+    fontWeight: '600',
   },
-  viewersText: {
-    color: '#fff',
-    fontSize: 14,
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoPreview: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: '#888',
-    fontSize: 18,
-    marginTop: 20,
-  },
-  controls: {
+  watermarkContainer: {
     position: 'absolute',
-    bottom: 100,
+    bottom: 200,
+    right: 20,
+    pointerEvents: 'none',
+  },
+  controlsContainer: {
+    position: 'absolute',
+    bottom: 40,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    gap: 20,
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 40,
-    paddingHorizontal: 20,
   },
   controlButton: {
-    width: 50,
-    height: 50,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  controlButtonOff: {
+    backgroundColor: 'rgba(164, 0, 40, 0.7)',
+  },
+  startButtonContainer: {
+    marginHorizontal: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalLogo: {
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    color: colors.text,
+    fontSize: 16,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.gradientEnd,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 24,
+    gap: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.border,
+    borderWidth: 1,
     borderRadius: 25,
-    justifyContent: 'center',
+    paddingVertical: 14,
     alignItems: 'center',
   },
-  liveButton: {
-    width: 70,
-    height: 70,
-    backgroundColor: '#FF6B6B',
-    borderRadius: 35,
-    justifyContent: 'center',
-    alignItems: 'center',
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
   },
-  liveButtonActive: {
-    backgroundColor: '#FF4444',
+  goLiveButtonContainer: {
+    flex: 1,
   },
 });

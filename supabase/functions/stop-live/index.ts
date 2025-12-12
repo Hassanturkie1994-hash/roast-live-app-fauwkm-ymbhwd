@@ -1,106 +1,79 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    const body = await req.json();
+    const live_input_id = body.live_input_id || body.liveInputId || body.stream_id || body.streamId;
+
+    // Validate required field
+    if (!live_input_id) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Missing live_input_id parameter. Please provide live_input_id in the request body.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Read Cloudflare credentials from secrets
+    const CF_ACCOUNT_ID = Deno.env.get("CF_ACCOUNT_ID") || Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
+    const CF_API_TOKEN = Deno.env.get("CF_API_TOKEN") || Deno.env.get("CLOUDFLARE_API_TOKEN");
+
+    if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Missing Cloudflare credentials. Please configure CF_ACCOUNT_ID (or CLOUDFLARE_ACCOUNT_ID) and CF_API_TOKEN in Supabase Edge Function secrets.",
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Delete/disable Cloudflare live input
+    const deleteInput = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs/${live_input_id}`,
       {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${CF_API_TOKEN}`,
+          "Content-Type": "application/json",
         },
       }
     );
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser();
+    const cloudflareResponse = await deleteInput.json();
 
-    if (authError || !user) {
+    if (!cloudflareResponse.success) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: cloudflareResponse.errors 
+            ? JSON.stringify(cloudflareResponse.errors) 
+            : "Failed to delete Cloudflare live input",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const { stream_id } = await req.json();
-
-    if (!stream_id) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required field: stream_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Verify stream belongs to user
-    const { data: stream, error: fetchError } = await supabaseClient
-      .from('live_streams')
-      .select('*')
-      .eq('id', stream_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (fetchError || !stream) {
-      return new Response(
-        JSON.stringify({ error: 'Stream not found or unauthorized' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Update stream to stopped
-    const { data: updatedStream, error: updateError } = await supabaseClient
-      .from('live_streams')
-      .update({
-        is_live: false,
-        ended_at: new Date().toISOString(),
-      })
-      .eq('id', stream_id)
-      .select()
-      .single();
-
-    if (updateError) {
-      console.error('Error stopping live stream:', updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to stop live stream' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Calculate stream duration
-    const startedAt = new Date(stream.started_at);
-    const endedAt = new Date(updatedStream.ended_at);
-    const durationMinutes = Math.floor((endedAt.getTime() - startedAt.getTime()) / 60000);
-
-    console.log(`Stream ${stream_id} ended. Duration: ${durationMinutes} minutes, Peak viewers: ${stream.viewer_count}`);
-
+    // Return success response
+    return new Response(
+      JSON.stringify({
+        success: true,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  } catch (e) {
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        data: updatedStream,
-        stats: {
-          duration_minutes: durationMinutes,
-          peak_viewers: stream.viewer_count,
-        }
+        success: false, 
+        error: e instanceof Error ? e.message : "Unknown error occurred" 
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Error in stop-live function:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 });

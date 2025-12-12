@@ -2,113 +2,109 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser();
-
-    if (authError || !user) {
+    // Only allow POST requests
+    if (req.method !== 'POST') {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Method not allowed' }),
+        { status: 405, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if user is admin
-    const { data: userData, error: userError } = await supabaseClient
-      .from('users')
-      .select('is_admin')
-      .eq('id', user.id)
+    const { creator_id, moderator_id } = await req.json();
+
+    // Validate required fields
+    if (!creator_id || !moderator_id) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Missing required fields: creator_id and moderator_id are required',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Check if already a moderator
+    const { data: existing } = await supabase
+      .from('moderators')
+      .select('id')
+      .eq('streamer_id', creator_id)
+      .eq('user_id', moderator_id)
       .single();
 
-    if (userError || !userData?.is_admin) {
+    if (existing) {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: Admin access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'User is already a moderator',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const { user_id, permissions } = await req.json();
+    // Check moderator limit (30 max)
+    const { count } = await supabase
+      .from('moderators')
+      .select('*', { count: 'exact', head: true })
+      .eq('streamer_id', creator_id);
 
-    if (!user_id) {
+    if (count && count >= 30) {
       return new Response(
-        JSON.stringify({ error: 'Missing required field: user_id' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'Maximum of 30 moderators reached',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Update user to be moderator
-    const { error: updateError } = await supabaseClient
-      .from('users')
-      .update({ is_moderator: true })
-      .eq('id', user_id);
-
-    if (updateError) {
-      console.error('Error updating user:', updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to update user' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Insert moderator record
-    const { data: moderator, error: moderatorError } = await supabaseClient
+    // Add moderator
+    const { error: insertError } = await supabase
       .from('moderators')
       .insert({
-        user_id,
-        assigned_by: user.id,
-        permissions: permissions || ['ban_users', 'timeout_users', 'delete_content', 'review_reports'],
-      })
-      .select()
-      .single();
+        streamer_id: creator_id,
+        user_id: moderator_id,
+      });
 
-    if (moderatorError) {
-      console.error('Error creating moderator:', moderatorError);
+    if (insertError) {
+      console.error('Error adding moderator:', insertError);
       return new Response(
-        JSON.stringify({ error: 'Failed to create moderator' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: insertError.message,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Send notification to new moderator
-    await supabaseClient.from('notifications').insert({
-      user_id,
-      type: 'system',
-      title: 'Moderator Role Assigned',
-      body: 'You have been assigned as a moderator. Welcome to the team!',
-      is_read: false,
-    });
+    // Fetch updated moderators list
+    const { data: moderators } = await supabase
+      .from('moderators')
+      .select('*, profiles(id, username, display_name, avatar_url)')
+      .eq('streamer_id', creator_id)
+      .order('created_at', { ascending: false });
 
     return new Response(
-      JSON.stringify({ success: true, data: moderator }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: true,
+        moderators: moderators || [],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    console.error('Error in moderators-add function:', error);
+  } catch (e) {
+    console.error('Error in moderators-add function:', e);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: false,
+        error: e instanceof Error ? e.message : 'Unknown error occurred',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 });

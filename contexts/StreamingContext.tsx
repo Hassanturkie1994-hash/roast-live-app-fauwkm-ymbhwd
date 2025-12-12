@@ -1,31 +1,61 @@
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
+import { fanClubService } from '@/app/services/fanClubService';
 
 interface StreamingContextType {
   isStreaming: boolean;
-  startStream: () => void;
-  stopStream: () => void;
-  viewerCount: number;
+  setIsStreaming: (streaming: boolean) => void;
+  streamStartTime: Date | null;
+  startStreamTimer: () => void;
+  stopStreamTimer: (userId: string) => Promise<void>;
 }
 
 const StreamingContext = createContext<StreamingContextType | undefined>(undefined);
 
 export function StreamingProvider({ children }: { children: ReactNode }) {
   const [isStreaming, setIsStreaming] = useState(false);
-  const [viewerCount, setViewerCount] = useState(0);
+  const [streamStartTime, setStreamStartTime] = useState<Date | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const startStream = () => {
-    console.log('Starting stream');
-    setIsStreaming(true);
+  const startStreamTimer = () => {
+    setStreamStartTime(new Date());
   };
 
-  const stopStream = () => {
-    console.log('Stopping stream');
-    setIsStreaming(false);
+  const stopStreamTimer = async (userId: string) => {
+    if (streamStartTime) {
+      const endTime = new Date();
+      const durationMs = endTime.getTime() - streamStartTime.getTime();
+      const durationHours = durationMs / (1000 * 60 * 60); // Convert to hours
+
+      console.log(`Stream duration: ${durationHours.toFixed(2)} hours`);
+
+      // Update streaming hours in database
+      await fanClubService.updateStreamingHours(userId, durationHours);
+
+      setStreamStartTime(null);
+    }
   };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    const currentTimer = timerRef.current;
+    return () => {
+      if (currentTimer) {
+        clearInterval(currentTimer);
+      }
+    };
+  }, []);
 
   return (
-    <StreamingContext.Provider value={{ isStreaming, startStream, stopStream, viewerCount }}>
+    <StreamingContext.Provider
+      value={{
+        isStreaming,
+        setIsStreaming,
+        streamStartTime,
+        startStreamTimer,
+        stopStreamTimer,
+      }}
+    >
       {children}
     </StreamingContext.Provider>
   );

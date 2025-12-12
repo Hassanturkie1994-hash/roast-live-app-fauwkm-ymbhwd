@@ -1,28 +1,81 @@
 
 import React from 'react';
-import { View, Text, Modal, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+} from 'react';
+import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
+import GradientButton from '@/components/GradientButton';
 
 interface AgeVerificationModalProps {
   visible: boolean;
-  onVerify: () => void;
+  onConfirm: () => void;
   onCancel: () => void;
+  streamerName: string;
 }
 
-export default function AgeVerificationModal({ visible, onVerify, onCancel }: AgeVerificationModalProps) {
+export default function AgeVerificationModal({
+  visible,
+  onConfirm,
+  onCancel,
+  streamerName,
+}: AgeVerificationModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
       <View style={styles.overlay}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>Age Verification</Text>
-          <Text style={styles.text}>You must be 18 or older to continue</Text>
-          <View style={styles.buttons}>
-            <TouchableOpacity style={styles.button} onPress={onVerify}>
-              <Text style={styles.buttonText}>Verify</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onCancel}>
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
+        <View style={styles.container}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.icon}>🔞</Text>
           </View>
+
+          <Text style={styles.title}>18+ Content Warning</Text>
+          
+          <Text style={styles.message}>
+            This stream contains explicit roast content from{' '}
+            <Text style={styles.streamerName}>{streamerName}</Text>.
+          </Text>
+
+          <View style={styles.warningBox}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={20}
+              color={colors.gradientEnd}
+            />
+            <Text style={styles.warningText}>
+              This content may include strong language, adult themes, and explicit roasting.
+            </Text>
+          </View>
+
+          <Text style={styles.question}>
+            Are you 18 years or older?
+          </Text>
+
+          <View style={styles.buttons}>
+            <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+              <Text style={styles.cancelButtonText}>No, Go Back</Text>
+            </TouchableOpacity>
+            <View style={styles.confirmButton}>
+              <GradientButton
+                title="Yes, Continue"
+                onPress={onConfirm}
+                size="medium"
+              />
+            </View>
+          </View>
+
+          <Text style={styles.disclaimer}>
+            By continuing, you confirm that you are 18 years or older and understand the nature of this content.
+          </Text>
         </View>
       </View>
     </Modal>
@@ -32,41 +85,104 @@ export default function AgeVerificationModal({ visible, onVerify, onCancel }: Ag
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
-  modal: {
-    backgroundColor: '#fff',
+  container: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
     padding: 24,
-    borderRadius: 12,
-    width: '80%',
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  iconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(164, 0, 40, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  icon: {
+    fontSize: 48,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 12,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 16,
+    textAlign: 'center',
   },
-  text: {
+  message: {
     fontSize: 16,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  streamerName: {
+    fontWeight: '700',
+    color: colors.gradientEnd,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.gradientEnd,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
     marginBottom: 24,
+    gap: 8,
+    width: '100%',
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    lineHeight: 18,
+  },
+  question: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 24,
+    textAlign: 'center',
   },
   buttons: {
     flexDirection: 'row',
     gap: 12,
-  },
-  button: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-    alignItems: 'center',
+    width: '100%',
+    marginBottom: 16,
   },
   cancelButton: {
-    backgroundColor: '#999',
+    flex: 1,
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 25,
+    paddingVertical: 14,
+    alignItems: 'center',
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  confirmButton: {
+    flex: 1,
+  },
+  disclaimer: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 16,
   },
 });

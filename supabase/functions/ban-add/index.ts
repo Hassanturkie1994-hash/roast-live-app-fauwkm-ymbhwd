@@ -2,111 +2,99 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    );
-
-    // Get the authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser();
-
-    if (authError || !user) {
+    // Only allow POST requests
+    if (req.method !== 'POST') {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Method not allowed' }),
+        { status: 405, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if user is admin or moderator
-    const { data: userData, error: userError } = await supabaseClient
-      .from('users')
-      .select('is_admin, is_moderator')
-      .eq('id', user.id)
+    const { creator_id, banned_user_id, reason } = await req.json();
+
+    // Validate required fields
+    if (!creator_id || !banned_user_id) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Missing required fields: creator_id and banned_user_id are required',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Check if already banned
+    const { data: existing } = await supabase
+      .from('banned_users')
+      .select('id')
+      .eq('streamer_id', creator_id)
+      .eq('user_id', banned_user_id)
       .single();
 
-    if (userError || (!userData?.is_admin && !userData?.is_moderator)) {
+    if (existing) {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: Admin or Moderator access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'User is already banned',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const { user_id, reason, duration_hours, is_permanent } = await req.json();
-
-    if (!user_id || !reason) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: user_id, reason' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Calculate expiration date if not permanent
-    let expires_at = null;
-    if (!is_permanent && duration_hours) {
-      const expirationDate = new Date();
-      expirationDate.setHours(expirationDate.getHours() + duration_hours);
-      expires_at = expirationDate.toISOString();
-    }
-
-    // Insert ban record
-    const { data: ban, error: banError } = await supabaseClient
-      .from('bans')
+    // Ban user
+    const { error: insertError } = await supabase
+      .from('banned_users')
       .insert({
-        user_id,
-        banned_by: user.id,
-        reason,
-        expires_at,
-        is_permanent: is_permanent || false,
-      })
-      .select()
-      .single();
+        streamer_id: creator_id,
+        user_id: banned_user_id,
+        reason: reason || null,
+      });
 
-    if (banError) {
-      console.error('Error creating ban:', banError);
+    if (insertError) {
+      console.error('Error banning user:', insertError);
       return new Response(
-        JSON.stringify({ error: 'Failed to create ban' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: insertError.message,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Send notification to banned user
-    await supabaseClient.from('notifications').insert({
-      user_id,
-      type: 'moderation',
-      title: 'Account Banned',
-      body: `Your account has been ${is_permanent ? 'permanently' : 'temporarily'} banned. Reason: ${reason}`,
-      data: { ban_id: ban.id },
-      is_read: false,
-    });
+    // Broadcast ban event to kick user from stream
+    const { data: streams } = await supabase
+      .from('streams')
+      .select('id')
+      .eq('broadcaster_id', creator_id)
+      .eq('status', 'live');
+
+    if (streams && streams.length > 0) {
+      // User will be kicked via realtime subscription in the app
+      console.log(`User ${banned_user_id} banned from streamer ${creator_id}`);
+    }
 
     return new Response(
-      JSON.stringify({ success: true, data: ban }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: true,
+        message: 'User banned successfully',
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    console.error('Error in ban-add function:', error);
+  } catch (e) {
+    console.error('Error in ban-add function:', e);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: false,
+        error: e instanceof Error ? e.message : 'Unknown error occurred',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 });

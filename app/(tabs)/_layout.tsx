@@ -1,42 +1,13 @@
 
 import React from 'react';
 import { Stack } from 'expo-router';
-import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import TikTokTabBar from '@/components/TikTokTabBar';
+import { useTheme } from '@/contexts/ThemeContext';
+import { StreamingProvider, useStreaming } from '@/contexts/StreamingContext';
 
-export default function TabLayout() {
-  const tabs: TabBarItem[] = [
-    {
-      name: '(home)',
-      route: '/(tabs)/(home)/',
-      icon: 'home',
-      label: 'Home',
-    },
-    {
-      name: 'explore',
-      route: '/(tabs)/explore',
-      icon: 'search',
-      label: 'Explore',
-    },
-    {
-      name: 'golive',
-      route: '/(tabs)/golive',
-      icon: 'add-circle',
-      label: 'Go Live',
-      isCenter: true,
-    },
-    {
-      name: 'inbox',
-      route: '/(tabs)/inbox',
-      icon: 'mail',
-      label: 'Inbox',
-    },
-    {
-      name: 'profile',
-      route: '/(tabs)/profile',
-      icon: 'person',
-      label: 'Profile',
-    },
-  ];
+function TabLayoutContent() {
+  const { isStreaming } = useStreaming();
+  const { colors } = useTheme();
 
   return (
     <>
@@ -44,15 +15,25 @@ export default function TabLayout() {
         screenOptions={{
           headerShown: false,
           animation: 'none',
+          contentStyle: { backgroundColor: colors.background },
         }}
       >
         <Stack.Screen key="home" name="(home)" />
         <Stack.Screen key="explore" name="explore" />
-        <Stack.Screen key="golive" name="golive" />
+        <Stack.Screen key="broadcaster" name="broadcaster" />
+        <Stack.Screen key="broadcasterscreen" name="broadcasterscreen" />
         <Stack.Screen key="inbox" name="inbox" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>
-      <FloatingTabBar tabs={tabs} />
+      <TikTokTabBar isStreaming={isStreaming} />
     </>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <StreamingProvider>
+      <TabLayoutContent />
+    </StreamingProvider>
   );
 }

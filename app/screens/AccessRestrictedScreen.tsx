@@ -1,82 +1,164 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from '@react-navigation/native';
-import { IconSymbol } from '@/components/IconSymbol';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { deviceBanService } from '@/app/services/deviceBanService';
+import { colors } from '@/styles/commonStyles';
+import { GradientButton } from '@/components/GradientButton';
 
 export default function AccessRestrictedScreen() {
-  const theme = useTheme();
   const router = useRouter();
+  const [banInfo, setBanInfo] = useState<{
+    reason?: string;
+    expiresAt?: string;
+  }>({});
+
+  const checkBanStatus = useCallback(async () => {
+    const { banned, reason, expiresAt } = await deviceBanService.isDeviceBanned();
+    if (banned) {
+      setBanInfo({ reason, expiresAt });
+    } else {
+      // If not banned, redirect to home
+      router.replace('/(tabs)/(home)');
+    }
+  }, [router]);
+
+  useEffect(() => {
+    checkBanStatus();
+  }, [checkBanStatus]);
+
+  const formatExpiryDate = (dateString?: string) => {
+    if (!dateString) return 'Permanent';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Access Restricted</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.iconContainer}>
+          <Text style={styles.icon}>🚫</Text>
+        </View>
 
-      <View style={styles.content}>
-        <IconSymbol ios_icon_name="lock.fill" android_material_icon_name="lock" size={80} color="#8B0000" />
-        <Text style={[styles.title, { color: theme.colors.text }]}>Access Restricted</Text>
-        <Text style={[styles.message, { color: '#666' }]}>
-          You don&apos;t have permission to access this area.
+        <Text style={styles.title}>Access Restricted</Text>
+
+        <Text style={styles.message}>
+          Your device has been restricted from accessing Roast Live.
         </Text>
-        <TouchableOpacity style={styles.button} onPress={() => router.back()}>
-          <Text style={styles.buttonText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+
+        {banInfo.reason && (
+          <View style={styles.infoCard}>
+            <Text style={styles.infoLabel}>Reason:</Text>
+            <Text style={styles.infoValue}>{banInfo.reason}</Text>
+          </View>
+        )}
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoLabel}>Ban Type:</Text>
+          <Text style={styles.infoValue}>{formatExpiryDate(banInfo.expiresAt)}</Text>
+        </View>
+
+        <View style={styles.helpSection}>
+          <Text style={styles.helpTitle}>Need Help?</Text>
+          <Text style={styles.helpText}>
+            If you believe this is a mistake, please contact our support team at:
+          </Text>
+          <Text style={styles.email}>support@roastlive.com</Text>
+        </View>
+
+        <GradientButton
+          title="Check Status Again"
+          onPress={checkBanStatus}
+          style={styles.button}
+        />
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    backgroundColor: colors.background,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
+    padding: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 40,
+  },
+  iconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  icon: {
+    fontSize: 64,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginTop: 20,
+    color: colors.text,
     marginBottom: 12,
+    textAlign: 'center',
   },
   message: {
     fontSize: 16,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 32,
+    lineHeight: 24,
+  },
+  infoCard: {
+    width: '100%',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  infoValue: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  helpSection: {
+    width: '100%',
+    marginTop: 24,
+    marginBottom: 32,
+  },
+  helpTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  helpText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  email: {
+    fontSize: 16,
+    color: '#E30052',
+    fontWeight: '600',
   },
   button: {
-    backgroundColor: '#8B0000',
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 12,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    width: '100%',
   },
 });

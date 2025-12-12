@@ -1,108 +1,318 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useTheme } from '@react-navigation/native';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import { useAuth } from '@/contexts/AuthContext';
+import { colors } from '@/styles/commonStyles';
+import { achievementService, Achievement, UserAchievement } from '@/app/services/achievementService';
+import { AchievementBadge } from '@/components/AchievementBadge';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function AchievementsScreen() {
-  const theme = useTheme();
-  const router = useRouter();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [allAchievements, setAllAchievements] = useState<Achievement[]>([]);
+  const [userAchievements, setUserAchievements] = useState<UserAchievement[]>([]);
+  const [selectedBadges, setSelectedBadges] = useState<(string | null)[]>([null, null, null]);
+  const [editMode, setEditMode] = useState(false);
 
-  const achievements = [
-    { id: 1, title: 'First Stream', description: 'Complete your first live stream', icon: 'videocam', unlocked: false },
-    { id: 2, title: '100 Followers', description: 'Reach 100 followers', icon: 'people', unlocked: false },
-    { id: 3, title: 'Verified', description: 'Get verified on RoastLive', icon: 'verified', unlocked: false },
-    { id: 4, title: 'Top Streamer', description: 'Be in top 10 streamers', icon: 'star', unlocked: false },
-  ];
+  const loadAchievements = useCallback(async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const [all, userAch, selected] = await Promise.all([
+        achievementService.getAllAchievements(),
+        achievementService.getUserAchievements(user.id),
+        achievementService.getSelectedBadges(user.id),
+      ]);
+
+      setAllAchievements(all);
+      setUserAchievements(userAch);
+
+      if (selected) {
+        setSelectedBadges([selected.badge_1, selected.badge_2, selected.badge_3]);
+      }
+    } catch (error) {
+      console.error('Error loading achievements:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadAchievements();
+  }, [loadAchievements]);
+
+  const isUnlocked = (achievementKey: string) => {
+    return userAchievements.some((ua) => ua.achievement_key === achievementKey);
+  };
+
+  const handleBadgeSelect = (achievementKey: string) => {
+    if (!editMode) return;
+
+    const newSelected = [...selectedBadges];
+    const index = newSelected.indexOf(achievementKey);
+
+    if (index !== -1) {
+      // Remove if already selected
+      newSelected[index] = null;
+    } else {
+      // Add to first empty slot
+      const emptyIndex = newSelected.indexOf(null);
+      if (emptyIndex !== -1) {
+        newSelected[emptyIndex] = achievementKey;
+      } else {
+        Alert.alert('Maximum Badges', 'You can only select 3 badges to display');
+        return;
+      }
+    }
+
+    setSelectedBadges(newSelected);
+  };
+
+  const handleSaveBadges = async () => {
+    if (!user) return;
+
+    try {
+      await achievementService.updateSelectedBadges(
+        user.id,
+        selectedBadges[0],
+        selectedBadges[1],
+        selectedBadges[2]
+      );
+      setEditMode(false);
+      Alert.alert('Success', 'Your display badges have been updated');
+    } catch (error) {
+      console.error('Error saving badges:', error);
+      Alert.alert('Error', 'Failed to save badges');
+    }
+  };
+
+  const groupedAchievements = allAchievements.reduce((acc, achievement) => {
+    if (!acc[achievement.category]) {
+      acc[achievement.category] = [];
+    }
+    acc[achievement.category].push(achievement);
+    return acc;
+  }, {} as Record<string, Achievement[]>);
+
+  const categoryTitles = {
+    beginner: '🏁 Beginner',
+    engagement: '⏱ Engagement',
+    support: '💸 Support',
+    creator: '📺 Creator',
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Achievements</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <View style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Selected Badges Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Display Badges</Text>
+            <TouchableOpacity
+              onPress={() => (editMode ? handleSaveBadges() : setEditMode(true))}
+            >
+              <Text style={styles.editButton}>{editMode ? 'Save' : 'Edit'}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.sectionDescription}>
+            Choose up to 3 badges to display on your profile and in chat
+          </Text>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-        {achievements.map((achievement, index) => (
-          <View key={index} style={[styles.achievementCard, { opacity: achievement.unlocked ? 1 : 0.5 }]}>
-            <View style={[styles.iconContainer, { backgroundColor: achievement.unlocked ? '#8B0000' : '#333' }]}>
-              <IconSymbol 
-                ios_icon_name={achievement.icon} 
-                android_material_icon_name={achievement.icon} 
-                size={32} 
-                color={achievement.unlocked ? '#fff' : '#666'} 
-              />
+          <View style={styles.selectedBadgesContainer}>
+            {selectedBadges.map((badgeKey, index) => {
+              const achievement = allAchievements.find((a) => a.achievement_key === badgeKey);
+              return (
+                <View key={index} style={styles.selectedBadgeSlot}>
+                  {achievement ? (
+                    <AchievementBadge
+                      emoji={achievement.emoji}
+                      name={achievement.name}
+                      size="large"
+                      onPress={editMode ? () => handleBadgeSelect(achievement.achievement_key) : undefined}
+                    />
+                  ) : (
+                    <View style={styles.emptyBadgeSlot}>
+                      <Text style={styles.emptyBadgeText}>Empty Slot</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Progress Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Your Progress</Text>
+          <View style={styles.progressCard}>
+            <Text style={styles.progressNumber}>
+              {userAchievements.length} / {allAchievements.length}
+            </Text>
+            <Text style={styles.progressLabel}>Achievements Unlocked</Text>
+          </View>
+        </View>
+
+        {/* Achievements by Category */}
+        {Object.entries(groupedAchievements).map(([category, achievements]) => (
+          <View key={category} style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              {categoryTitles[category as keyof typeof categoryTitles]}
+            </Text>
+            <View style={styles.achievementsGrid}>
+              {achievements.map((achievement) => {
+                const unlocked = isUnlocked(achievement.achievement_key);
+                const isSelected = selectedBadges.includes(achievement.achievement_key);
+
+                return (
+                  <View key={achievement.id} style={styles.achievementWrapper}>
+                    <AchievementBadge
+                      emoji={achievement.emoji}
+                      name={achievement.name}
+                      description={achievement.description}
+                      unlocked={unlocked}
+                      size="large"
+                      onPress={
+                        unlocked && editMode
+                          ? () => handleBadgeSelect(achievement.achievement_key)
+                          : undefined
+                      }
+                    />
+                    {isSelected && editMode && (
+                      <View style={styles.selectedIndicator}>
+                        <Text style={styles.selectedIndicatorText}>✓</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </View>
-            <View style={styles.achievementInfo}>
-              <Text style={[styles.achievementTitle, { color: theme.colors.text }]}>{achievement.title}</Text>
-              <Text style={[styles.achievementDescription, { color: '#666' }]}>{achievement.description}</Text>
-            </View>
-            {achievement.unlocked && (
-              <IconSymbol ios_icon_name="checkmark.circle.fill" android_material_icon_name="check_circle" size={24} color="#34C759" />
-            )}
           </View>
         ))}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
   },
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 120,
-  },
-  achievementCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+  section: {
     padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
-  iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
+    marginBottom: 8,
   },
-  achievementInfo: {
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  editButton: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectedBadgesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 12,
+  },
+  selectedBadgeSlot: {
     flex: 1,
   },
-  achievementTitle: {
+  emptyBadgeSlot: {
+    width: 120,
+    height: 120,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyBadgeText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  progressCard: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  progressNumber: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  progressLabel: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  achievementsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  achievementWrapper: {
+    position: 'relative',
+  },
+  selectedIndicator: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedIndicatorText: {
+    color: colors.text,
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  achievementDescription: {
-    fontSize: 14,
   },
 });

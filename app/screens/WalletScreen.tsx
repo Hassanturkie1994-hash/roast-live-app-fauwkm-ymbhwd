@@ -1,59 +1,242 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useTheme } from '@react-navigation/native';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import { router } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
+import RoastIcon from '@/components/icons/RoastIcon';
+import GradientButton from '@/components/GradientButton';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/app/integrations/supabase/client';
+
+interface Transaction {
+  id: string;
+  amount: number;
+  type: string;
+  payment_method?: string;
+  source?: string;
+  status: string;
+  created_at: string;
+}
 
 export default function WalletScreen() {
-  const theme = useTheme();
-  const router = useRouter();
+  const { user } = useAuth();
+  const { colors } = useTheme();
+  const [loading, setLoading] = useState(true);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const [walletData, transactionsData] = await Promise.all([
+        supabase
+          .from('wallet')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single(),
+        supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(20),
+      ]);
+
+      if (walletData.data) {
+        setWalletBalance(parseFloat(walletData.data.balance));
+      }
+
+      if (transactionsData.data) {
+        setTransactions(transactionsData.data);
+      }
+    } catch (error) {
+      console.error('Error fetching wallet data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleAddBalance = () => {
+    router.push('/screens/AddBalanceScreen');
+  };
+
+  const handleViewAllTransactions = () => {
+    router.push('/screens/TransactionHistoryScreen');
+  };
+
+  const getTransactionIcon = (type: string): 'roast-gift-box' | 'lava-wallet' | 'fire-info' | 'heart' => {
+    switch (type) {
+      case 'add_balance':
+      case 'wallet_topup':
+        return 'lava-wallet';
+      case 'withdraw':
+      case 'withdrawal':
+        return 'lava-wallet';
+      case 'gift_purchase':
+        return 'roast-gift-box';
+      case 'creator_tip':
+        return 'heart';
+      default:
+        return 'fire-info';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+      case 'paid':
+        return '#4CAF50';
+      case 'pending':
+        return '#FFC107';
+      case 'failed':
+      case 'cancelled':
+        return '#F44336';
+      default:
+        return colors.textSecondary;
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatType = (type: string) => {
+    return type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <RoastIcon
+            name="chevron-left"
+            size={24}
+            color={colors.text}
+          />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Wallet</Text>
-        <View style={{ width: 24 }} />
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Saldo</Text>
+        <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.balanceCard}>
-          <Text style={[styles.balanceLabel, { color: '#666' }]}>Available Balance</Text>
-          <Text style={[styles.balanceAmount, { color: theme.colors.text }]}>100.00 SEK</Text>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.brandPrimary} />
         </View>
-
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => router.push('/screens/AddBalanceScreen' as any)}
+      ) : (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
         >
-          <IconSymbol ios_icon_name="plus.circle.fill" android_material_icon_name="add_circle" size={24} color="#34C759" />
-          <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>Add Balance</Text>
-          <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color="#666" />
-        </TouchableOpacity>
+          {/* Balance Card */}
+          <View style={[styles.balanceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <RoastIcon name="lava-wallet" size={48} color={colors.brandPrimary} />
+            <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>Current Balance</Text>
+            <Text style={[styles.balanceAmount, { color: colors.text }]}>{walletBalance.toFixed(2)} SEK</Text>
+            <View style={styles.balanceActions}>
+              <GradientButton
+                title="Add Balance"
+                onPress={handleAddBalance}
+                size="medium"
+              />
+            </View>
+          </View>
 
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => router.push('/screens/WithdrawScreen' as any)}
-        >
-          <IconSymbol ios_icon_name="arrow.down.circle.fill" android_material_icon_name="download" size={24} color="#FF3B30" />
-          <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>Withdraw</Text>
-          <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color="#666" />
-        </TouchableOpacity>
+          {/* Recent Transactions */}
+          <View style={styles.transactionsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Transactions</Text>
+              {transactions.length > 5 && (
+                <TouchableOpacity onPress={handleViewAllTransactions}>
+                  <Text style={[styles.viewAllText, { color: colors.brandPrimary }]}>View All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={() => router.push('/screens/TransactionHistoryScreen' as any)}
-        >
-          <IconSymbol ios_icon_name="clock.fill" android_material_icon_name="history" size={24} color="#4A90E2" />
-          <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>Transaction History</Text>
-          <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color="#666" />
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+            {transactions.length === 0 ? (
+              <View style={styles.emptyState}>
+                <RoastIcon
+                  name="fire-info"
+                  size={48}
+                  color={colors.textSecondary}
+                />
+                <Text style={[styles.emptyText, { color: colors.text }]}>No transactions yet</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+                  Add balance to start using gifts and features
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.transactionsList}>
+                {transactions.slice(0, 5).map((transaction, index) => {
+                  const iconName = getTransactionIcon(transaction.type);
+                  return (
+                    <View key={index} style={[styles.transactionItem, { borderBottomColor: colors.divider }]}>
+                      <View style={styles.transactionLeft}>
+                        <View style={[styles.iconContainer, { backgroundColor: `${colors.brandPrimary}20` }]}>
+                          <RoastIcon
+                            name={iconName}
+                            size={24}
+                            color={colors.brandPrimary}
+                          />
+                        </View>
+                        <View style={styles.transactionInfo}>
+                          <Text style={[styles.transactionType, { color: colors.text }]}>{formatType(transaction.type)}</Text>
+                          <Text style={[styles.transactionDate, { color: colors.textSecondary }]}>{formatDate(transaction.created_at)}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.transactionRight}>
+                        <Text
+                          style={[
+                            styles.transactionAmount,
+                            { color: transaction.amount > 0 ? colors.brandPrimary : colors.text },
+                          ]}
+                        >
+                          {transaction.amount > 0 ? '+' : ''}{transaction.amount.toFixed(2)} SEK
+                        </Text>
+                        <Text style={[styles.transactionStatus, { color: getStatusColor(transaction.status) }]}>
+                          {transaction.status}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          {/* Info Card */}
+          <View style={[styles.infoCard, { backgroundColor: colors.backgroundAlt }]}>
+            <RoastIcon
+              name="fire-info"
+              size={24}
+              color={colors.brandPrimary}
+            />
+            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+              Your Saldo balance can be used to purchase gifts during live streams and support your favorite creators.
+            </Text>
+          </View>
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -65,53 +248,150 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  placeholder: {
+    width: 40,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
-    padding: 20,
-    paddingBottom: 120,
+    paddingBottom: 100,
   },
   balanceCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 32,
     borderRadius: 16,
+    padding: 24,
+    margin: 20,
     alignItems: 'center',
-    marginBottom: 32,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
   balanceLabel: {
     fontSize: 14,
+    fontWeight: '600',
     marginBottom: 8,
+    marginTop: 12,
   },
   balanceAmount: {
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontSize: 42,
+    fontWeight: '800',
+    marginBottom: 20,
   },
-  actionButton: {
+  balanceActions: {
+    width: '100%',
+  },
+  transactionsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    gap: 12,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  actionButtonText: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  transactionsList: {
+    gap: 0,
+  },
+  transactionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  transactionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     flex: 1,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  transactionInfo: {
+    flex: 1,
+  },
+  transactionType: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  transactionDate: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 2,
+  },
+  transactionRight: {
+    alignItems: 'flex-end',
+  },
+  transactionAmount: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  transactionStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  infoCard: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 20,
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 18,
   },
 });

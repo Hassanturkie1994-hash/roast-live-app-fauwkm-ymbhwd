@@ -1,97 +1,144 @@
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-id',
 };
 
-Deno.serve(async (req: Request) => {
+interface PushNotificationRequest {
+  userId: string;
+  tokens: { token: string; platform: 'ios' | 'android' | 'web' }[];
+  notification: {
+    title: string;
+    body: string;
+    data?: Record<string, any>;
+  };
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
+    const { userId, tokens, notification }: PushNotificationRequest = await req.json();
 
-    const { user_ids, title, body, data } = await req.json();
-
-    if (!user_ids || !Array.isArray(user_ids) || user_ids.length === 0 || !title || !body) {
+    if (!userId || !tokens || tokens.length === 0 || !notification) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: user_ids (array), title, body' }),
+        JSON.stringify({ error: 'Missing required fields: userId, tokens, notification' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get push tokens for users
-    const { data: pushTokens, error: tokenError } = await supabaseClient
-      .from('push_tokens')
-      .select('user_id, token')
-      .in('user_id', user_ids);
-
-    if (tokenError) {
-      console.error('Error fetching push tokens:', tokenError);
+    // Validate notification structure
+    if (!notification.title || !notification.body) {
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch push tokens' }),
+        JSON.stringify({ error: 'Notification must have title and body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get FCM server key from environment
+    const fcmServerKey = Deno.env.get('FCM_SERVER_KEY');
+    
+    if (!fcmServerKey) {
+      console.error('FCM_SERVER_KEY not configured');
+      return new Response(
+        JSON.stringify({ error: 'Push notification service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!pushTokens || pushTokens.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'No push tokens found for users', sent: 0 }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const results = [];
+
+    // Send push notifications to each device
+    for (const { token, platform } of tokens) {
+      try {
+        if (platform === 'ios' || platform === 'android') {
+          // Send via FCM (works for both iOS and Android)
+          const fcmPayload = {
+            to: token,
+            notification: {
+              title: notification.title,
+              body: notification.body,
+              sound: 'default',
+              badge: '1',
+              priority: 'high',
+            },
+            data: notification.data || {},
+            priority: 'high',
+            content_available: true,
+          };
+
+          const fcmResponse = await fetch('https://fcm.googleapis.com/fcm/send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `key=${fcmServerKey}`,
+            },
+            body: JSON.stringify(fcmPayload),
+          });
+
+          const fcmResult = await fcmResponse.json();
+          
+          if (fcmResponse.ok && fcmResult.success === 1) {
+            results.push({ token, platform, status: 'sent' });
+            console.log(`✅ Push notification sent to ${platform} device`);
+          } else {
+            results.push({ token, platform, status: 'failed', error: fcmResult });
+            console.error(`❌ Failed to send push notification to ${platform} device:`, fcmResult);
+            
+            // If token is invalid, deactivate it
+            const errorCode = fcmResult.results?.[0]?.error;
+            if (errorCode === 'InvalidRegistration' || 
+                errorCode === 'NotRegistered' ||
+                errorCode === 'MismatchSenderId') {
+              await supabase
+                .from('push_device_tokens')
+                .update({ is_active: false })
+                .eq('device_token', token);
+              console.log(`🗑️ Deactivated invalid token for ${platform} device (error: ${errorCode})`);
+            }
+          }
+        } else if (platform === 'web') {
+          // For web push notifications, you would use Web Push API
+          // This is a placeholder - implement based on your web push setup
+          console.log('Web push notifications not yet implemented');
+          results.push({ token, platform, status: 'skipped', reason: 'Web push not implemented' });
+        }
+      } catch (error) {
+        console.error(`Error sending push notification to ${platform} device:`, error);
+        results.push({ token, platform, status: 'failed', error: error.message });
+      }
     }
 
-    // Send push notifications using Expo Push Notification service
-    const messages = pushTokens.map(({ token }) => ({
-      to: token,
-      sound: 'default',
-      title,
-      body,
-      data: data || {},
-    }));
+    const successCount = results.filter(r => r.status === 'sent').length;
+    const failedCount = results.filter(r => r.status === 'failed').length;
 
-    const expoPushUrl = 'https://exp.host/--/api/v2/push/send';
-    const responses = [];
-
-    // Send in batches of 100 (Expo's limit)
-    for (let i = 0; i < messages.length; i += 100) {
-      const batch = messages.slice(i, i + 100);
-      
-      const response = await fetch(expoPushUrl, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(batch),
-      });
-
-      const result = await response.json();
-      responses.push(result);
-    }
-
-    console.log(`Sent ${messages.length} push notifications`);
+    console.log(`📊 Push notification summary: ${successCount} sent, ${failedCount} failed out of ${tokens.length} total`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: `Sent ${messages.length} push notifications`,
-        sent: messages.length,
-        responses 
+      JSON.stringify({
+        success: true,
+        sent: successCount,
+        failed: failedCount,
+        total: tokens.length,
+        results,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('Error in send-push-notification function:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ error: error.message || 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

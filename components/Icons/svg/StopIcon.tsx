@@ -3,14 +3,17 @@ import React from 'react';
 import Svg, { Path } from 'react-native-svg';
 
 interface IconProps {
-  size?: number;
-  color?: string;
+  size: number;
+  color: string;
 }
 
-export default function StopIcon({ size = 24, color = '#000' }: IconProps) {
+export default function StopIcon({ size, color }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path d="M6 6h12v12H6z" fill={color} />
+      <Path
+        d="M6 6H18V18H6V6Z"
+        fill={color}
+      />
     </Svg>
   );
 }

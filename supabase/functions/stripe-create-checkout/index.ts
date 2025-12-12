@@ -1,127 +1,75 @@
 
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const STRIPE_SECRET_KEY = Deno.env.get('STRIPE_SECRET_KEY') || '';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+const APP_URL = Deno.env.get('APP_URL') || 'https://natively.dev';
 
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+serve(async (req) => {
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    );
+    const { type, userId, amountCents, currency } = await req.json();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser();
+    console.log('Creating checkout session:', { type, userId, amountCents, currency });
 
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { price_id, success_url, cancel_url } = await req.json();
-
-    if (!price_id || !success_url || !cancel_url) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required fields: price_id, success_url, cancel_url' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!stripeSecretKey) {
-      return new Response(
-        JSON.stringify({ error: 'Stripe configuration missing' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Get or create Stripe customer
-    const { data: userData } = await supabaseClient
-      .from('users')
-      .select('stripe_customer_id')
-      .eq('id', user.id)
-      .single();
-
-    let customerId = userData?.stripe_customer_id;
-
-    if (!customerId) {
-      // Create Stripe customer
-      const customerResponse = await fetch('https://api.stripe.com/v1/customers', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${stripeSecretKey}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          email: user.email || '',
-          metadata: JSON.stringify({ user_id: user.id }),
-        }),
+    if (!userId || !amountCents) {
+      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
       });
-
-      const customer = await customerResponse.json();
-      customerId = customer.id;
-
-      // Save customer ID
-      await supabaseClient
-        .from('users')
-        .update({ stripe_customer_id: customerId })
-        .eq('id', user.id);
     }
 
-    // Create checkout session
-    const sessionResponse = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+    // Create Stripe checkout session
+    const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${stripeSecretKey}`,
+        'Authorization': `Bearer ${STRIPE_SECRET_KEY}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({
-        customer: customerId,
-        'line_items[0][price]': price_id,
+        'mode': 'payment',
+        'success_url': `${APP_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        'cancel_url': `${APP_URL}/payment-canceled`,
+        'line_items[0][price_data][currency]': currency.toLowerCase(),
+        'line_items[0][price_data][product_data][name]': 'Wallet Top-Up',
+        'line_items[0][price_data][unit_amount]': amountCents.toString(),
         'line_items[0][quantity]': '1',
-        mode: 'subscription',
-        success_url: success_url,
-        cancel_url: cancel_url,
+        'metadata[type]': type,
+        'metadata[user_id]': userId,
       }),
     });
 
-    if (!sessionResponse.ok) {
-      const error = await sessionResponse.json();
-      console.error('Stripe error:', error);
-      return new Response(
-        JSON.stringify({ error: 'Failed to create checkout session' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Stripe API error:', error);
+      return new Response(JSON.stringify({ error: 'Failed to create checkout session' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
-    const session = await sessionResponse.json();
+    const session = await response.json();
+
+    console.log('✅ Checkout session created:', session.id);
 
     return new Response(
-      JSON.stringify({ success: true, data: { url: session.url, session_id: session.id } }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        sessionId: session.id,
+        url: session.url,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
     );
   } catch (error) {
-    console.error('Error in stripe-create-checkout function:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error('Error creating checkout session:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 });

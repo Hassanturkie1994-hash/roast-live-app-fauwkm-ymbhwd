@@ -1,42 +1,282 @@
 
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { useTheme } from '@react-navigation/native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+} from 'react-native';
+import { router } from 'expo-router';
+import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SafetyCommunityRulesScreen() {
-  const theme = useTheme();
-  const router = useRouter();
+  const { colors } = useTheme();
+  const [showFAQModal, setShowFAQModal] = useState(false);
 
-  const rules = [
-    { title: 'Be Respectful', description: 'Treat everyone with respect and kindness' },
-    { title: 'No Harassment', description: 'Harassment of any kind is not tolerated' },
-    { title: 'No Hate Speech', description: 'Hate speech and discrimination are prohibited' },
-    { title: 'No Spam', description: 'Do not spam or post repetitive content' },
-    { title: 'Follow Laws', description: 'All content must comply with applicable laws' },
+  const allowedContent = [
+    { icon: '😂', title: 'Comedy', description: 'Humorous content and jokes' },
+    { icon: '🔥', title: 'Roast Humor', description: 'Playful roasting and banter' },
+    { icon: '🎭', title: 'Satire', description: 'Satirical commentary' },
+    { icon: '😄', title: 'Jokes', description: 'Light-hearted jokes' },
+    { icon: '🎬', title: 'Drama', description: 'Dramatic content' },
+    { icon: '⚔️', title: 'Competitive Roast Sessions', description: 'Friendly roast battles' },
+    { icon: '🎯', title: 'Challenge Content', description: 'Fun challenges' },
+  ];
+
+  const notAllowedContent = [
+    { icon: '❌', title: 'Hate Speech', description: 'Discriminatory language based on race, religion, gender, etc.' },
+    { icon: '❌', title: 'Sexual Targeting', description: 'Unwanted sexual advances or harassment' },
+    { icon: '❌', title: 'Violence or Threats', description: 'Threats of physical harm or violence' },
+    { icon: '❌', title: 'Revealing Private Data', description: 'Sharing personal information without consent' },
+    { icon: '❌', title: 'Encouraging Self-Harm', description: 'Content promoting self-injury or suicide' },
+    { icon: '❌', title: 'Exploitation of Minors', description: 'Any content involving minors inappropriately' },
+    { icon: '❌', title: 'Harassment Targeting Identity', description: 'Attacks based on personal characteristics' },
+    { icon: '❌', title: 'Non-Consensual Content', description: 'Content shared without permission' },
+  ];
+
+  const chatRules = [
+    { title: 'Spam Detection', description: '5 spam messages in 3 seconds triggers auto-warning' },
+    { title: 'Hate Keywords', description: 'Messages with hate speech are automatically blocked' },
+    { title: 'Bullying Repetition', description: 'Repeated harassment results in timeout' },
+  ];
+
+  const giftRules = [
+    { title: 'No Refunds', description: 'Gifts are non-refundable unless fraud is detected' },
+    { title: 'Platform Commission', description: 'Platform takes a commission from all gifts' },
+    { title: 'Support, Not Ownership', description: 'Gifting shows support but doesn\'t grant special privileges' },
+  ];
+
+  const suspensionLevels = [
+    { level: 'Warning', color: '#FFA500', description: 'First offense - warning issued' },
+    { level: 'Timeout', color: '#FF6B6B', description: 'Temporary chat restriction (1-60 minutes)' },
+    { level: 'Suspension', color: '#DC143C', description: 'Account suspended (7-30 days)' },
+    { level: 'Ban from Livestream', color: '#8B0000', description: 'Permanent streaming ban' },
   ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <IconSymbol
+            ios_icon_name="chevron.left"
+            android_material_icon_name="arrow_back"
+            size={24}
+            color={colors.text}
+          />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Community Rules</Text>
-        <View style={{ width: 24 }} />
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Safety & Community Rules</Text>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-        {rules.map((rule, index) => (
-          <View key={index} style={styles.ruleCard}>
-            <Text style={[styles.ruleTitle, { color: theme.colors.text }]}>{rule.title}</Text>
-            <Text style={[styles.ruleDescription, { color: '#666' }]}>{rule.description}</Text>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        {/* Section 1: Allowed Content */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>✅ Allowed Content</Text>
+          <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+            We encourage creative and entertaining content that brings joy to our community.
+          </Text>
+          <View style={styles.itemsContainer}>
+            {allowedContent.map((item, index) => (
+              <View
+                key={index}
+                style={[styles.contentCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <Text style={styles.contentIcon}>{item.icon}</Text>
+                <View style={styles.contentText}>
+                  <Text style={[styles.contentTitle, { color: colors.text }]}>{item.title}</Text>
+                  <Text style={[styles.contentDescription, { color: colors.textSecondary }]}>
+                    {item.description}
+                  </Text>
+                </View>
+              </View>
+            ))}
           </View>
-        ))}
+        </View>
+
+        {/* Section 2: Strictly Not Allowed */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>🚫 Strictly Not Allowed</Text>
+          <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+            The following content is prohibited and will result in immediate action.
+          </Text>
+          <View style={styles.itemsContainer}>
+            {notAllowedContent.map((item, index) => (
+              <View
+                key={index}
+                style={[styles.contentCard, styles.notAllowedCard, { backgroundColor: colors.card, borderColor: '#DC143C' }]}
+              >
+                <Text style={styles.contentIcon}>{item.icon}</Text>
+                <View style={styles.contentText}>
+                  <Text style={[styles.contentTitle, { color: colors.text }]}>{item.title}</Text>
+                  <Text style={[styles.contentDescription, { color: colors.textSecondary }]}>
+                    {item.description}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Section 3: Chat Rules */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>💬 Chat Rules</Text>
+          <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+            Automated systems monitor chat for violations.
+          </Text>
+          <View style={styles.itemsContainer}>
+            {chatRules.map((item, index) => (
+              <View
+                key={index}
+                style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <View style={[styles.ruleBullet, { backgroundColor: colors.brandPrimary }]} />
+                <View style={styles.ruleText}>
+                  <Text style={[styles.ruleTitle, { color: colors.text }]}>{item.title}</Text>
+                  <Text style={[styles.ruleDescription, { color: colors.textSecondary }]}>
+                    {item.description}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Section 4: Gift Rules */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>🎁 Gift Rules</Text>
+          <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+            Important information about gifting on the platform.
+          </Text>
+          <View style={styles.itemsContainer}>
+            {giftRules.map((item, index) => (
+              <View
+                key={index}
+                style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <View style={[styles.ruleBullet, { backgroundColor: '#FFD700' }]} />
+                <View style={styles.ruleText}>
+                  <Text style={[styles.ruleTitle, { color: colors.text }]}>{item.title}</Text>
+                  <Text style={[styles.ruleDescription, { color: colors.textSecondary }]}>
+                    {item.description}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Section 5: Suspension Levels */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>⚠️ Suspension Levels</Text>
+          <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
+            Violations are handled progressively based on severity.
+          </Text>
+          <View style={styles.itemsContainer}>
+            {suspensionLevels.map((item, index) => (
+              <View
+                key={index}
+                style={[styles.suspensionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <View style={[styles.suspensionLevel, { backgroundColor: item.color }]}>
+                  <Text style={styles.suspensionLevelText}>{item.level}</Text>
+                </View>
+                <Text style={[styles.suspensionDescription, { color: colors.textSecondary }]}>
+                  {item.description}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.learnMoreButton, { backgroundColor: colors.brandPrimary }]}
+            onPress={() => setShowFAQModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.learnMoreButtonText}>Learn More</Text>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
-    </SafeAreaView>
+
+      {/* FAQ Modal */}
+      <Modal
+        visible={showFAQModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFAQModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Suspension FAQ</Text>
+              <TouchableOpacity onPress={() => setShowFAQModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll}>
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: colors.text }]}>
+                  How long do strikes last?
+                </Text>
+                <Text style={[styles.faqAnswer, { color: colors.textSecondary }]}>
+                  Strikes expire after 30 days. If you accumulate 3 active strikes within 30 days, streaming will be disabled until strikes expire.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: colors.text }]}>
+                  Can I appeal a ban?
+                </Text>
+                <Text style={[styles.faqAnswer, { color: colors.textSecondary }]}>
+                  Yes, you can submit a ban appeal through your profile settings. Appeals are reviewed by our admin team within 48 hours.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: colors.text }]}>
+                  What happens during a timeout?
+                </Text>
+                <Text style={[styles.faqAnswer, { color: colors.textSecondary }]}>
+                  During a timeout, you cannot send messages in chat. You can still watch streams. Timeouts typically last 1-60 minutes.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: colors.text }]}>
+                  How do I avoid violations?
+                </Text>
+                <Text style={[styles.faqAnswer, { color: colors.textSecondary }]}>
+                  Follow our community guidelines, be respectful to others, avoid hate speech and harassment, and don't spam chat. Keep content appropriate for the stream's rating.
+                </Text>
+              </View>
+
+              <View style={styles.faqItem}>
+                <Text style={[styles.faqQuestion, { color: colors.text }]}>
+                  What is mass report lockdown?
+                </Text>
+                <Text style={[styles.faqAnswer, { color: colors.textSecondary }]}>
+                  If 15 unique users report a stream within 1 minute, chat is temporarily hidden and the creator must acknowledge they will continue responsibly.
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -47,38 +287,172 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    paddingTop: 60,
+    paddingBottom: 20,
+    gap: 16,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '800',
+    flex: 1,
   },
   scrollView: {
     flex: 1,
   },
-  contentContainer: {
-    padding: 20,
-    paddingBottom: 120,
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  section: {
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  itemsContainer: {
+    gap: 12,
+  },
+  contentCard: {
+    flexDirection: 'row',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+    alignItems: 'center',
+  },
+  notAllowedCard: {
+    borderWidth: 2,
+  },
+  contentIcon: {
+    fontSize: 32,
+  },
+  contentText: {
+    flex: 1,
+    gap: 4,
+  },
+  contentTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  contentDescription: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 18,
   },
   ruleCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    padding: 20,
+    flexDirection: 'row',
+    padding: 16,
     borderRadius: 12,
-    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  ruleBullet: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  ruleText: {
+    flex: 1,
+    gap: 4,
   },
   ruleTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: '700',
   },
   ruleDescription: {
     fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+  },
+  suspensionCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  suspensionLevel: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  suspensionLevelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  suspensionDescription: {
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+  },
+  learnMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  learnMoreButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  modalScroll: {
+    maxHeight: 400,
+  },
+  faqItem: {
+    marginBottom: 24,
+    gap: 8,
+  },
+  faqQuestion: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  faqAnswer: {
+    fontSize: 14,
+    fontWeight: '400',
     lineHeight: 20,
   },
 });

@@ -2,130 +2,92 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
+Deno.serve(async (req) => {
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    );
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseClient.auth.getUser();
-
-    if (authError || !user) {
+    // Only allow POST requests
+    if (req.method !== 'POST') {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Method not allowed' }),
+        { status: 405, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if user is admin, moderator, or stream owner
-    const { data: userData, error: userError } = await supabaseClient
-      .from('users')
-      .select('is_admin, is_moderator')
-      .eq('id', user.id)
-      .single();
+    const { creator_id, user_id, minutes, stream_id } = await req.json();
 
-    if (userError) {
+    // Validate required fields
+    if (!creator_id || !user_id || !minutes || !stream_id) {
       return new Response(
-        JSON.stringify({ error: 'Failed to verify user permissions' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'Missing required fields: creator_id, user_id, minutes, and stream_id are required',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const { user_id, stream_id, reason, duration_minutes } = await req.json();
-
-    if (!user_id || !stream_id || !reason || !duration_minutes) {
+    // Validate minutes range
+    if (minutes < 1 || minutes > 60) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: user_id, stream_id, reason, duration_minutes' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: 'Timeout duration must be between 1 and 60 minutes',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Verify stream exists and check if user is the owner
-    const { data: stream, error: streamError } = await supabaseClient
-      .from('live_streams')
-      .select('user_id')
-      .eq('id', stream_id)
-      .single();
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (streamError || !stream) {
-      return new Response(
-        JSON.stringify({ error: 'Stream not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Calculate timeout end time
+    const endTime = new Date();
+    endTime.setMinutes(endTime.getMinutes() + minutes);
 
-    const isStreamOwner = stream.user_id === user.id;
-    const hasPermission = userData.is_admin || userData.is_moderator || isStreamOwner;
+    // Delete existing timeout if any
+    await supabase
+      .from('timed_out_users')
+      .delete()
+      .eq('stream_id', stream_id)
+      .eq('user_id', user_id);
 
-    if (!hasPermission) {
-      return new Response(
-        JSON.stringify({ error: 'Forbidden: Insufficient permissions' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Calculate expiration time
-    const expirationDate = new Date();
-    expirationDate.setMinutes(expirationDate.getMinutes() + duration_minutes);
-
-    // Insert timeout record
-    const { data: timeout, error: timeoutError } = await supabaseClient
-      .from('timeouts')
+    // Insert new timeout
+    const { error: insertError } = await supabase
+      .from('timed_out_users')
       .insert({
-        user_id,
-        stream_id,
-        timeout_by: user.id,
-        reason,
-        expires_at: expirationDate.toISOString(),
-      })
-      .select()
-      .single();
+        stream_id: stream_id,
+        user_id: user_id,
+        end_time: endTime.toISOString(),
+      });
 
-    if (timeoutError) {
-      console.error('Error creating timeout:', timeoutError);
+    if (insertError) {
+      console.error('Error timing out user:', insertError);
       return new Response(
-        JSON.stringify({ error: 'Failed to create timeout' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          error: insertError.message,
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // Send notification to timed out user
-    await supabaseClient.from('notifications').insert({
-      user_id,
-      type: 'moderation',
-      title: 'Chat Timeout',
-      body: `You have been timed out for ${duration_minutes} minutes. Reason: ${reason}`,
-      data: { timeout_id: timeout.id, stream_id },
-      is_read: false,
-    });
-
     return new Response(
-      JSON.stringify({ success: true, data: timeout }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: true,
+        message: `User timed out for ${minutes} minutes`,
+        timeout_until: endTime.toISOString(),
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    console.error('Error in timeout-add function:', error);
+  } catch (e) {
+    console.error('Error in timeout-add function:', e);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({
+        success: false,
+        error: e instanceof Error ? e.message : 'Unknown error occurred',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
 });
