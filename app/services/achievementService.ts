@@ -20,7 +20,6 @@ export interface UserAchievement {
   achievement_key: string;
   unlocked_at: string;
   created_at: string;
-  achievement?: Achievement;
 }
 
 export interface UserSelectedBadges {
@@ -46,39 +45,67 @@ class AchievementService {
         .order('requirement_value', { ascending: true });
 
       if (error) {
-        console.error('Error fetching achievements:', error);
+        console.error('❌ Error fetching achievements:', error);
         return [];
       }
 
-      return data as Achievement[];
+      return (data || []) as Achievement[];
     } catch (error) {
-      console.error('Error in getAllAchievements:', error);
+      console.error('❌ Error in getAllAchievements:', error);
       return [];
     }
   }
 
   /**
    * Get user's unlocked achievements
+   * Fixed: Explicitly select fields from both tables to avoid relationship errors
    */
-  async getUserAchievements(userId: string): Promise<UserAchievement[]> {
+  async getUserAchievements(userId: string): Promise<(UserAchievement & { achievement?: Achievement })[]> {
     try {
-      const { data, error } = await supabase
+      // First get user achievements
+      const { data: userAchievements, error: userError } = await supabase
         .from('user_achievements')
-        .select(`
-          *,
-          achievement:achievements!inner(*)
-        `)
+        .select('id, user_id, achievement_key, unlocked_at, created_at')
         .eq('user_id', userId)
         .order('unlocked_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching user achievements:', error);
+      if (userError) {
+        console.error('❌ Error fetching user achievements:', userError);
         return [];
       }
 
-      return data as UserAchievement[];
+      if (!userAchievements || userAchievements.length === 0) {
+        return [];
+      }
+
+      // Get achievement keys
+      const achievementKeys = userAchievements.map(ua => ua.achievement_key);
+
+      // Fetch achievement details separately
+      const { data: achievements, error: achievementsError } = await supabase
+        .from('achievements')
+        .select('*')
+        .in('achievement_key', achievementKeys);
+
+      if (achievementsError) {
+        console.error('❌ Error fetching achievement details:', achievementsError);
+        // Return user achievements without details
+        return userAchievements as (UserAchievement & { achievement?: Achievement })[];
+      }
+
+      // Map achievements to user achievements
+      const achievementsMap = new Map(
+        (achievements || []).map(a => [a.achievement_key, a])
+      );
+
+      const result = userAchievements.map(ua => ({
+        ...ua,
+        achievement: achievementsMap.get(ua.achievement_key),
+      }));
+
+      return result as (UserAchievement & { achievement?: Achievement })[];
     } catch (error) {
-      console.error('Error in getUserAchievements:', error);
+      console.error('❌ Error in getUserAchievements:', error);
       return [];
     }
   }
@@ -93,16 +120,16 @@ class AchievementService {
         .select('id')
         .eq('user_id', userId)
         .eq('achievement_key', achievementKey)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
-        console.error('Error checking achievement:', error);
+        console.error('❌ Error checking achievement:', error);
         return false;
       }
 
       return !!data;
     } catch (error) {
-      console.error('Error in hasAchievement:', error);
+      console.error('❌ Error in hasAchievement:', error);
       return false;
     }
   }
@@ -126,10 +153,10 @@ class AchievementService {
         .from('achievements')
         .select('*')
         .eq('achievement_key', achievementKey)
-        .single();
+        .maybeSingle();
 
       if (achievementError || !achievement) {
-        console.error('Achievement not found:', achievementKey);
+        console.error('❌ Achievement not found:', achievementKey, achievementError);
         return { success: false, error: 'Achievement not found' };
       }
 
@@ -142,35 +169,46 @@ class AchievementService {
         });
 
       if (insertError) {
-        console.error('Error unlocking achievement:', insertError);
+        console.error('❌ Error unlocking achievement:', insertError);
         return { success: false, error: insertError.message };
       }
 
       console.log(`✅ Achievement unlocked: ${achievementKey} for user ${userId}`);
 
       // Send push notification
-      await pushNotificationService.sendMilestoneNotification(
-        userId,
-        '🎉 Achievement Unlocked!',
-        `${achievement.emoji} ${achievement.name}: ${achievement.description}`
-      );
+      try {
+        await pushNotificationService.sendMilestoneNotification(
+          userId,
+          '🎉 Achievement Unlocked!',
+          `${achievement.emoji} ${achievement.name}: ${achievement.description}`
+        );
+      } catch (notifError) {
+        console.error('⚠️ Failed to send push notification:', notifError);
+        // Don't fail the whole operation if notification fails
+      }
 
       // Create notification
-      await notificationService.createNotification(
-        userId,
-        userId,
-        'system_update',
-        `🎉 Achievement Unlocked! ${achievement.emoji} ${achievement.name}: ${achievement.description}`,
-        undefined,
-        undefined,
-        undefined,
-        'social'
-      );
+      try {
+        await notificationService.createNotification(
+          userId,
+          userId,
+          'system_update',
+          `🎉 Achievement Unlocked! ${achievement.emoji} ${achievement.name}: ${achievement.description}`,
+          undefined,
+          undefined,
+          undefined,
+          'social'
+        );
+      } catch (notifError) {
+        console.error('⚠️ Failed to create notification:', notifError);
+        // Don't fail the whole operation if notification fails
+      }
 
       return { success: true };
     } catch (error) {
-      console.error('Error in unlockAchievement:', error);
-      return { success: false, error: 'Failed to unlock achievement' };
+      console.error('❌ Error in unlockAchievement:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to unlock achievement';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -183,16 +221,16 @@ class AchievementService {
         .from('user_selected_badges')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching selected badges:', error);
+        console.error('❌ Error fetching selected badges:', error);
         return null;
       }
 
       return data as UserSelectedBadges | null;
     } catch (error) {
-      console.error('Error in getSelectedBadges:', error);
+      console.error('❌ Error in getSelectedBadges:', error);
       return null;
     }
   }
@@ -220,15 +258,16 @@ class AchievementService {
         });
 
       if (error) {
-        console.error('Error updating selected badges:', error);
+        console.error('❌ Error updating selected badges:', error);
         return { success: false, error: error.message };
       }
 
       console.log('✅ Selected badges updated successfully');
       return { success: true };
     } catch (error) {
-      console.error('Error in updateSelectedBadges:', error);
-      return { success: false, error: 'Failed to update selected badges' };
+      console.error('❌ Error in updateSelectedBadges:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update selected badges';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -268,7 +307,7 @@ class AchievementService {
           break;
       }
     } catch (error) {
-      console.error('Error in checkAndUnlockAchievements:', error);
+      console.error('❌ Error in checkAndUnlockAchievements:', error);
     }
   }
 
@@ -285,7 +324,7 @@ class AchievementService {
         .not('left_at', 'is', null);
 
       if (error || !data) {
-        console.error('Error fetching watch time:', error);
+        console.error('❌ Error fetching watch time:', error);
         return;
       }
 
@@ -306,7 +345,7 @@ class AchievementService {
         await this.unlockAchievement(userId, '10_hours_watched');
       }
     } catch (error) {
-      console.error('Error in checkWatchTimeAchievements:', error);
+      console.error('❌ Error in checkWatchTimeAchievements:', error);
     }
   }
 
@@ -322,12 +361,12 @@ class AchievementService {
         .eq('sender_id', userId);
 
       if (error || !data) {
-        console.error('Error fetching spending:', error);
+        console.error('❌ Error fetching spending:', error);
         return;
       }
 
       // Calculate total spending
-      const totalSpent = data.reduce((sum: number, tx: any) => sum + tx.amount, 0);
+      const totalSpent = data.reduce((sum: number, tx: any) => sum + (tx.amount || 0), 0);
 
       // Check achievements
       if (totalSpent >= 5000) {
@@ -340,7 +379,7 @@ class AchievementService {
         await this.unlockAchievement(userId, '100_kr_spent');
       }
     } catch (error) {
-      console.error('Error in checkSpendingAchievements:', error);
+      console.error('❌ Error in checkSpendingAchievements:', error);
     }
   }
 
@@ -357,7 +396,7 @@ class AchievementService {
         .not('ended_at', 'is', null);
 
       if (error) {
-        console.error('Error fetching stream count:', error);
+        console.error('❌ Error fetching stream count:', error);
         return;
       }
 
@@ -372,12 +411,12 @@ class AchievementService {
         await this.unlockAchievement(userId, 'first_live_stream');
       }
     } catch (error) {
-      console.error('Error in checkStreamAchievements:', error);
+      console.error('❌ Error in checkStreamAchievements:', error);
     }
   }
 
   /**
-   * PROMPT 7: Check for follower milestones
+   * Check for follower milestones
    */
   async checkFollowerMilestones(userId: string): Promise<void> {
     try {
@@ -386,7 +425,7 @@ class AchievementService {
         .from('profiles')
         .select('followers_count')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (!profile) return;
 
@@ -401,19 +440,23 @@ class AchievementService {
         .gte('created_at', oneDayAgo.toISOString());
 
       if (recentFollowers && recentFollowers >= 10) {
-        await pushNotificationService.sendMilestoneNotification(
-          userId,
-          "You're growing fast!",
-          `You gained ${recentFollowers} followers today!`
-        );
+        try {
+          await pushNotificationService.sendMilestoneNotification(
+            userId,
+            "You're growing fast!",
+            `You gained ${recentFollowers} followers today!`
+          );
+        } catch (error) {
+          console.error('⚠️ Failed to send milestone notification:', error);
+        }
       }
     } catch (error) {
-      console.error('Error checking follower milestones:', error);
+      console.error('❌ Error checking follower milestones:', error);
     }
   }
 
   /**
-   * PROMPT 7: Check for gift value milestones
+   * Check for gift value milestones
    */
   async checkGiftValueMilestones(userId: string): Promise<void> {
     try {
@@ -425,23 +468,27 @@ class AchievementService {
 
       if (!gifts) return;
 
-      const totalValue = gifts.reduce((sum, gift) => sum + gift.price_sek, 0);
+      const totalValue = gifts.reduce((sum, gift) => sum + (gift.price_sek || 0), 0);
 
       // Check for 100 kr milestone
       if (totalValue >= 100 && totalValue < 200) {
-        await pushNotificationService.sendMilestoneNotification(
-          userId,
-          'Milestone unlocked!',
-          `You reached ${totalValue} kr gifted total.`
-        );
+        try {
+          await pushNotificationService.sendMilestoneNotification(
+            userId,
+            'Milestone unlocked!',
+            `You reached ${totalValue} kr gifted total.`
+          );
+        } catch (error) {
+          console.error('⚠️ Failed to send milestone notification:', error);
+        }
       }
     } catch (error) {
-      console.error('Error checking gift value milestones:', error);
+      console.error('❌ Error checking gift value milestones:', error);
     }
   }
 
   /**
-   * PROMPT 7: Check for first coin purchase milestone
+   * Check for first coin purchase milestone
    */
   async checkFirstCoinPurchase(userId: string): Promise<void> {
     try {
@@ -453,14 +500,18 @@ class AchievementService {
         .eq('type', 'wallet_topup');
 
       if (count === 1) {
-        await pushNotificationService.sendMilestoneNotification(
-          userId,
-          'First purchase!',
-          'Thank you for your first coin purchase!'
-        );
+        try {
+          await pushNotificationService.sendMilestoneNotification(
+            userId,
+            'First purchase!',
+            'Thank you for your first coin purchase!'
+          );
+        } catch (error) {
+          console.error('⚠️ Failed to send milestone notification:', error);
+        }
       }
     } catch (error) {
-      console.error('Error checking first coin purchase:', error);
+      console.error('❌ Error checking first coin purchase:', error);
     }
   }
 }

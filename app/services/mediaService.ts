@@ -28,42 +28,88 @@ interface Post {
 
 class MediaService {
   /**
-   * Upload media to Supabase Storage
+   * Upload media to Supabase Storage with retry logic
    * In production, this should upload to Cloudflare R2/Stream
    */
   async uploadMedia(
     uri: string,
     bucket: string,
-    path: string
+    path: string,
+    maxRetries: number = 3
   ): Promise<{ success: boolean; url?: string; error?: string }> {
-    try {
-      // Fetch the file from URI
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${path}.${fileExt}`;
+    let lastError: any = null;
 
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(fileName, arrayBuffer, {
-          contentType: blob.type,
-          upsert: true,
-        });
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`📤 Upload attempt ${attempt}/${maxRetries} for ${path}`);
 
-      if (error) throw error;
+        // Fetch the file from URI
+        const response = await fetch(uri);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch file: ${response.statusText}`);
+        }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(fileName);
+        const blob = await response.blob();
+        if (!blob || blob.size === 0) {
+          throw new Error('Invalid file: empty or null blob');
+        }
 
-      return { success: true, url: urlData.publicUrl };
-    } catch (error) {
-      console.error('Error uploading media:', error);
-      return { success: false, error: 'Failed to upload media' };
+        const arrayBuffer = await blob.arrayBuffer();
+        const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+        const fileName = `${path}.${fileExt}`;
+
+        console.log(`📤 Uploading ${fileName} (${blob.size} bytes) to bucket: ${bucket}`);
+
+        // Upload to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .upload(fileName, arrayBuffer, {
+            contentType: blob.type || 'application/octet-stream',
+            upsert: true,
+          });
+
+        if (error) {
+          console.error(`❌ Upload error (attempt ${attempt}):`, error);
+          lastError = error;
+          
+          // Wait before retry (exponential backoff)
+          if (attempt < maxRetries) {
+            const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+            console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw error;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from(bucket)
+          .getPublicUrl(fileName);
+
+        if (!urlData || !urlData.publicUrl) {
+          throw new Error('Failed to get public URL');
+        }
+
+        console.log(`✅ Upload successful: ${urlData.publicUrl}`);
+        return { success: true, url: urlData.publicUrl };
+      } catch (error) {
+        console.error(`❌ Error uploading media (attempt ${attempt}):`, error);
+        lastError = error;
+        
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
     }
+
+    // All retries failed
+    const errorMessage = lastError?.message || 'Failed to upload media after multiple attempts';
+    console.error('❌ All upload attempts failed:', errorMessage);
+    return { success: false, error: errorMessage };
   }
 
   /**
@@ -84,20 +130,20 @@ class MediaService {
     mediaUri: string
   ): Promise<{ success: boolean; storyId?: string; error?: string }> {
     try {
-      // Upload media
+      // Upload media with retry logic
       const timestamp = Date.now();
-      const { url: mediaUrl, error: uploadError } = await this.uploadMedia(
+      const uploadResult = await this.uploadMedia(
         mediaUri,
         'stories',
         `${userId}/${timestamp}`
       );
 
-      if (uploadError || !mediaUrl) {
-        return { success: false, error: uploadError || 'Failed to upload media' };
+      if (!uploadResult.success || !uploadResult.url) {
+        return { success: false, error: uploadResult.error || 'Failed to upload media' };
       }
 
       // Generate thumbnail
-      const thumbUrl = await this.generateThumbnail(mediaUrl);
+      const thumbUrl = await this.generateThumbnail(uploadResult.url);
 
       // Set expiration to 24 hours from now
       const expiresAt = new Date();
@@ -108,19 +154,24 @@ class MediaService {
         .from('stories')
         .insert({
           user_id: userId,
-          media_url: mediaUrl,
+          media_url: uploadResult.url,
           thumb_url: thumbUrl,
           expires_at: expiresAt.toISOString(),
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error creating story record:', error);
+        throw error;
+      }
 
+      console.log('✅ Story created successfully:', data.id);
       return { success: true, storyId: data.id };
     } catch (error) {
-      console.error('Error creating story:', error);
-      return { success: false, error: 'Failed to create story' };
+      console.error('❌ Error in createStory:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create story';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -133,39 +184,44 @@ class MediaService {
     caption?: string
   ): Promise<{ success: boolean; postId?: string; error?: string }> {
     try {
-      // Upload media
+      // Upload media with retry logic
       const timestamp = Date.now();
-      const { url: mediaUrl, error: uploadError } = await this.uploadMedia(
+      const uploadResult = await this.uploadMedia(
         mediaUri,
         'posts',
         `${userId}/${timestamp}`
       );
 
-      if (uploadError || !mediaUrl) {
-        return { success: false, error: uploadError || 'Failed to upload media' };
+      if (!uploadResult.success || !uploadResult.url) {
+        return { success: false, error: uploadResult.error || 'Failed to upload media' };
       }
 
       // Generate thumbnail
-      const thumbUrl = await this.generateThumbnail(mediaUrl);
+      const thumbUrl = await this.generateThumbnail(uploadResult.url);
 
       // Create post record
       const { data, error } = await supabase
         .from('posts')
         .insert({
           user_id: userId,
-          media_url: mediaUrl,
+          media_url: uploadResult.url,
           thumb_url: thumbUrl,
           caption: caption || null,
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error creating post record:', error);
+        throw error;
+      }
 
+      console.log('✅ Post created successfully:', data.id);
       return { success: true, postId: data.id };
     } catch (error) {
-      console.error('Error creating post:', error);
-      return { success: false, error: 'Failed to create post' };
+      console.error('❌ Error in createPost:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create post';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -190,12 +246,16 @@ class MediaService {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching active stories:', error);
+        throw error;
+      }
 
       return { success: true, stories: data as Story[] };
     } catch (error) {
-      console.error('Error fetching active stories:', error);
-      return { success: false, error: 'Failed to fetch active stories' };
+      console.error('❌ Error in getActiveStories:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch active stories';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -220,12 +280,16 @@ class MediaService {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching posts:', error);
+        throw error;
+      }
 
       return { success: true, posts: data as Post[] };
     } catch (error) {
-      console.error('Error fetching posts:', error);
-      return { success: false, error: 'Failed to fetch posts' };
+      console.error('❌ Error in getPosts:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch posts';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -240,12 +304,17 @@ class MediaService {
         .lt('expires_at', new Date().toISOString())
         .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error deleting expired stories:', error);
+        throw error;
+      }
 
+      console.log(`✅ Deleted ${data?.length || 0} expired stories`);
       return { success: true, deletedCount: data?.length || 0 };
     } catch (error) {
-      console.error('Error deleting expired stories:', error);
-      return { success: false, error: 'Failed to delete expired stories' };
+      console.error('❌ Error in deleteExpiredStories:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete expired stories';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -260,6 +329,7 @@ class MediaService {
 
       if (error) {
         // Fallback if RPC doesn't exist
+        console.log('⚠️ RPC not found, using fallback method');
         const { data: story } = await supabase
           .from('stories')
           .select('views_count')
@@ -276,8 +346,9 @@ class MediaService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error incrementing story view:', error);
-      return { success: false, error: 'Failed to increment story view' };
+      console.error('❌ Error incrementing story view:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to increment story view';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -292,6 +363,7 @@ class MediaService {
 
       if (error) {
         // Fallback if RPC doesn't exist
+        console.log('⚠️ RPC not found, using fallback method');
         const { data: post } = await supabase
           .from('posts')
           .select('views_count')
@@ -308,8 +380,9 @@ class MediaService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error incrementing post view:', error);
-      return { success: false, error: 'Failed to increment post view' };
+      console.error('❌ Error incrementing post view:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to increment post view';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -348,8 +421,9 @@ class MediaService {
         type: result.assets[0].type,
       };
     } catch (error) {
-      console.error('Error picking media:', error);
-      return { success: false, error: 'Failed to pick media' };
+      console.error('❌ Error picking media:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to pick media';
+      return { success: false, error: errorMessage };
     }
   }
 }

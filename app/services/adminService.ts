@@ -86,7 +86,7 @@ class AdminService {
         .maybeSingle();
 
       if (profileError) {
-        console.log('Error checking profile role:', profileError);
+        console.log('⚠️ Error checking profile role:', profileError);
         return { success: true, role: null };
       }
 
@@ -97,10 +97,10 @@ class AdminService {
         }
       }
 
-      console.log('User is not an admin');
+      console.log('ℹ️ User is not an admin');
       return { success: true, role: null };
     } catch (error) {
-      console.error('Error checking admin role:', error);
+      console.error('❌ Error checking admin role:', error);
       return { success: false, role: null };
     }
   }
@@ -118,7 +118,10 @@ class AdminService {
         assigned_by: assignedBy,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error assigning admin role:', error);
+        throw error;
+      }
 
       // Log the action
       await this.logAction(assignedBy, userId, 'MANAGE_BADGE', `Assigned ${role} role`, null, {
@@ -127,8 +130,9 @@ class AdminService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error assigning admin role:', error);
-      return { success: false, error: 'Failed to assign admin role' };
+      console.error('❌ Error in assignAdminRole:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to assign admin role';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -143,15 +147,19 @@ class AdminService {
         .delete()
         .eq('user_id', userId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error removing admin role:', error);
+        throw error;
+      }
 
       // Log the action
       await this.logAction(removedBy, userId, 'MANAGE_BADGE', 'Removed admin role', null, {});
 
       return { success: true };
     } catch (error) {
-      console.error('Error removing admin role:', error);
-      return { success: false, error: 'Failed to remove admin role' };
+      console.error('❌ Error in removeAdminRole:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to remove admin role';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -174,12 +182,16 @@ class AdminService {
         metadata,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error logging admin action:', error);
+        throw error;
+      }
 
       return { success: true };
     } catch (error) {
-      console.error('Error logging admin action:', error);
-      return { success: false, error: 'Failed to log action' };
+      console.error('❌ Error in logAction:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to log action';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -216,12 +228,16 @@ class AdminService {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching action logs:', error);
+        throw error;
+      }
 
-      return { success: true, logs: data as AdminActionLog[] };
+      return { success: true, logs: (data || []) as AdminActionLog[] };
     } catch (error) {
-      console.error('Error fetching action logs:', error);
-      return { success: false, error: 'Failed to fetch action logs' };
+      console.error('❌ Error in getActionLogs:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch action logs';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -245,16 +261,20 @@ class AdminService {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error creating report:', error);
+        throw error;
+      }
 
       return { success: true, reportId: data.id };
     } catch (error) {
-      console.error('Error creating report:', error);
-      return { success: false, error: 'Failed to create report' };
+      console.error('❌ Error in createReport:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create report';
+      return { success: false, error: errorMessage };
     }
   }
 
-  // Get user reports
+  // Get user reports - Fixed: Only select top-level fields to avoid recursion
   async getReports(
     filters?: {
       status?: ReportStatus;
@@ -266,7 +286,7 @@ class AdminService {
     try {
       let query = supabase
         .from('user_reports')
-        .select('*')
+        .select('id, reported_user_id, reporter_user_id, type, description, status, assigned_to, reviewed_at, resolution_notes, created_at')
         .order('created_at', { ascending: false });
 
       if (filters?.status) {
@@ -287,12 +307,16 @@ class AdminService {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching reports:', error);
+        throw error;
+      }
 
-      return { success: true, reports: data as UserReport[] };
+      return { success: true, reports: (data || []) as UserReport[] };
     } catch (error) {
-      console.error('Error fetching reports:', error);
-      return { success: false, error: 'Failed to fetch reports' };
+      console.error('❌ Error in getReports:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch reports';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -322,12 +346,16 @@ class AdminService {
         .update(updateData)
         .eq('id', reportId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error updating report status:', error);
+        throw error;
+      }
 
       return { success: true };
     } catch (error) {
-      console.error('Error updating report status:', error);
-      return { success: false, error: 'Failed to update report status' };
+      console.error('❌ Error in updateReportStatus:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update report status';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -349,8 +377,9 @@ class AdminService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error banning user:', error);
-      return { success: false, error: 'Failed to ban user' };
+      console.error('❌ Error in banUser:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to ban user';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -381,8 +410,9 @@ class AdminService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error banning device:', error);
-      return { success: false, error: 'Failed to ban device' };
+      console.error('❌ Error in banDevice:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to ban device';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -417,8 +447,9 @@ class AdminService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error suspending user:', error);
-      return { success: false, error: 'Failed to suspend user' };
+      console.error('❌ Error in suspendUser:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to suspend user';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -433,8 +464,9 @@ class AdminService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error warning user:', error);
-      return { success: false, error: 'Failed to warn user' };
+      console.error('❌ Error in warnUser:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to warn user';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -455,7 +487,10 @@ class AdminService {
         })
         .eq('id', streamId);
 
-      if (streamError) throw streamError;
+      if (streamError) {
+        console.error('❌ Error stopping stream:', streamError);
+        throw streamError;
+      }
 
       // Log the action
       await this.logAction(adminUserId, broadcasterId, 'FORCE_STOP_STREAM', reason, null, {
@@ -464,8 +499,9 @@ class AdminService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error force stopping stream:', error);
-      return { success: false, error: 'Failed to force stop stream' };
+      console.error('❌ Error in forceStopStream:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to force stop stream';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -481,14 +517,18 @@ class AdminService {
         .update({ balance: 0 })
         .eq('user_id', targetUserId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error resetting balance:', error);
+        throw error;
+      }
 
       await this.logAction(adminUserId, targetUserId, 'RESET_BALANCE', reason, null, {});
 
       return { success: true };
     } catch (error) {
-      console.error('Error resetting user balance:', error);
-      return { success: false, error: 'Failed to reset user balance' };
+      console.error('❌ Error in resetUserBalance:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to reset user balance';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -511,12 +551,16 @@ class AdminService {
         duration_days: durationDays || null,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error sending admin message:', error);
+        throw error;
+      }
 
       return { success: true };
     } catch (error) {
-      console.error('Error sending admin message:', error);
-      return { success: false, error: 'Failed to send admin message' };
+      console.error('❌ Error in sendAdminMessage:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send admin message';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -531,12 +575,16 @@ class AdminService {
         .eq('target_user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching admin messages:', error);
+        throw error;
+      }
 
-      return { success: true, messages: data as AdminMessage[] };
+      return { success: true, messages: (data || []) as AdminMessage[] };
     } catch (error) {
-      console.error('Error fetching admin messages:', error);
-      return { success: false, error: 'Failed to fetch admin messages' };
+      console.error('❌ Error in getAdminMessages:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch admin messages';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -548,12 +596,16 @@ class AdminService {
         .update({ read: true })
         .eq('id', messageId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error marking message as read:', error);
+        throw error;
+      }
 
       return { success: true };
     } catch (error) {
-      console.error('Error marking message as read:', error);
-      return { success: false, error: 'Failed to mark message as read' };
+      console.error('❌ Error in markMessageAsRead:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to mark message as read';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -570,16 +622,20 @@ class AdminService {
         .eq('status', 'live')
         .order('started_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching live streams:', error);
+        throw error;
+      }
 
-      return { success: true, streams: data };
+      return { success: true, streams: data || [] };
     } catch (error) {
-      console.error('Error fetching live streams:', error);
-      return { success: false, error: 'Failed to fetch live streams' };
+      console.error('❌ Error in getLiveStreams:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch live streams';
+      return { success: false, error: errorMessage };
     }
   }
 
-  // Get users under penalty
+  // Get users under penalty - Fixed: Only select top-level fields to avoid recursion
   async getUsersUnderPenalty(): Promise<{
     success: boolean;
     users?: any[];
@@ -588,17 +644,39 @@ class AdminService {
     try {
       const { data, error } = await supabase
         .from('admin_actions_log')
-        .select('*, profiles!admin_actions_log_target_user_id_fkey(*)')
+        .select('id, admin_user_id, target_user_id, action_type, reason, expires_at, metadata, created_at')
         .in('action_type', ['BAN', 'SUSPEND', 'TIMEOUT', 'DEVICE_BAN'])
         .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching users under penalty:', error);
+        throw error;
+      }
 
-      return { success: true, users: data };
+      // Fetch profile data separately for each user to avoid recursion
+      const usersWithProfiles = await Promise.all(
+        (data || []).map(async (penalty) => {
+          if (!penalty.target_user_id) return penalty;
+
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id, display_name, avatar_url')
+            .eq('id', penalty.target_user_id)
+            .maybeSingle();
+
+          return {
+            ...penalty,
+            profiles: profile,
+          };
+        })
+      );
+
+      return { success: true, users: usersWithProfiles };
     } catch (error) {
-      console.error('Error fetching users under penalty:', error);
-      return { success: false, error: 'Failed to fetch users under penalty' };
+      console.error('❌ Error in getUsersUnderPenalty:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch users under penalty';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -613,7 +691,10 @@ class AdminService {
         .from('vip_memberships')
         .select('*');
 
-      if (vipError) throw vipError;
+      if (vipError) {
+        console.error('❌ Error fetching VIP overview:', vipError);
+        throw vipError;
+      }
 
       const total = vipData?.length || 0;
       const active = vipData?.filter((v) => v.is_active).length || 0;
@@ -623,8 +704,9 @@ class AdminService {
 
       return { success: true, data: { total, active, revenue } };
     } catch (error) {
-      console.error('Error fetching VIP overview:', error);
-      return { success: false, error: 'Failed to fetch VIP overview' };
+      console.error('❌ Error in getVIPOverview:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch VIP overview';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -643,14 +725,18 @@ class AdminService {
         .select('amount')
         .gte('created_at', today.toISOString());
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error fetching daily transaction volume:', error);
+        throw error;
+      }
 
       const volume = data?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0;
 
       return { success: true, volume };
     } catch (error) {
-      console.error('Error fetching daily transaction volume:', error);
-      return { success: false, error: 'Failed to fetch daily transaction volume' };
+      console.error('❌ Error in getDailyTransactionVolume:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch daily transaction volume';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -670,7 +756,10 @@ class AdminService {
         is_active: true,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error creating public badge:', error);
+        throw error;
+      }
 
       await this.logAction(approvedBy, userId, 'MANAGE_BADGE', `Created badge: ${badgeText}`, null, {
         badge_text: badgeText,
@@ -679,8 +768,9 @@ class AdminService {
 
       return { success: true };
     } catch (error) {
-      console.error('Error creating public badge:', error);
-      return { success: false, error: 'Failed to create public badge' };
+      console.error('❌ Error in createPublicBadge:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create public badge';
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -695,12 +785,16 @@ class AdminService {
         .update({ is_active: false })
         .eq('id', badgeId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error deactivating public badge:', error);
+        throw error;
+      }
 
       return { success: true };
     } catch (error) {
-      console.error('Error deactivating public badge:', error);
-      return { success: false, error: 'Failed to deactivate public badge' };
+      console.error('❌ Error in deactivatePublicBadge:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to deactivate public badge';
+      return { success: false, error: errorMessage };
     }
   }
 }

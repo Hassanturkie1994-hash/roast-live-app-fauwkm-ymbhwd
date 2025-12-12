@@ -62,6 +62,7 @@ export default function ViewerScreen() {
   const [streamDelay, setStreamDelay] = useState(0);
   const channelRef = useRef<any>(null);
   const giftChannelRef = useRef<any>(null);
+  const isMountedRef = useRef(true);
 
   const player = useVideoPlayer(
     stream?.playback_url
@@ -70,9 +71,17 @@ export default function ViewerScreen() {
         }
       : null,
     (player) => {
+      if (!isMountedRef.current) return;
+      
       player.loop = false;
       player.staysActiveInBackground = false;
-      player.play();
+      
+      // Safely play the video
+      try {
+        player.play();
+      } catch (error) {
+        console.error('❌ Error playing video:', error);
+      }
     }
   );
 
@@ -81,11 +90,11 @@ export default function ViewerScreen() {
   });
 
   useEffect(() => {
-    console.log('Player status:', status);
+    console.log('📹 Player status:', status);
     if (status === 'readyToPlay') {
       setIsLoading(false);
     } else if (status === 'error') {
-      console.error('Video player error');
+      console.error('❌ Video player error');
       setIsLoading(false);
       Alert.alert('Playback Error', 'Unable to play the stream. Please try again later.');
     }
@@ -100,11 +109,13 @@ export default function ViewerScreen() {
         .select('*')
         .eq('follower_id', user.id)
         .eq('following_id', broadcasterId)
-        .single();
+        .maybeSingle();
 
-      setIsFollowing(!!data);
+      if (isMountedRef.current) {
+        setIsFollowing(!!data);
+      }
     } catch (error) {
-      console.log('Not following');
+      console.log('ℹ️ Not following');
     }
   }, [user]);
 
@@ -114,29 +125,40 @@ export default function ViewerScreen() {
         .from('streams')
         .select('*, users(*)')
         .eq('id', streamId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        console.error('Error fetching stream:', error);
+        console.error('❌ Error fetching stream:', error);
         Alert.alert('Error', 'Stream not found');
         router.back();
         return;
       }
 
-      console.log('Stream data:', data);
-      setStream(data as Stream);
-      setViewerCount(data.viewer_count || 0);
+      if (!data) {
+        Alert.alert('Error', 'Stream not found');
+        router.back();
+        return;
+      }
+
+      console.log('✅ Stream data:', data);
+      
+      if (isMountedRef.current) {
+        setStream(data as Stream);
+        setViewerCount(data.viewer_count || 0);
+      }
 
       if (data.broadcaster_id && user) {
         checkFollowStatus(data.broadcaster_id);
         
         // Fetch stream delay setting
         const delay = await streamSettingsService.getStreamDelay(data.broadcaster_id);
-        setStreamDelay(delay);
-        console.log(`Stream delay set to ${delay} seconds`);
+        if (isMountedRef.current) {
+          setStreamDelay(delay);
+          console.log(`⏱ Stream delay set to ${delay} seconds`);
+        }
       }
     } catch (error) {
-      console.error('Error in fetchStream:', error);
+      console.error('❌ Error in fetchStream:', error);
     }
   }, [streamId, user, checkFollowStatus]);
 
@@ -148,7 +170,10 @@ export default function ViewerScreen() {
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
         const count = Object.keys(state).length;
-        setViewerCount(count);
+        
+        if (isMountedRef.current) {
+          setViewerCount(count);
+        }
 
         channel.send({
           type: 'broadcast',
@@ -157,15 +182,17 @@ export default function ViewerScreen() {
         });
       })
       .on('presence', { event: 'join' }, () => {
-        console.log('Viewer joined');
+        console.log('👤 Viewer joined');
       })
       .on('presence', { event: 'leave' }, () => {
-        console.log('Viewer left');
+        console.log('👤 Viewer left');
       })
       .on('broadcast', { event: 'safety_hint' }, (payload) => {
         // Show safety hint when triggered
         const hint = payload.payload.message || SAFETY_HINTS[0];
-        setSafetyHint(hint);
+        if (isMountedRef.current) {
+          setSafetyHint(hint);
+        }
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -185,7 +212,7 @@ export default function ViewerScreen() {
     const channel = supabase
       .channel(`stream:${streamId}:gifts`)
       .on('broadcast', { event: 'gift_sent' }, (payload) => {
-        console.log('Gift received:', payload);
+        console.log('🎁 Gift received:', payload);
         const giftData = payload.payload;
         
         // Add gift animation to queue
@@ -198,7 +225,9 @@ export default function ViewerScreen() {
           tier: giftData.tier || 'A',
         };
         
-        setGiftAnimations((prev) => [...prev, newAnimation]);
+        if (isMountedRef.current) {
+          setGiftAnimations((prev) => [...prev, newAnimation]);
+        }
       })
       .subscribe();
 
@@ -206,16 +235,28 @@ export default function ViewerScreen() {
   }, [streamId]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (streamId) {
       fetchStream();
     }
 
     return () => {
-      player.pause();
+      isMountedRef.current = false;
+      
+      // Safely pause the player
+      try {
+        if (player && player.pause) {
+          player.pause();
+        }
+      } catch (error) {
+        console.error('⚠️ Error pausing player on unmount:', error);
+      }
+      
       leaveViewerChannel();
       leaveGiftChannel();
     };
-  }, [streamId, fetchStream, player]);
+  }, [streamId, fetchStream]);
 
   useEffect(() => {
     if (stream && !hasJoinedChannel) {
@@ -227,15 +268,23 @@ export default function ViewerScreen() {
 
   const leaveViewerChannel = () => {
     if (channelRef.current) {
-      channelRef.current.untrack();
-      supabase.removeChannel(channelRef.current);
+      try {
+        channelRef.current.untrack();
+        supabase.removeChannel(channelRef.current);
+      } catch (error) {
+        console.error('⚠️ Error leaving viewer channel:', error);
+      }
       channelRef.current = null;
     }
   };
 
   const leaveGiftChannel = () => {
     if (giftChannelRef.current) {
-      supabase.removeChannel(giftChannelRef.current);
+      try {
+        supabase.removeChannel(giftChannelRef.current);
+      } catch (error) {
+        console.error('⚠️ Error leaving gift channel:', error);
+      }
       giftChannelRef.current = null;
     }
   };
@@ -253,13 +302,19 @@ export default function ViewerScreen() {
           .delete()
           .eq('follower_id', user.id)
           .eq('following_id', stream.broadcaster_id);
-        setIsFollowing(false);
+        
+        if (isMountedRef.current) {
+          setIsFollowing(false);
+        }
       } else {
         await supabase.from('followers').insert({
           follower_id: user.id,
           following_id: stream.broadcaster_id,
         });
-        setIsFollowing(true);
+        
+        if (isMountedRef.current) {
+          setIsFollowing(true);
+        }
 
         await supabase.from('notifications').insert({
           type: 'follow',
@@ -269,7 +324,7 @@ export default function ViewerScreen() {
         });
       }
     } catch (error) {
-      console.error('Error toggling follow:', error);
+      console.error('❌ Error toggling follow:', error);
       Alert.alert('Error', 'Failed to update follow status');
     }
   };
@@ -325,7 +380,9 @@ export default function ViewerScreen() {
   };
 
   const handleAnimationComplete = (animationId: string) => {
-    setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
+    if (isMountedRef.current) {
+      setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
+    }
   };
 
   if (!stream) {

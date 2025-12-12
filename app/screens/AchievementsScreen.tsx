@@ -19,7 +19,7 @@ export default function AchievementsScreen() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [allAchievements, setAllAchievements] = useState<Achievement[]>([]);
-  const [userAchievements, setUserAchievements] = useState<UserAchievement[]>([]);
+  const [userAchievements, setUserAchievements] = useState<(UserAchievement & { achievement?: Achievement })[]>([]);
   const [selectedBadges, setSelectedBadges] = useState<(string | null)[]>([null, null, null]);
   const [editMode, setEditMode] = useState(false);
 
@@ -41,7 +41,7 @@ export default function AchievementsScreen() {
         setSelectedBadges([selected.badge_1, selected.badge_2, selected.badge_3]);
       }
     } catch (error) {
-      console.error('Error loading achievements:', error);
+      console.error('❌ Error loading achievements:', error);
     } finally {
       setLoading(false);
     }
@@ -91,7 +91,7 @@ export default function AchievementsScreen() {
       setEditMode(false);
       Alert.alert('Success', 'Your display badges have been updated');
     } catch (error) {
-      console.error('Error saving badges:', error);
+      console.error('❌ Error saving badges:', error);
       Alert.alert('Error', 'Failed to save badges');
     }
   };
@@ -140,7 +140,7 @@ export default function AchievementsScreen() {
             {selectedBadges.map((badgeKey, index) => {
               const achievement = allAchievements.find((a) => a.achievement_key === badgeKey);
               return (
-                <View key={index} style={styles.selectedBadgeSlot}>
+                <View key={`selected-badge-${index}`} style={styles.selectedBadgeSlot}>
                   {achievement ? (
                     <AchievementBadge
                       emoji={achievement.emoji}
@@ -172,7 +172,7 @@ export default function AchievementsScreen() {
 
         {/* Achievements by Category */}
         {Object.entries(groupedAchievements).map(([category, achievements]) => (
-          <View key={category} style={styles.section}>
+          <View key={`category-${category}`} style={styles.section}>
             <Text style={styles.sectionTitle}>
               {categoryTitles[category as keyof typeof categoryTitles]}
             </Text>
@@ -182,7 +182,7 @@ export default function AchievementsScreen() {
                 const isSelected = selectedBadges.includes(achievement.achievement_key);
 
                 return (
-                  <View key={achievement.id} style={styles.achievementWrapper}>
+                  <View key={`achievement-${achievement.id}`} style={styles.achievementWrapper}>
                     <AchievementBadge
                       emoji={achievement.emoji}
                       name={achievement.name}
