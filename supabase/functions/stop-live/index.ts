@@ -1,5 +1,6 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 Deno.serve(async (req) => {
   try {
@@ -29,6 +30,25 @@ Deno.serve(async (req) => {
         }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Update stream record in database
+    const { error: updateError } = await supabase
+      .from('streams')
+      .update({
+        status: 'ended',
+        ended_at: new Date().toISOString(),
+      })
+      .eq('id', live_input_id);
+
+    if (updateError) {
+      console.error('Error updating stream record:', updateError);
+      // Continue anyway
     }
 
     // Delete/disable Cloudflare live input

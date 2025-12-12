@@ -12,6 +12,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { cloudflareService } from '@/app/services/cloudflareService';
 import { router } from 'expo-router';
 import ChatOverlay from '@/components/ChatOverlay';
+import WebRTCLivePublisher from '@/components/WebRTCLivePublisher';
 
 interface StreamData {
   id: string;
@@ -34,8 +35,7 @@ export default function BroadcasterScreen() {
   const [streamTitle, setStreamTitle] = useState('');
   const [currentStream, setCurrentStream] = useState<StreamData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isNativeStreamingAvailable, setIsNativeStreamingAvailable] = useState(false);
-  const publisherRef = useRef<any>(null);
+  const [webRTCUrl, setWebRTCUrl] = useState<string | null>(null);
   const realtimeChannelRef = useRef<any>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -43,12 +43,6 @@ export default function BroadcasterScreen() {
     if (!user) {
       router.replace('/auth/login');
     }
-    
-    // Check if native streaming is available
-    // Note: react-native-nodemediaclient requires native modules
-    // For web/expo-go, we'll show instructions to use OBS
-    // For production native builds, this will enable direct RTMP streaming
-    setIsNativeStreamingAvailable(Platform.OS !== 'web');
   }, [user]);
 
   useEffect(() => {
@@ -84,7 +78,6 @@ export default function BroadcasterScreen() {
     realtimeChannelRef.current = channel;
   }, [currentStream?.id]);
 
-  // Subscribe to viewer count updates
   useEffect(() => {
     if (isLive && currentStream?.id) {
       subscribeToViewerUpdates();
@@ -140,24 +133,6 @@ export default function BroadcasterScreen() {
     }
   };
 
-  const startNativeStream = async (ingestUrl: string, streamKey: string) => {
-    // Note: This would require react-native-nodemediaclient to be installed
-    // For now, we'll just show instructions
-    console.log('Native streaming not available in this build');
-    return false;
-  };
-
-  const stopNativeStream = async () => {
-    if (publisherRef.current) {
-      try {
-        console.log('Stopping native stream');
-        publisherRef.current = null;
-      } catch (error) {
-        console.error('Error stopping native stream:', error);
-      }
-    }
-  };
-
   const startStream = async () => {
     if (!streamTitle.trim()) {
       Alert.alert('Error', 'Please enter a stream title');
@@ -174,7 +149,6 @@ export default function BroadcasterScreen() {
     try {
       console.log('🎬 Starting live stream with title:', streamTitle);
       
-      // Call cloudflareService.startLive with correct parameters
       const result = await cloudflareService.startLive({ 
         title: streamTitle, 
         userId: user.id 
@@ -190,44 +164,24 @@ export default function BroadcasterScreen() {
       setShowSetup(false);
       setStreamTitle('');
 
+      // Set WebRTC URL if available
+      if (result.ingest.webRTC_url) {
+        setWebRTCUrl(result.ingest.webRTC_url);
+        console.log('📺 WebRTC URL set:', result.ingest.webRTC_url);
+      }
+
       console.log('📺 Stream details:', {
         id: result.stream.id,
         live_input_id: result.stream.live_input_id,
         playback_url: result.stream.playback_url,
-        rtmps_url: result.ingest.rtmps_url,
-        stream_key: result.ingest.stream_key ? '***' : null,
         webRTC_url: result.ingest.webRTC_url,
       });
 
-      // Try to start native streaming if available
-      if (isNativeStreamingAvailable && result.ingest.rtmps_url && result.ingest.stream_key) {
-        const nativeStarted = await startNativeStream(
-          result.ingest.rtmps_url,
-          result.ingest.stream_key
-        );
-
-        if (nativeStarted) {
-          Alert.alert(
-            '🔴 You are LIVE!',
-            'Your stream is now broadcasting. Viewers can watch you live!',
-            [{ text: 'OK' }]
-          );
-        } else {
-          // Fallback to showing instructions
-          showStreamingInstructions(result.ingest.rtmps_url, result.ingest.stream_key);
-        }
-      } else {
-        // Show instructions for OBS or other streaming software
-        if (result.ingest.rtmps_url && result.ingest.stream_key) {
-          showStreamingInstructions(result.ingest.rtmps_url, result.ingest.stream_key);
-        } else {
-          Alert.alert(
-            '🔴 You are LIVE!',
-            `Your stream is now broadcasting!\n\nStream ID: ${result.stream.id}\n\nViewers can watch you live!`,
-            [{ text: 'OK' }]
-          );
-        }
-      }
+      Alert.alert(
+        '🔴 You are LIVE!',
+        'Your stream is now broadcasting. Viewers can watch you live!',
+        [{ text: 'OK' }]
+      );
     } catch (error) {
       console.error('❌ Error starting stream:', error);
       
@@ -245,33 +199,6 @@ export default function BroadcasterScreen() {
     }
   };
 
-  const showStreamingInstructions = (ingestUrl: string, streamKey: string) => {
-    Alert.alert(
-      '🎥 Stream Setup Required',
-      `Your stream session is ready!\n\nTo broadcast, use streaming software like OBS:\n\n` +
-      `Server: ${ingestUrl}\n` +
-      `Stream Key: ${streamKey}\n\n` +
-      `Note: In production native apps, streaming will happen automatically from your camera.`,
-      [
-        {
-          text: 'Copy Server URL',
-          onPress: () => {
-            // In production, implement clipboard copy
-            console.log('Copy:', ingestUrl);
-          },
-        },
-        {
-          text: 'Copy Stream Key',
-          onPress: () => {
-            // In production, implement clipboard copy
-            console.log('Copy:', streamKey);
-          },
-        },
-        { text: 'OK' },
-      ]
-    );
-  };
-
   const endStream = async () => {
     if (!currentStream) {
       Alert.alert('Error', 'No active stream to end');
@@ -286,10 +213,6 @@ export default function BroadcasterScreen() {
         streamId: currentStream.id,
       });
 
-      // Stop native streaming if active
-      await stopNativeStream();
-
-      // Call cloudflareService.stopLive with correct parameters
       await cloudflareService.stopLive({
         liveInputId: currentStream.live_input_id,
         streamId: currentStream.id,
@@ -302,6 +225,7 @@ export default function BroadcasterScreen() {
       setViewerCount(0);
       setLiveTime(0);
       setCurrentStream(null);
+      setWebRTCUrl(null);
 
       Alert.alert('Stream Ended', 'Your live stream has been ended successfully.');
     } catch (error) {
@@ -330,84 +254,94 @@ export default function BroadcasterScreen() {
 
   return (
     <View style={commonStyles.container}>
-      <CameraView style={styles.camera} facing={facing}>
-        <View style={styles.overlay}>
-          {isLive && (
-            <>
-              <View style={styles.topBar}>
-                <LiveBadge size="small" />
-                <View style={styles.statsContainer}>
-                  <View style={styles.stat}>
-                    <IconSymbol
-                      ios_icon_name="eye.fill"
-                      android_material_icon_name="visibility"
-                      size={16}
-                      color={colors.text}
-                    />
-                    <Text style={styles.statText}>{viewerCount}</Text>
-                  </View>
-                  <View style={styles.stat}>
-                    <IconSymbol
-                      ios_icon_name="clock.fill"
-                      android_material_icon_name="schedule"
-                      size={16}
-                      color={colors.text}
-                    />
-                    <Text style={styles.statText}>{formatTime(liveTime)}</Text>
-                  </View>
+      {isLive && webRTCUrl ? (
+        <WebRTCLivePublisher
+          rtcPublishUrl={webRTCUrl}
+          facing={facing}
+          isCameraOn={isCameraOn}
+          onStreamStarted={() => console.log('WebRTC stream started')}
+          onStreamError={(error) => console.error('WebRTC error:', error)}
+        />
+      ) : (
+        <CameraView style={styles.camera} facing={facing} />
+      )}
+
+      <View style={styles.overlay}>
+        {isLive && (
+          <>
+            <View style={styles.topBar}>
+              <LiveBadge size="small" />
+              <View style={styles.statsContainer}>
+                <View style={styles.stat}>
+                  <IconSymbol
+                    ios_icon_name="eye.fill"
+                    android_material_icon_name="visibility"
+                    size={16}
+                    color={colors.text}
+                  />
+                  <Text style={styles.statText}>{viewerCount}</Text>
+                </View>
+                <View style={styles.stat}>
+                  <IconSymbol
+                    ios_icon_name="clock.fill"
+                    android_material_icon_name="schedule"
+                    size={16}
+                    color={colors.text}
+                  />
+                  <Text style={styles.statText}>{formatTime(liveTime)}</Text>
                 </View>
               </View>
-
-              <View style={styles.watermarkContainer}>
-                <RoastLiveLogo size="small" opacity={0.25} />
-              </View>
-
-              {currentStream && (
-                <ChatOverlay streamId={currentStream.id} isBroadcaster={true} />
-              )}
-            </>
-          )}
-
-          <View style={styles.controlsContainer}>
-            <View style={styles.controls}>
-              <TouchableOpacity
-                style={[styles.controlButton, !isMicOn && styles.controlButtonOff]}
-                onPress={() => setIsMicOn(!isMicOn)}
-                disabled={!isLive || isLoading}
-              >
-                <IconSymbol
-                  ios_icon_name={isMicOn ? 'mic.fill' : 'mic.slash.fill'}
-                  android_material_icon_name={isMicOn ? 'mic' : 'mic_off'}
-                  size={24}
-                  color={colors.text}
-                />
-              </TouchableOpacity>
-
-              <View style={styles.startButtonContainer}>
-                <GradientButton
-                  title={isLive ? 'END STREAM' : 'GO LIVE'}
-                  onPress={handleStartLiveSetup}
-                  size="large"
-                  disabled={isLoading}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.controlButton, !isCameraOn && styles.controlButtonOff]}
-                onPress={toggleCameraFacing}
-                disabled={!isLive || isLoading}
-              >
-                <IconSymbol
-                  ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
-                  android_material_icon_name="flip_camera_ios"
-                  size={24}
-                  color={colors.text}
-                />
-              </TouchableOpacity>
             </View>
+
+            <View style={styles.watermarkContainer}>
+              <RoastLiveLogo size="small" opacity={0.25} />
+            </View>
+
+            {currentStream && (
+              <ChatOverlay streamId={currentStream.id} isBroadcaster={true} />
+            )}
+          </>
+        )}
+
+        <View style={styles.controlsContainer}>
+          <View style={styles.controls}>
+            <TouchableOpacity
+              style={[styles.controlButton, !isMicOn && styles.controlButtonOff]}
+              onPress={() => setIsMicOn(!isMicOn)}
+              disabled={!isLive || isLoading}
+            >
+              <IconSymbol
+                ios_icon_name={isMicOn ? 'mic.fill' : 'mic.slash.fill'}
+                android_material_icon_name={isMicOn ? 'mic' : 'mic_off'}
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.startButtonContainer}>
+              <GradientButton
+                title={isLive ? 'END STREAM' : 'GO LIVE'}
+                onPress={handleStartLiveSetup}
+                size="large"
+                disabled={isLoading}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={styles.controlButton}
+              onPress={toggleCameraFacing}
+              disabled={isLoading}
+            >
+              <IconSymbol
+                ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
+                android_material_icon_name="flip_camera_ios"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
           </View>
         </View>
-      </CameraView>
+      </View>
 
       <Modal
         visible={showSetup}
@@ -442,9 +376,7 @@ export default function BroadcasterScreen() {
                 color={colors.gradientEnd}
               />
               <Text style={styles.infoText}>
-                {isNativeStreamingAvailable
-                  ? 'Your camera will automatically start streaming when you go live. No additional software needed!'
-                  : 'You\'ll need streaming software like OBS to broadcast. RTMP credentials will be provided after you start.'}
+                Your camera will automatically start streaming when you go live. Make sure you have a stable internet connection!
               </Text>
             </View>
 
@@ -477,7 +409,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   overlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
   },
   permissionContainer: {

@@ -91,6 +91,29 @@ Deno.serve(async (req) => {
     // Build playback URL
     const playback_url = `https://customer-${CF_ACCOUNT_ID}.cloudflarestream.com/${uid}/manifest/video.m3u8`;
 
+    // Create stream record in database
+    const { data: streamData, error: streamError } = await supabase
+      .from('streams')
+      .insert({
+        id: uid,
+        broadcaster_id: user_id,
+        cloudflare_stream_id: uid,
+        playback_url: playback_url,
+        ingest_url: rtmps?.url || null,
+        stream_key: rtmps?.streamKey || null,
+        title: title,
+        status: 'live',
+        viewer_count: 0,
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (streamError) {
+      console.error('Error creating stream record:', streamError);
+      // Continue anyway, the stream is created in Cloudflare
+    }
+
     // Format moderators array
     const moderatorsArray = moderators?.map(mod => ({
       user_id: mod.user_id,
@@ -119,7 +142,7 @@ Deno.serve(async (req) => {
 
     console.log(`✅ Stream started with ${moderatorsArray.length} moderators`);
 
-    // PROMPT 1: Send push notifications to followers when creator goes live
+    // Send push notifications to followers when creator goes live
     try {
       // Get creator info
       const { data: creatorProfile } = await supabase
