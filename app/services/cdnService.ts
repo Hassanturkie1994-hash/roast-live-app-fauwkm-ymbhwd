@@ -532,6 +532,13 @@ class CDNService {
       try {
         const { bucket, path, file, contentType, mediaType = 'other' } = options;
         
+        console.log(`📤 Upload attempt ${attempt}/${maxRetries} for ${path}`);
+        console.log('File details:', {
+          size: file.size,
+          type: file.type || contentType,
+          mediaType,
+        });
+        
         // Validate file before upload
         const validation = this.validateFile(file, mediaType);
         if (!validation.valid) {
@@ -567,11 +574,15 @@ class CDNService {
           }
         }
 
-        console.log(`📤 Upload attempt ${attempt}/${maxRetries} for ${path}`);
-
         // Upload to Cloudflare R2 via Edge Function
         const fileName = path.split('/').pop() || `file_${Date.now()}`;
         const fileType = contentType || file.type || 'application/octet-stream';
+
+        console.log('Preparing upload request:', {
+          fileName,
+          fileType,
+          mediaType,
+        });
 
         // Get auth token
         const { data: { session } } = await supabase.auth.getSession();
@@ -579,7 +590,8 @@ class CDNService {
           return { success: false, error: 'No active session' };
         }
 
-        // Call the upload-to-r2 edge function
+        // Call the upload-to-r2 edge function to get presigned URL
+        console.log('Calling upload-to-r2 Edge Function...');
         const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-r2', {
           body: {
             fileName,
@@ -591,9 +603,9 @@ class CDNService {
           },
         });
 
-        if (uploadError || !uploadData || !uploadData.success) {
-          console.error(`❌ Upload error (attempt ${attempt}):`, uploadError || uploadData?.error);
-          lastError = uploadError || new Error(uploadData?.error || 'Upload failed');
+        if (uploadError) {
+          console.error(`❌ Edge Function error (attempt ${attempt}):`, uploadError);
+          lastError = uploadError;
           
           // Wait before retry (exponential backoff)
           if (attempt < maxRetries) {
@@ -605,18 +617,9 @@ class CDNService {
           throw lastError;
         }
 
-        // Upload file to R2 using presigned URL
-        const uploadResult = await fetch(uploadData.uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: {
-            'Content-Type': fileType,
-          },
-        });
-
-        if (!uploadResult.ok) {
-          console.error(`❌ R2 upload failed (attempt ${attempt}):`, uploadResult.status, uploadResult.statusText);
-          lastError = new Error(`R2 upload failed: ${uploadResult.statusText}`);
+        if (!uploadData || !uploadData.success) {
+          console.error(`❌ Upload data error (attempt ${attempt}):`, uploadData);
+          lastError = new Error(uploadData?.error || 'Upload failed - no data returned');
           
           // Wait before retry (exponential backoff)
           if (attempt < maxRetries) {
@@ -627,6 +630,44 @@ class CDNService {
           }
           throw lastError;
         }
+
+        console.log('✅ Presigned URL received:', {
+          uploadUrl: uploadData.uploadUrl?.substring(0, 100) + '...',
+          publicUrl: uploadData.publicUrl,
+          method: uploadData.method,
+        });
+
+        // Upload file to R2 using presigned URL
+        console.log('Uploading file to R2...');
+        const uploadResult = await fetch(uploadData.uploadUrl, {
+          method: uploadData.method || 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': fileType,
+            ...(uploadData.headers || {}),
+          },
+        });
+
+        if (!uploadResult.ok) {
+          const errorText = await uploadResult.text().catch(() => 'Unknown error');
+          console.error(`❌ R2 upload failed (attempt ${attempt}):`, {
+            status: uploadResult.status,
+            statusText: uploadResult.statusText,
+            error: errorText,
+          });
+          lastError = new Error(`R2 upload failed: ${uploadResult.statusText} - ${errorText}`);
+          
+          // Wait before retry (exponential backoff)
+          if (attempt < maxRetries) {
+            const waitTime = Math.pow(2, attempt) * 1000;
+            console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw lastError;
+        }
+
+        console.log('✅ File uploaded to R2 successfully');
 
         const publicUrl = uploadData.publicUrl;
         const cdnUrl = this.convertToCDNUrl(publicUrl);
@@ -665,7 +706,7 @@ class CDNService {
           supabaseUrl: publicUrl,
           deduplicated: false,
         };
-      } catch (error) {
+      } catch (error: any) {
         console.error(`❌ Error uploading media (attempt ${attempt}):`, error);
         lastError = error;
         
