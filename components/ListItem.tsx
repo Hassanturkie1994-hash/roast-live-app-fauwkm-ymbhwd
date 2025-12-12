@@ -1,3 +1,4 @@
+
 import React from "react";
 import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, useColorScheme, View, Text } from "react-native";
@@ -9,13 +10,14 @@ import Animated, {
   useAnimatedStyle,
 } from "react-native-reanimated";
 import Reanimated from "react-native-reanimated";
-import { appleRed, borderColor } from "@/constants/Colors";
+import { useTheme } from "@/contexts/ThemeContext";
 import { IconCircle } from "./IconCircle";
 import { IconSymbol } from "./IconSymbol";
 
 configureReanimatedLogger({ strict: false });
 
 export default function ListItem({ listId }: { listId: string }) {
+  const { colors } = useTheme();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
 
@@ -54,7 +56,7 @@ export default function ListItem({ listId }: { listId: string }) {
         overshootRight={false}
         enableContextMenu
       >
-        <View style={styles.listItemContainer}>
+        <View style={[styles.listItemContainer, { borderBottomColor: colors.border }]}>
           <Text style={[styles.listItemText, { color: isDark ? "#FFFFFF" : "#000000" }]}>{listId}</Text>
         </View>
 
@@ -98,7 +100,6 @@ const styles = StyleSheet.create({
   listItemContainer: {
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
     backgroundColor: "transparent",
   },
   listItemText: {
@@ -107,7 +108,7 @@ const styles = StyleSheet.create({
   rightAction: {
     width: 200,
     height: 65,
-    backgroundColor: appleRed,
+    backgroundColor: '#FF3B30',
     alignItems: "center",
     justifyContent: "center",
   },
@@ -117,7 +118,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,

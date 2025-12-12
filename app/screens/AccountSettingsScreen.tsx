@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
-import RoastIcon from '@/components/icons/RoastIcon';
+import RoastIcon from '@/components/Icons/RoastIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';

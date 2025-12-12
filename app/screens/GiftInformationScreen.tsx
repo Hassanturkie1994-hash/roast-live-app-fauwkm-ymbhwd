@@ -14,7 +14,7 @@ import {
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
-import RoastIcon from '@/components/icons/RoastIcon';
+import RoastIcon from '@/components/Icons/RoastIcon';
 import { fetchGifts, Gift, GiftTier } from '@/app/services/giftService';
 
 const { width: screenWidth } = Dimensions.get('window');

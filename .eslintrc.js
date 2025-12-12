@@ -18,7 +18,7 @@ module.exports = {
       jsx: true
     }
   },
-  ignorePatterns: ['/dist/*', '/public/*', '/babel-plugins/*'],
+  ignorePatterns: ['/dist/*', '/public/*', '/babel-plugins/*', '/supabase/functions/*'],
   env: {
     browser: true,
   },
@@ -31,7 +31,8 @@ module.exports = {
     'import/ignore': [
       'node_modules',
       '\\.(coffee|scss|css|less|hbs|svg|json)$',
-      'https://'
+      'https://',
+      'jsr:'
     ]
   },
   rules: {
@@ -45,7 +46,7 @@ module.exports = {
     "@typescript-eslint/ban-tslint-comment": "off",
     "react/no-unescaped-entities": "off",
     "import/no-unresolved": ["error", {
-      ignore: ['^https://']
+      ignore: ['^https://', '^jsr:']
     }],
     "prefer-const": "off",
     "react/prop-types": 1,

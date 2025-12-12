@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
-import RoastIcon from '@/components/icons/RoastIcon';
+import RoastIcon from '@/components/Icons/RoastIcon';
 import GradientButton from '@/components/GradientButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';

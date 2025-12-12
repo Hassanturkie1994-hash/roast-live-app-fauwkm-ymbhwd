@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import RoastIcon from '@/components/icons/RoastIcon';
+import RoastIcon from '@/components/Icons/RoastIcon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,6 +32,16 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
+  const fetchUnreadCount = useCallback(async () => {
+    if (!user) return;
+    
+    const result = await messagingService.getConversations(user.id);
+    if (result.success && result.conversations) {
+      const total = result.conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+      setUnreadCount(total);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (user) {
       fetchUnreadCount();
@@ -39,7 +49,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
       const interval = setInterval(fetchUnreadCount, 30000);
       return () => clearInterval(interval);
     }
-  }, [user]);
+  }, [user, fetchUnreadCount]);
 
   useEffect(() => {
     // Animate tab bar hiding/showing when streaming status changes
@@ -72,17 +82,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
         }),
       ]).start();
     }
-  }, [isStreaming]);
-
-  const fetchUnreadCount = async () => {
-    if (!user) return;
-    
-    const result = await messagingService.getConversations(user.id);
-    if (result.success && result.conversations) {
-      const total = result.conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
-      setUnreadCount(total);
-    }
-  };
+  }, [isStreaming, slideAnim, opacityAnim]);
 
   const isActive = (route: string) => {
     if (route === '/(tabs)/(home)/' || route === '/(tabs)/(home)') {
