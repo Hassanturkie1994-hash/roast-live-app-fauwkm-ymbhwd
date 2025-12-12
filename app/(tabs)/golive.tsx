@@ -1,40 +1,37 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useRouter } from 'expo-router';
 
 export default function GoLiveScreen() {
   const theme = useTheme();
-  const router = useRouter();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Go Live</Text>
-        <View style={{ width: 24 }} />
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={80} color="#8B0000" />
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
+        <View style={styles.previewContainer}>
+          <View style={styles.preview}>
+            <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={80} color="#666" />
+            <Text style={[styles.previewText, { color: '#666' }]}>Camera Preview</Text>
+          </View>
         </View>
-        
-        <Text style={[styles.title, { color: theme.colors.text }]}>Start Your Livestream</Text>
-        <Text style={[styles.subtitle, { color: '#666' }]}>
-          Share your moments with the world
-        </Text>
+
+        <TouchableOpacity style={styles.settingButton}>
+          <IconSymbol ios_icon_name="gearshape" android_material_icon_name="settings" size={24} color={theme.colors.text} />
+          <Text style={[styles.settingButtonText, { color: theme.colors.text }]}>Stream Settings</Text>
+          <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color="#666" />
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.goLiveButton}>
           <IconSymbol ios_icon_name="video.fill" android_material_icon_name="videocam" size={24} color="#fff" />
-          <Text style={styles.goLiveButtonText}>GO LIVE</Text>
+          <Text style={styles.goLiveButtonText}>START LIVE STREAM</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -45,57 +42,67 @@ const styles = StyleSheet.create({
     paddingTop: 48,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-  },
-  iconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(139, 0, 0, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
-  },
-  title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 12,
-    textAlign: 'center',
   },
-  subtitle: {
+  scrollView: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingBottom: 120,
+  },
+  previewContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  preview: {
+    aspectRatio: 9 / 16,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  previewText: {
     fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 40,
+    marginTop: 12,
+  },
+  settingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    gap: 12,
+  },
+  settingButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
   },
   goLiveButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#8B0000',
-    paddingHorizontal: 40,
+    marginHorizontal: 20,
     paddingVertical: 16,
-    borderRadius: 30,
+    borderRadius: 12,
     gap: 12,
   },
   goLiveButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 1,
   },

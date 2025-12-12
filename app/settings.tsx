@@ -42,8 +42,8 @@ function SettingItem({ icon, iconColor, title, subtitle, onPress, showChevron = 
       </View>
       {showChevron && (
         <IconSymbol 
-          ios_icon_name="questionmark.circle" 
-          android_material_icon_name="help" 
+          ios_icon_name="chevron.right" 
+          android_material_icon_name="chevron_right" 
           size={20} 
           color="#666" 
         />
@@ -82,10 +82,9 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={24} color={theme.colors.text} />
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Settings</Text>
         <View style={{ width: 24 }} />
@@ -96,60 +95,127 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Dashboard & Tools */}
         <SettingSection icon="apps" title="Dashboard & Tools" iconColor="#666" />
         <SettingItem 
           icon="dashboard" 
           iconColor="#8B0000"
           title="Head Admin Dashboard" 
           subtitle="Full Platform Control"
+          onPress={() => console.log('Navigate to admin dashboard')}
         />
 
-        {/* General */}
         <SettingSection icon="settings" title="General" iconColor="#4A90E2" />
-        <SettingItem icon="palette" title="Appearance" />
-        <SettingItem icon="person" title="Profile Settings" />
-        <SettingItem icon="notifications" iconColor="#FF3B30" title="Notifications" />
-        <SettingItem icon="bookmark" title="Saved Streams" />
-        <SettingItem icon="star" iconColor="#FFD700" title="Achievements" />
+        <SettingItem 
+          icon="palette" 
+          title="Appearance" 
+          onPress={() => router.push('/screens/AppearanceSettingsScreen' as any)}
+        />
+        <SettingItem 
+          icon="person" 
+          title="Profile Settings" 
+          onPress={() => router.push('/screens/AccountSettingsScreen' as any)}
+        />
+        <SettingItem 
+          icon="notifications" 
+          iconColor="#FF3B30" 
+          title="Notifications" 
+          onPress={() => router.push('/screens/NotificationSettingsScreen' as any)}
+        />
+        <SettingItem 
+          icon="bookmark" 
+          title="Saved Streams" 
+          onPress={() => router.push('/screens/SavedStreamsScreen' as any)}
+        />
+        <SettingItem 
+          icon="star" 
+          iconColor="#FFD700" 
+          title="Achievements" 
+          onPress={() => router.push('/screens/AchievementsScreen' as any)}
+        />
 
-        {/* Account & Security */}
         <SettingSection icon="lock" title="Account & Security" iconColor="#FFA500" />
-        <SettingItem icon="shield" title="Account Security" />
-        <SettingItem icon="lock" title="Change Password" />
-        <SettingItem icon="block" iconColor="#FF3B30" title="Blocked Users" />
+        <SettingItem 
+          icon="shield" 
+          title="Account Security" 
+          onPress={() => router.push('/screens/AccountSecurityScreen' as any)}
+        />
+        <SettingItem 
+          icon="lock" 
+          title="Change Password" 
+          onPress={() => router.push('/screens/ChangePasswordScreen' as any)}
+        />
+        <SettingItem 
+          icon="block" 
+          iconColor="#FF3B30" 
+          title="Blocked Users" 
+          onPress={() => router.push('/screens/BlockedUsersScreen' as any)}
+        />
 
-        {/* Streaming */}
         <SettingSection icon="videocam" title="Streaming" iconColor="#666" />
         <SettingItem 
           icon="dashboard" 
           iconColor="#8B0000"
           title="Stream Dashboard" 
           subtitle="Manage VIP Club, Moderators & More"
+          onPress={() => console.log('Navigate to stream dashboard')}
         />
 
-        {/* Wallet & Gifts */}
         <SettingSection icon="account-balance-wallet" title="Wallet & Gifts" iconColor="#FFD700" />
         <SettingItem 
           icon="card-membership" 
           iconColor="#FFD700"
           title="PREMIUM Membership" 
           subtitle="Unlock Exclusive Benefits – 89 SEK/Mo"
+          onPress={() => router.push('/screens/PremiumMembershipScreen' as any)}
         />
-        <SettingItem icon="account-balance-wallet" title="Saldo" />
-        <SettingItem icon="card-giftcard" title="Gift Information" />
-        <SettingItem icon="subscriptions" title="Manage Subscriptions" />
-        <SettingItem icon="download" title="Withdraw Earnings" />
-        <SettingItem icon="history" title="Transaction History" />
+        <SettingItem 
+          icon="account-balance-wallet" 
+          title="Saldo" 
+          onPress={() => router.push('/screens/WalletScreen' as any)}
+        />
+        <SettingItem 
+          icon="card-giftcard" 
+          title="Gift Information" 
+          onPress={() => router.push('/screens/GiftInformationScreen' as any)}
+        />
+        <SettingItem 
+          icon="subscriptions" 
+          title="Manage Subscriptions" 
+          onPress={() => router.push('/screens/ManageSubscriptionsScreen' as any)}
+        />
+        <SettingItem 
+          icon="download" 
+          title="Withdraw Earnings" 
+          onPress={() => router.push('/screens/WithdrawScreen' as any)}
+        />
+        <SettingItem 
+          icon="history" 
+          title="Transaction History" 
+          onPress={() => router.push('/screens/TransactionHistoryScreen' as any)}
+        />
 
-        {/* Safety & Rules */}
         <SettingSection icon="shield" title="Safety & Rules" iconColor="#4A90E2" />
-        <SettingItem icon="gavel" title="Safety & Community Rules" />
-        <SettingItem icon="description" title="Appeals & Violations" />
-        <SettingItem icon="description" title="Terms of Service" />
-        <SettingItem icon="privacy-tip" title="Privacy Policy" />
+        <SettingItem 
+          icon="gavel" 
+          title="Safety & Community Rules" 
+          onPress={() => router.push('/screens/SafetyCommunityRulesScreen' as any)}
+        />
+        <SettingItem 
+          icon="description" 
+          title="Appeals & Violations" 
+          onPress={() => router.push('/screens/AppealsCenterScreen' as any)}
+        />
+        <SettingItem 
+          icon="description" 
+          title="Terms of Service" 
+          onPress={() => router.push('/screens/TermsOfServiceScreen' as any)}
+        />
+        <SettingItem 
+          icon="privacy-tip" 
+          title="Privacy Policy" 
+          onPress={() => router.push('/screens/PrivacyPolicyScreen' as any)}
+        />
 
-        {/* Profile Preferences */}
         <SettingSection icon="person" title="Profile Preferences" iconColor="#4A90E2" />
         <SettingItem icon="lock" title="Private Profile" showChevron={false} />
         <SettingItem 
@@ -158,11 +224,10 @@ export default function SettingsScreen() {
           subtitle="Everyone"
         />
 
-        {/* Logout */}
         <TouchableOpacity style={styles.logoutButton}>
           <IconSymbol ios_icon_name="arrow.right.square" android_material_icon_name="logout" size={20} color="#FF3B30" />
           <Text style={styles.logoutText}>Logout</Text>
-          <IconSymbol ios_icon_name="questionmark.circle" android_material_icon_name="help" size={20} color="#666" />
+          <IconSymbol ios_icon_name="chevron.right" android_material_icon_name="chevron_right" size={20} color="#666" />
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />

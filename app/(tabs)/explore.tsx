@@ -9,33 +9,24 @@ export default function ExploreScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Explore</Text>
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <View style={[styles.searchBar, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-          <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color="#666" />
-          <TextInput
-            style={[styles.searchInput, { color: theme.colors.text }]}
-            placeholder="Search streams, users..."
-            placeholderTextColor="#666"
-          />
-        </View>
+        <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={20} color="#666" />
+        <TextInput
+          style={[styles.searchInput, { color: theme.colors.text }]}
+          placeholder="Search streams, users..."
+          placeholderTextColor="#666"
+        />
       </View>
 
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Empty State */}
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
         <View style={styles.emptyState}>
           <IconSymbol ios_icon_name="magnifyingglass" android_material_icon_name="search" size={80} color="#333" />
           <Text style={[styles.emptyStateText, { color: theme.dark ? '#666' : '#999' }]}>
-            Discover live streams
+            Discover new streams
           </Text>
           <Text style={[styles.emptyStateSubtext, { color: theme.dark ? '#555' : '#aaa' }]}>
             Search for your favorite streamers
@@ -61,12 +52,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   searchContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-  },
-  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginHorizontal: 20,
+    marginBottom: 20,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
@@ -85,7 +75,7 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 100,
+    paddingVertical: 60,
     paddingHorizontal: 40,
   },
   emptyStateText: {

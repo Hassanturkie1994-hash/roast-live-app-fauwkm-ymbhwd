@@ -3,77 +3,54 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useTheme } from '@react-navigation/native';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function InboxScreen() {
+export default function AppealsCenterScreen() {
   const theme = useTheme();
+  const router = useRouter();
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Inbox</Text>
-      </View>
-
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity style={styles.tabActive}>
-          <Text style={[styles.tabText, styles.tabTextActive]}>All</Text>
+        <TouchableOpacity onPress={() => router.back()}>
+          <IconSymbol ios_icon_name="chevron.left" android_material_icon_name="arrow_back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tab}>
-          <Text style={[styles.tabText, { color: '#666' }]}>Unread</Text>
-        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Appeals Center</Text>
+        <View style={{ width: 24 }} />
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
         <View style={styles.emptyState}>
-          <IconSymbol ios_icon_name="envelope.fill" android_material_icon_name="mail" size={80} color="#333" />
+          <IconSymbol ios_icon_name="doc.text.fill" android_material_icon_name="description" size={80} color="#333" />
           <Text style={[styles.emptyStateText, { color: theme.dark ? '#666' : '#999' }]}>
-            No messages yet
+            No active appeals
           </Text>
           <Text style={[styles.emptyStateSubtext, { color: theme.dark ? '#555' : '#aaa' }]}>
-            Your messages will appear here
+            Submit an appeal if you believe a decision was made in error
           </Text>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 48,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  tabsContainer: {
-    flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.1)',
   },
-  tab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 16,
-  },
-  tabActive: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 3,
-    borderBottomColor: '#8B0000',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tabTextActive: {
-    color: '#8B0000',
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
   },
   scrollView: {
     flex: 1,
