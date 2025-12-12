@@ -28,10 +28,17 @@ import * as Device from 'expo-device';
  * - SEO Edge Optimization
  * - Auto Device Optimized Delivery
  * - CDN-Based Prefetching for Explore
+ * - Retry logic with exponential backoff
+ * - File format validation
  */
 
 const CDN_DOMAIN = 'cdn.roastlive.com'; // Configure this in your Cloudflare settings
 const SUPABASE_STORAGE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL + '/storage/v1/object/public';
+
+// Allowed MIME types for uploads
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-m4v'];
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 // CDN Tier Configuration
 const TIER_CONFIG = {
@@ -226,6 +233,44 @@ class CDNService {
     }
 
     return transforms;
+  }
+
+  /**
+   * Validate file before upload
+   */
+  private validateFile(file: Blob | File, mediaType: string): { valid: boolean; error?: string } {
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      return { valid: false, error: `File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit` };
+    }
+
+    if (file.size === 0) {
+      return { valid: false, error: 'File is empty' };
+    }
+
+    // Check MIME type
+    const fileType = file.type || '';
+    const isImage = ALLOWED_IMAGE_TYPES.includes(fileType);
+    const isVideo = ALLOWED_VIDEO_TYPES.includes(fileType);
+
+    if (!isImage && !isVideo) {
+      return { valid: false, error: `Invalid file type: ${fileType}. Allowed types: images (JPEG, PNG, WebP, GIF) and videos (MP4, MOV)` };
+    }
+
+    // Validate media type matches file type
+    if (mediaType === 'story' && !isImage && !isVideo) {
+      return { valid: false, error: 'Stories must be images or videos' };
+    }
+
+    if (mediaType === 'profile' && !isImage) {
+      return { valid: false, error: 'Profile images must be image files' };
+    }
+
+    if (mediaType === 'post' && !isImage && !isVideo) {
+      return { valid: false, error: 'Posts must be images or videos' };
+    }
+
+    return { valid: true };
   }
 
   /**
@@ -468,6 +513,7 @@ class CDNService {
     try {
       // RULE: Do NOT prefetch livestream feeds
       const staticAssetUrls = thumbnailUrls.filter(url => 
+        url &&
         !url.includes('stream') && 
         !url.includes('live') &&
         !url.includes('rtmp')
@@ -601,7 +647,7 @@ class CDNService {
         .select('cdn_url, supabase_url')
         .eq('file_hash', fileHash)
         .eq('media_type', mediaType)
-        .single();
+        .maybeSingle();
 
       if (error || !data) {
         return { exists: false };
@@ -707,6 +753,7 @@ class CDNService {
   /**
    * Upload media to Supabase storage and return CDN URL with deduplication
    * Triggers CDN mutation events
+   * Includes retry logic with exponential backoff
    */
   async uploadMedia(options: UploadOptions): Promise<{
     success: boolean;
@@ -715,103 +762,139 @@ class CDNService {
     error?: string;
     deduplicated?: boolean;
   }> {
-    try {
-      const { bucket, path, file, contentType, mediaType = 'other' } = options;
-      
-      // Determine tier
-      const mediaTier = options.tier || this.getTierForMediaType(mediaType);
-      
-      // Get user ID from auth
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || null;
+    const maxRetries = 3;
+    let lastError: any = null;
 
-      // Generate file hash for deduplication
-      const fileHash = await this.generateFileHash(file);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const { bucket, path, file, contentType, mediaType = 'other' } = options;
+        
+        // Validate file before upload
+        const validation = this.validateFile(file, mediaType);
+        if (!validation.valid) {
+          console.error('❌ File validation failed:', validation.error);
+          return { success: false, error: validation.error };
+        }
+        
+        // Determine tier
+        const mediaTier = options.tier || this.getTierForMediaType(mediaType);
+        
+        // Get user ID from auth
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id || null;
 
-      // Check for duplicates (except for profile images which should always overwrite)
-      if (mediaType !== 'profile') {
-        const duplicate = await this.checkDuplicateMedia(fileHash, mediaType);
-        if (duplicate.exists && duplicate.cdnUrl) {
-          console.log('✅ Media already exists (deduplicated):', duplicate.cdnUrl);
-          return {
-            success: true,
-            cdnUrl: duplicate.cdnUrl,
-            supabaseUrl: duplicate.supabaseUrl,
-            deduplicated: true,
-          };
+        // Generate file hash for deduplication
+        const fileHash = await this.generateFileHash(file);
+
+        // Check for duplicates (except for profile images which should always overwrite)
+        if (mediaType !== 'profile') {
+          const duplicate = await this.checkDuplicateMedia(fileHash, mediaType);
+          if (duplicate.exists && duplicate.cdnUrl) {
+            console.log('✅ Media already exists (deduplicated):', duplicate.cdnUrl);
+            return {
+              success: true,
+              cdnUrl: duplicate.cdnUrl,
+              supabaseUrl: duplicate.supabaseUrl,
+              deduplicated: true,
+            };
+          }
+        }
+
+        // Get cache control based on tier
+        const cacheControl = this.getCacheControlForTier(mediaTier);
+
+        console.log(`📤 Upload attempt ${attempt}/${maxRetries} for ${path}`);
+
+        // Upload to Supabase storage
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .upload(path, file, {
+            contentType: contentType || file.type || 'application/octet-stream',
+            cacheControl,
+            upsert: true,
+          });
+
+        if (error) {
+          console.error(`❌ Upload error (attempt ${attempt}):`, error);
+          lastError = error;
+          
+          // Wait before retry (exponential backoff)
+          if (attempt < maxRetries) {
+            const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+            console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw error;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from(bucket)
+          .getPublicUrl(path);
+
+        if (!urlData || !urlData.publicUrl) {
+          throw new Error('Failed to get public URL');
+        }
+
+        const supabaseUrl = urlData.publicUrl;
+
+        // Convert to CDN URL
+        const cdnUrl = this.convertToCDNUrl(supabaseUrl);
+
+        // Store hash for future deduplication
+        if (userId) {
+          const fileSize = file.size || 0;
+          await this.storeMediaHash(userId, fileHash, mediaType, cdnUrl, supabaseUrl, fileSize);
+        }
+
+        // Trigger CDN mutation event
+        const eventTypeMap: Record<string, CDNEventType> = {
+          profile: 'PROFILE_IMAGE_UPDATED',
+          story: 'STORY_PUBLISHED',
+          post: 'POST_PUBLISHED',
+          thumbnail: 'STREAM_ARCHIVE_UPLOAD',
+        };
+
+        const eventType = eventTypeMap[mediaType];
+        if (eventType && userId) {
+          await this.triggerCDNEvent(eventType, userId, cdnUrl, {
+            mediaType,
+            tier: mediaTier,
+            fileSize: file.size || 0,
+          });
+        }
+
+        console.log('✅ Media uploaded successfully:', {
+          supabaseUrl,
+          cdnUrl,
+          tier: mediaTier,
+          deduplicated: false,
+        });
+
+        return {
+          success: true,
+          cdnUrl,
+          supabaseUrl,
+          deduplicated: false,
+        };
+      } catch (error) {
+        console.error(`❌ Error uploading media (attempt ${attempt}):`, error);
+        lastError = error;
+        
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         }
       }
-
-      // Get cache control based on tier
-      const cacheControl = this.getCacheControlForTier(mediaTier);
-
-      // Upload to Supabase storage
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(path, file, {
-          contentType: contentType || 'image/jpeg',
-          cacheControl,
-          upsert: true,
-        });
-
-      if (error) {
-        console.error('Upload error:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(path);
-
-      const supabaseUrl = urlData.publicUrl;
-
-      // Convert to CDN URL
-      const cdnUrl = this.convertToCDNUrl(supabaseUrl);
-
-      // Store hash for future deduplication
-      if (userId) {
-        const fileSize = file.size || 0;
-        await this.storeMediaHash(userId, fileHash, mediaType, cdnUrl, supabaseUrl, fileSize);
-      }
-
-      // Trigger CDN mutation event
-      const eventTypeMap: Record<string, CDNEventType> = {
-        profile: 'PROFILE_IMAGE_UPDATED',
-        story: 'STORY_PUBLISHED',
-        post: 'POST_PUBLISHED',
-        thumbnail: 'STREAM_ARCHIVE_UPLOAD',
-      };
-
-      const eventType = eventTypeMap[mediaType];
-      if (eventType && userId) {
-        await this.triggerCDNEvent(eventType, userId, cdnUrl, {
-          mediaType,
-          tier: mediaTier,
-          fileSize: file.size || 0,
-        });
-      }
-
-      console.log('✅ Media uploaded successfully:', {
-        supabaseUrl,
-        cdnUrl,
-        tier: mediaTier,
-        deduplicated: false,
-      });
-
-      return {
-        success: true,
-        cdnUrl,
-        supabaseUrl,
-        deduplicated: false,
-      };
-    } catch (error) {
-      console.error('Error uploading media:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Upload failed',
-      };
     }
+
+    // All retries failed
+    const errorMessage = lastError?.message || 'Failed to upload media after multiple attempts';
+    console.error('❌ All upload attempts failed:', errorMessage);
+    return { success: false, error: errorMessage };
   }
 
   /**

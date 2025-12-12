@@ -34,22 +34,47 @@ export default function LivePlayerScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [viewerCount, setViewerCount] = useState(0);
   const [hasJoinedChannel, setHasJoinedChannel] = useState(false);
+  const [playerError, setPlayerError] = useState<string | null>(null);
+  const [isStreamOffline, setIsStreamOffline] = useState(false);
   const channelRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
-  const isMounted = useRef(true);
+  const isMountedRef = useRef(true);
+
+  // Validate playback URL before creating player
+  const isValidPlaybackUrl = (url: string | null | undefined): boolean => {
+    if (!url) return false;
+    
+    // Check if URL is a valid HTTP/HTTPS URL
+    try {
+      const urlObj = new URL(url);
+      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
 
   const player = useVideoPlayer(
-    stream?.playback_url
+    stream?.playback_url && isValidPlaybackUrl(stream.playback_url)
       ? {
           uri: stream.playback_url,
         }
       : null,
     (player) => {
-      if (isMounted.current) {
+      if (!isMountedRef.current) return;
+      
+      try {
         playerRef.current = player;
         player.loop = false;
         player.staysActiveInBackground = false;
-        player.play();
+        
+        // Safely attempt to play
+        if (player.play) {
+          player.play();
+        }
+      } catch (error) {
+        console.error('❌ Error initializing player:', error);
+        setPlayerError('Failed to initialize video player');
+        setIsLoading(false);
       }
     }
   );
@@ -59,18 +84,47 @@ export default function LivePlayerScreen() {
   });
 
   useEffect(() => {
-    console.log('Player status:', status);
-    if (status === 'readyToPlay' && isMounted.current) {
+    console.log('📹 Player status:', status);
+    
+    if (!isMountedRef.current) return;
+    
+    if (status === 'readyToPlay') {
       setIsLoading(false);
-    } else if (status === 'error' && isMounted.current) {
-      console.error('Video player error');
+      setPlayerError(null);
+      setIsStreamOffline(false);
+    } else if (status === 'error') {
+      console.error('❌ Video player error');
       setIsLoading(false);
-      Alert.alert('Playback Error', 'Unable to play the stream. Please try again later.');
+      setPlayerError('Unable to play the stream');
+      
+      // Check if stream is actually offline
+      if (stream) {
+        checkStreamStatus(stream.id);
+      }
+    } else if (status === 'loading') {
+      setIsLoading(true);
     }
-  }, [status]);
+  }, [status, stream]);
+
+  const checkStreamStatus = async (streamId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('streams')
+        .select('status')
+        .eq('id', streamId)
+        .maybeSingle();
+
+      if (data && data.status !== 'live') {
+        setIsStreamOffline(true);
+        setPlayerError('Stream has ended');
+      }
+    } catch (error) {
+      console.error('Error checking stream status:', error);
+    }
+  };
 
   const checkFollowStatus = useCallback(async (broadcasterId: string) => {
-    if (!user || !isMounted.current) return;
+    if (!user || !isMountedRef.current) return;
 
     try {
       const { data } = await supabase
@@ -78,56 +132,79 @@ export default function LivePlayerScreen() {
         .select('*')
         .eq('follower_id', user.id)
         .eq('following_id', broadcasterId)
-        .single();
+        .maybeSingle();
 
-      if (isMounted.current) {
+      if (isMountedRef.current) {
         setIsFollowing(!!data);
       }
     } catch (error) {
-      console.log('Not following');
+      console.log('ℹ️ Not following');
     }
   }, [user]);
 
   const fetchStream = useCallback(async () => {
-    if (!isMounted.current) return;
+    if (!isMountedRef.current) return;
 
     try {
       const { data, error } = await supabase
         .from('streams')
         .select('*, users(*)')
         .eq('id', streamId)
-        .single();
+        .maybeSingle();
 
       if (error) {
-        console.error('Error fetching stream:', error);
-        if (isMounted.current) {
+        console.error('❌ Error fetching stream:', error);
+        if (isMountedRef.current) {
           Alert.alert('Error', 'Stream not found');
           router.back();
         }
         return;
       }
 
-      console.log('Stream data:', data);
-      if (isMounted.current) {
+      if (!data) {
+        if (isMountedRef.current) {
+          Alert.alert('Error', 'Stream not found');
+          router.back();
+        }
+        return;
+      }
+
+      console.log('✅ Stream data:', data);
+      
+      if (isMountedRef.current) {
         setStream(data as Stream);
         setViewerCount(data.viewer_count || 0);
+
+        // Validate playback URL
+        if (!isValidPlaybackUrl(data.playback_url)) {
+          console.error('❌ Invalid playback URL:', data.playback_url);
+          setPlayerError('Invalid stream URL');
+          setIsLoading(false);
+        }
+
+        // Check if stream is actually live
+        if (data.status !== 'live') {
+          setIsStreamOffline(true);
+          setPlayerError('Stream is not live');
+          setIsLoading(false);
+        }
 
         if (data.broadcaster_id && user) {
           checkFollowStatus(data.broadcaster_id);
         }
       }
     } catch (error) {
-      console.error('Error in fetchStream:', error);
+      console.error('❌ Error in fetchStream:', error);
     }
   }, [streamId, user, checkFollowStatus]);
 
   const joinViewerChannel = useCallback(() => {
-    if (!streamId || !isMounted.current) return;
+    if (!streamId || !isMountedRef.current) return;
 
     const channel = supabase
       .channel(`stream:${streamId}:viewers`)
       .on('presence', { event: 'sync' }, () => {
-        if (!isMounted.current) return;
+        if (!isMountedRef.current) return;
         const state = channel.presenceState();
         const count = Object.keys(state).length;
         setViewerCount(count);
@@ -139,13 +216,20 @@ export default function LivePlayerScreen() {
         });
       })
       .on('presence', { event: 'join' }, () => {
-        console.log('Viewer joined');
+        console.log('👤 Viewer joined');
       })
       .on('presence', { event: 'leave' }, () => {
-        console.log('Viewer left');
+        console.log('👤 Viewer left');
+      })
+      .on('broadcast', { event: 'stream_ended' }, () => {
+        console.log('🛑 Stream ended by broadcaster');
+        if (isMountedRef.current) {
+          setIsStreamOffline(true);
+          setPlayerError('Stream has ended');
+        }
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && isMounted.current) {
+        if (status === 'SUBSCRIBED' && isMountedRef.current) {
           await channel.track({
             user_id: user?.id || 'anonymous',
             online_at: new Date().toISOString(),
@@ -157,21 +241,23 @@ export default function LivePlayerScreen() {
   }, [streamId, user]);
 
   useEffect(() => {
-    isMounted.current = true;
+    isMountedRef.current = true;
 
     if (streamId) {
       fetchStream();
     }
 
     return () => {
-      isMounted.current = false;
+      isMountedRef.current = false;
       
       if (playerRef.current) {
         try {
-          playerRef.current.pause();
+          if (playerRef.current.pause) {
+            playerRef.current.pause();
+          }
           playerRef.current = null;
         } catch (error) {
-          console.log('Error pausing player:', error);
+          console.log('⚠️ Error pausing player:', error);
         }
       }
       
@@ -180,7 +266,7 @@ export default function LivePlayerScreen() {
   }, [streamId, fetchStream]);
 
   useEffect(() => {
-    if (stream && !hasJoinedChannel && isMounted.current) {
+    if (stream && !hasJoinedChannel && isMountedRef.current) {
       joinViewerChannel();
       setHasJoinedChannel(true);
     }
@@ -192,7 +278,7 @@ export default function LivePlayerScreen() {
         channelRef.current.untrack();
         supabase.removeChannel(channelRef.current);
       } catch (error) {
-        console.log('Error leaving channel:', error);
+        console.log('⚠️ Error leaving channel:', error);
       } finally {
         channelRef.current = null;
       }
@@ -212,7 +298,7 @@ export default function LivePlayerScreen() {
           .delete()
           .eq('follower_id', user.id)
           .eq('following_id', stream.broadcaster_id);
-        if (isMounted.current) {
+        if (isMountedRef.current) {
           setIsFollowing(false);
         }
       } else {
@@ -220,7 +306,7 @@ export default function LivePlayerScreen() {
           follower_id: user.id,
           following_id: stream.broadcaster_id,
         });
-        if (isMounted.current) {
+        if (isMountedRef.current) {
           setIsFollowing(true);
         }
 
@@ -232,7 +318,7 @@ export default function LivePlayerScreen() {
         });
       }
     } catch (error) {
-      console.error('Error toggling follow:', error);
+      console.error('❌ Error toggling follow:', error);
       Alert.alert('Error', 'Failed to update follow status');
     }
   }, [user, stream, isFollowing]);
@@ -270,31 +356,59 @@ export default function LivePlayerScreen() {
     );
   }, [stream]);
 
+  const handleRetry = () => {
+    setPlayerError(null);
+    setIsStreamOffline(false);
+    setIsLoading(true);
+    fetchStream();
+  };
+
+  // Show loading state
   if (!stream) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.brandPrimary} />
+        <ActivityIndicator size="large" color={colors.brandPrimary || '#A40028'} />
         <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading stream...</Text>
       </View>
     );
   }
 
-  if (!stream.playback_url) {
+  // Show error state if playback URL is invalid or stream is offline
+  if (!stream.playback_url || !isValidPlaybackUrl(stream.playback_url) || isStreamOffline || playerError) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <IconSymbol
           ios_icon_name="exclamationmark.triangle.fill"
           android_material_icon_name="warning"
           size={48}
-          color={colors.brandPrimary}
+          color={colors.brandPrimary || '#A40028'}
         />
-        <Text style={[styles.errorText, { color: colors.text }]}>Stream not available</Text>
-        <Text style={[styles.errorSubtext, { color: colors.textSecondary }]}>
-          The broadcaster hasn&apos;t started streaming yet
+        <Text style={[styles.errorText, { color: colors.text }]}>
+          {isStreamOffline ? 'Stream Offline' : 'Stream Not Available'}
         </Text>
-        <TouchableOpacity style={[styles.backButton, { backgroundColor: colors.brandPrimary }]} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </TouchableOpacity>
+        <Text style={[styles.errorSubtext, { color: colors.textSecondary }]}>
+          {playerError || 'The broadcaster hasn\'t started streaming yet or the stream has ended'}
+        </Text>
+        <View style={styles.errorButtons}>
+          <TouchableOpacity 
+            style={[styles.retryButton, { backgroundColor: colors.brandPrimary || '#A40028' }]} 
+            onPress={handleRetry}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.backButton, { borderColor: colors.border }]} 
+            onPress={() => router.back()}
+          >
+            <Text style={[styles.backButtonText, { color: colors.text }]}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -303,7 +417,7 @@ export default function LivePlayerScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {isLoading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.brandPrimary} />
+          <ActivityIndicator size="large" color={colors.brandPrimary || '#A40028'} />
           <Text style={[styles.loadingText, { color: colors.text }]}>Loading video...</Text>
         </View>
       )}
@@ -406,23 +520,42 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginTop: 16,
+    textAlign: 'center',
   },
   errorSubtext: {
     fontSize: 14,
     fontWeight: '400',
     textAlign: 'center',
     marginTop: 8,
+    paddingHorizontal: 20,
   },
-  backButton: {
+  errorButtons: {
+    flexDirection: 'row',
+    gap: 12,
     marginTop: 24,
-    paddingHorizontal: 32,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 25,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  backButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 25,
+    borderWidth: 2,
   },
   backButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,

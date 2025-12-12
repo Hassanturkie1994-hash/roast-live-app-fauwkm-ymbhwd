@@ -26,7 +26,28 @@ interface Post {
   created_at: string;
 }
 
+// Allowed MIME types
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-m4v'];
+const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+
 class MediaService {
+  /**
+   * Validate file before upload
+   */
+  private validateFile(uri: string, fileType?: string): { valid: boolean; error?: string } {
+    if (!uri || uri.trim() === '') {
+      return { valid: false, error: 'Invalid file URI' };
+    }
+
+    // Basic URI validation
+    if (!uri.startsWith('file://') && !uri.startsWith('http://') && !uri.startsWith('https://')) {
+      return { valid: false, error: 'Invalid file URI format' };
+    }
+
+    return { valid: true };
+  }
+
   /**
    * Upload media to Supabase Storage with retry logic
    * In production, this should upload to Cloudflare R2/Stream
@@ -37,6 +58,13 @@ class MediaService {
     path: string,
     maxRetries: number = 3
   ): Promise<{ success: boolean; url?: string; error?: string }> {
+    // Validate file first
+    const validation = this.validateFile(uri);
+    if (!validation.valid) {
+      console.error('❌ File validation failed:', validation.error);
+      return { success: false, error: validation.error };
+    }
+
     let lastError: any = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -52,6 +80,20 @@ class MediaService {
         const blob = await response.blob();
         if (!blob || blob.size === 0) {
           throw new Error('Invalid file: empty or null blob');
+        }
+
+        // Validate file size
+        if (blob.size > MAX_FILE_SIZE) {
+          throw new Error(`File size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`);
+        }
+
+        // Validate MIME type
+        const fileType = blob.type || '';
+        const isImage = ALLOWED_IMAGE_TYPES.includes(fileType);
+        const isVideo = ALLOWED_VIDEO_TYPES.includes(fileType);
+
+        if (!isImage && !isVideo) {
+          throw new Error(`Invalid file type: ${fileType}. Allowed types: images (JPEG, PNG, WebP, GIF) and videos (MP4, MOV)`);
         }
 
         const arrayBuffer = await blob.arrayBuffer();
@@ -334,7 +376,7 @@ class MediaService {
           .from('stories')
           .select('views_count')
           .eq('id', storyId)
-          .single();
+          .maybeSingle();
 
         if (story) {
           await supabase
@@ -368,7 +410,7 @@ class MediaService {
           .from('posts')
           .select('views_count')
           .eq('id', postId)
-          .single();
+          .maybeSingle();
 
         if (post) {
           await supabase

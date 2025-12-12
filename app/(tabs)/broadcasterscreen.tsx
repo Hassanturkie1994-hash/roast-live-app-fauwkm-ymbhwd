@@ -37,17 +37,26 @@ export default function BroadcasterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const realtimeChannelRef = useRef<any>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (!user) {
       router.replace('/auth/login');
     }
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [user]);
 
   useEffect(() => {
     if (isLive) {
       timerIntervalRef.current = setInterval(() => {
-        setLiveTime((prev) => prev + 1);
+        if (isMountedRef.current) {
+          setLiveTime((prev) => prev + 1);
+        }
       }, 1000);
     } else {
       if (timerIntervalRef.current) {
@@ -64,13 +73,15 @@ export default function BroadcasterScreen() {
   }, [isLive]);
 
   const subscribeToViewerUpdates = useCallback(() => {
-    if (!currentStream?.id) return;
+    if (!currentStream?.id || !isMountedRef.current) return;
 
     const channel = supabase
       .channel(`stream:${currentStream.id}:broadcaster`)
       .on('broadcast', { event: 'viewer_count' }, (payload) => {
         console.log('👥 Viewer count update:', payload);
-        setViewerCount(payload.payload.count || 0);
+        if (isMountedRef.current) {
+          setViewerCount(payload.payload.count || 0);
+        }
       })
       .subscribe();
 
@@ -110,7 +121,9 @@ export default function BroadcasterScreen() {
   }
 
   const toggleCameraFacing = () => {
-    setFacing((current) => (current === 'back' ? 'front' : 'back'));
+    if (isMountedRef.current) {
+      setFacing((current) => (current === 'back' ? 'front' : 'back'));
+    }
   };
 
   const handleStartLiveSetup = () => {
@@ -131,7 +144,9 @@ export default function BroadcasterScreen() {
       // Hide tab bar when opening setup modal
       console.log('🎬 Opening live setup - hiding tab bar');
       setIsStreaming(true);
-      setShowSetup(true);
+      if (isMountedRef.current) {
+        setShowSetup(true);
+      }
     }
   };
 
@@ -158,13 +173,15 @@ export default function BroadcasterScreen() {
 
       console.log('✅ Stream created successfully:', result);
 
-      // Store the stream data
-      setCurrentStream(result.stream);
-      setIsLive(true);
-      setViewerCount(0);
-      setLiveTime(0);
-      setShowSetup(false);
-      setStreamTitle('');
+      if (isMountedRef.current) {
+        // Store the stream data
+        setCurrentStream(result.stream);
+        setIsLive(true);
+        setViewerCount(0);
+        setLiveTime(0);
+        setShowSetup(false);
+        setStreamTitle('');
+      }
 
       // Start stream timer for tracking
       startStreamTimer();
@@ -193,13 +210,20 @@ export default function BroadcasterScreen() {
       Alert.alert(
         'Cannot Start Stream',
         errorMessage,
-        [{ text: 'OK' }]
+        [
+          { text: 'Retry', onPress: startStream },
+          { text: 'Cancel', style: 'cancel', onPress: () => {
+            if (isMountedRef.current) {
+              setShowSetup(false);
+            }
+            setIsStreaming(false);
+          }}
+        ]
       );
-      
-      // Show tab bar again if stream failed to start
-      setIsStreaming(false);
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -229,11 +253,13 @@ export default function BroadcasterScreen() {
         await stopStreamTimer(user.id);
       }
 
-      // Reset all state
-      setIsLive(false);
-      setViewerCount(0);
-      setLiveTime(0);
-      setCurrentStream(null);
+      if (isMountedRef.current) {
+        // Reset all state
+        setIsLive(false);
+        setViewerCount(0);
+        setLiveTime(0);
+        setCurrentStream(null);
+      }
 
       // Show tab bar again
       console.log('✅ Stream ended - showing tab bar');
@@ -250,17 +276,24 @@ export default function BroadcasterScreen() {
       Alert.alert(
         'Error',
         errorMessage,
-        [{ text: 'OK' }]
+        [
+          { text: 'Retry', onPress: endStream },
+          { text: 'Cancel', style: 'cancel' }
+        ]
       );
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleCancelSetup = () => {
     console.log('❌ Cancelled live setup - showing tab bar');
-    setShowSetup(false);
-    setStreamTitle('');
+    if (isMountedRef.current) {
+      setShowSetup(false);
+      setStreamTitle('');
+    }
     // Show tab bar again when cancelling setup
     setIsStreaming(false);
   };

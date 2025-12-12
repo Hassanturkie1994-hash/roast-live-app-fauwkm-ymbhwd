@@ -101,6 +101,7 @@ export default function BroadcasterScreen() {
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const streamStartTime = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
 
   // Connection monitoring
   const {
@@ -122,13 +123,19 @@ export default function BroadcasterScreen() {
 
   // Check safety acknowledgement and forced review lock on mount
   useEffect(() => {
+    isMountedRef.current = true;
+    
     if (user) {
       checkSafetyStatus();
     }
+
+    return () => {
+      isMountedRef.current = false;
+    };
   }, [user]);
 
   const checkSafetyStatus = async () => {
-    if (!user) return;
+    if (!user || !isMountedRef.current) return;
 
     setIsCheckingSafety(true);
 
@@ -136,7 +143,7 @@ export default function BroadcasterScreen() {
       // Check if user has accepted safety guidelines
       const hasAcknowledgement = await enhancedContentSafetyService.hasSafetyAcknowledgement(user.id);
       
-      if (!hasAcknowledgement) {
+      if (!hasAcknowledgement && isMountedRef.current) {
         setShowSafetyAcknowledgement(true);
         setIsCheckingSafety(false);
         return;
@@ -145,7 +152,7 @@ export default function BroadcasterScreen() {
       // Check if user is under forced review lock
       const isLocked = await enhancedContentSafetyService.isUserLockedForReview(user.id);
       
-      if (isLocked) {
+      if (isLocked && isMountedRef.current) {
         const lock = await enhancedContentSafetyService.getForcedReviewLock(user.id);
         if (lock) {
           setForcedReviewReportCount(lock.report_count);
@@ -155,33 +162,39 @@ export default function BroadcasterScreen() {
     } catch (error) {
       console.error('Error checking safety status:', error);
     } finally {
-      setIsCheckingSafety(false);
+      if (isMountedRef.current) {
+        setIsCheckingSafety(false);
+      }
     }
   };
 
   const handleSafetyAcknowledgement = async () => {
-    if (!user) return;
+    if (!user || !isMountedRef.current) return;
 
     setIsLoading(true);
 
     try {
       const result = await enhancedContentSafetyService.recordSafetyAcknowledgement(user.id);
       
-      if (result.success) {
+      if (result.success && isMountedRef.current) {
         setShowSafetyAcknowledgement(false);
         Alert.alert(
           'Welcome!',
           'You can now use all features of Roast Live. Remember to follow our community guidelines!',
           [{ text: 'OK' }]
         );
-      } else {
+      } else if (isMountedRef.current) {
         Alert.alert('Error', result.error || 'Failed to record acknowledgement');
       }
     } catch (error) {
       console.error('Error recording safety acknowledgement:', error);
-      Alert.alert('Error', 'Failed to record acknowledgement');
+      if (isMountedRef.current) {
+        Alert.alert('Error', 'Failed to record acknowledgement');
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -213,13 +226,17 @@ export default function BroadcasterScreen() {
           nextAppState.match(/inactive|background/)
         ) {
           console.log('📱 App minimized - enabling floating thumbnail mode');
-          setIsMinimized(true);
+          if (isMountedRef.current) {
+            setIsMinimized(true);
+          }
         } else if (
           appState.current.match(/inactive|background/) &&
           nextAppState === 'active'
         ) {
           console.log('📱 App restored - disabling floating thumbnail mode');
-          setIsMinimized(false);
+          if (isMountedRef.current) {
+            setIsMinimized(false);
+          }
         }
       }
       appState.current = nextAppState;
@@ -233,7 +250,9 @@ export default function BroadcasterScreen() {
   useEffect(() => {
     if (isLive) {
       timerIntervalRef.current = setInterval(() => {
-        setLiveTime((prev) => prev + 1);
+        if (isMountedRef.current) {
+          setLiveTime((prev) => prev + 1);
+        }
       }, 1000);
     } else {
       if (timerIntervalRef.current) {
@@ -250,27 +269,28 @@ export default function BroadcasterScreen() {
   }, [isLive]);
 
   const subscribeToViewerUpdates = useCallback(() => {
-    if (!currentStream?.id) return;
+    if (!currentStream?.id || !isMountedRef.current) return;
 
     const channel = supabase
       .channel(`stream:${currentStream.id}:broadcaster`)
       .on('broadcast', { event: 'viewer_count' }, (payload) => {
         console.log('👥 Viewer count update:', payload);
         const count = payload.payload.count || 0;
-        setViewerCount(count);
         
-        // Track peak viewers
-        if (count > peakViewers) {
-          setPeakViewers(count);
+        if (isMountedRef.current) {
+          setViewerCount(count);
+          
+          // Track peak viewers
+          setPeakViewers(prev => count > prev ? count : prev);
         }
       })
       .subscribe();
 
     realtimeChannelRef.current = channel;
-  }, [currentStream?.id, peakViewers]);
+  }, [currentStream?.id]);
 
   const subscribeToGifts = useCallback(() => {
-    if (!currentStream?.id) return;
+    if (!currentStream?.id || !isMountedRef.current) return;
 
     const channel = supabase
       .channel(`stream:${currentStream.id}:gifts`)
@@ -287,8 +307,10 @@ export default function BroadcasterScreen() {
           tier: giftData.tier || 'A',
         };
         
-        setGiftAnimations((prev) => [...prev, newAnimation]);
-        setTotalGifts((prev) => prev + 1);
+        if (isMountedRef.current) {
+          setGiftAnimations((prev) => [...prev, newAnimation]);
+          setTotalGifts((prev) => prev + 1);
+        }
       })
       .subscribe();
 
@@ -314,7 +336,9 @@ export default function BroadcasterScreen() {
   }, [isLive, currentStream?.id, subscribeToViewerUpdates, subscribeToGifts]);
 
   const handleAnimationComplete = (animationId: string) => {
-    setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
+    if (isMountedRef.current) {
+      setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
+    }
   };
 
   if (!permission) {
@@ -338,16 +362,20 @@ export default function BroadcasterScreen() {
 
   const toggleCameraFacing = () => {
     console.log('📷 Switching camera without restarting stream');
-    setFacing((current) => (current === 'back' ? 'front' : 'back'));
-    if (facing === 'back') {
-      setFlashMode('off');
+    if (isMountedRef.current) {
+      setFacing((current) => (current === 'back' ? 'front' : 'back'));
+      if (facing === 'back') {
+        setFlashMode('off');
+      }
     }
   };
 
   const toggleFlash = () => {
     if (facing === 'back') {
       console.log('💡 Toggling flash');
-      setFlashMode((current) => (current === 'off' ? 'on' : 'off'));
+      if (isMountedRef.current) {
+        setFlashMode((current) => (current === 'off' ? 'on' : 'off'));
+      }
     } else {
       Alert.alert('Flash Unavailable', 'Flash is only available when using the back camera.');
     }
@@ -355,12 +383,16 @@ export default function BroadcasterScreen() {
 
   const toggleCamera = () => {
     console.log('📹 Toggling camera on/off');
-    setIsCameraOn((current) => !current);
+    if (isMountedRef.current) {
+      setIsCameraOn((current) => !current);
+    }
   };
 
   const toggleMic = () => {
     console.log('🎤 Toggling microphone');
-    setIsMicOn((current) => !current);
+    if (isMountedRef.current) {
+      setIsMicOn((current) => !current);
+    }
   };
 
   const handleStartLiveSetup = async () => {
@@ -374,42 +406,55 @@ export default function BroadcasterScreen() {
       return;
     }
 
-    // Check if user is under forced review lock
-    const isLocked = await enhancedContentSafetyService.isUserLockedForReview(user.id);
-    if (isLocked) {
-      const lock = await enhancedContentSafetyService.getForcedReviewLock(user.id);
-      if (lock) {
-        setForcedReviewReportCount(lock.report_count);
-        setShowForcedReviewLock(true);
+    try {
+      // Check if user is under forced review lock
+      const isLocked = await enhancedContentSafetyService.isUserLockedForReview(user.id);
+      if (isLocked) {
+        const lock = await enhancedContentSafetyService.getForcedReviewLock(user.id);
+        if (lock && isMountedRef.current) {
+          setForcedReviewReportCount(lock.report_count);
+          setShowForcedReviewLock(true);
+        }
+        return;
       }
-      return;
-    }
 
-    // Check if user has accepted safety guidelines
-    const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
-    if (!canStream.canStream) {
-      Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
-      setShowSafetyAcknowledgement(true);
-      return;
-    }
+      // Check if user has accepted safety guidelines
+      const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
+      if (!canStream.canStream) {
+        Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+        if (isMountedRef.current) {
+          setShowSafetyAcknowledgement(true);
+        }
+        return;
+      }
 
-    setShowSetup(true);
+      if (isMountedRef.current) {
+        setShowSetup(true);
+      }
+    } catch (error) {
+      console.error('Error in handleStartLiveSetup:', error);
+      Alert.alert('Error', 'Failed to start live setup. Please try again.');
+    }
   };
 
   const handleEndStreamConfirm = () => {
-    setShowExitConfirmation(false);
+    if (isMountedRef.current) {
+      setShowExitConfirmation(false);
+    }
     endStream();
   };
 
   const handleContentLabelSelected = (label: ContentLabel) => {
-    setContentLabel(label);
-    setShowContentLabelModal(false);
-    // Show creator rules modal
-    setShowCreatorRulesModal(true);
+    if (isMountedRef.current) {
+      setContentLabel(label);
+      setShowContentLabelModal(false);
+      // Show creator rules modal
+      setShowCreatorRulesModal(true);
+    }
   };
 
   const handleCreatorRulesConfirm = async () => {
-    if (!user) return;
+    if (!user || !isMountedRef.current) return;
 
     setIsLoading(true);
 
@@ -422,16 +467,22 @@ export default function BroadcasterScreen() {
         // Continue anyway - don't block streaming
       }
 
-      setShowCreatorRulesModal(false);
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+      }
       
       // Now start the stream
       await startStreamWithLabel(contentLabel!);
     } catch (error) {
       console.error('Error in handleCreatorRulesConfirm:', error);
-      setShowCreatorRulesModal(false);
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+      }
       await startStreamWithLabel(contentLabel!);
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -446,24 +497,33 @@ export default function BroadcasterScreen() {
       return;
     }
 
-    // Validate stream start (check for suspensions and strikes)
-    const validation = await contentSafetyService.validateStreamStart(user.id);
-    if (!validation.canStream) {
-      Alert.alert(
-        'Cannot Start Stream',
-        validation.reason || 'You are not allowed to stream at this time.',
-        [{ text: 'OK' }]
-      );
-      setShowSetup(false);
-      return;
-    }
+    try {
+      // Validate stream start (check for suspensions and strikes)
+      const validation = await contentSafetyService.validateStreamStart(user.id);
+      if (!validation.canStream) {
+        Alert.alert(
+          'Cannot Start Stream',
+          validation.reason || 'You are not allowed to stream at this time.',
+          [{ text: 'OK' }]
+        );
+        if (isMountedRef.current) {
+          setShowSetup(false);
+        }
+        return;
+      }
 
-    // Show content label selection modal
-    setShowContentLabelModal(true);
+      // Show content label selection modal
+      if (isMountedRef.current) {
+        setShowContentLabelModal(true);
+      }
+    } catch (error) {
+      console.error('Error in startStream:', error);
+      Alert.alert('Error', 'Failed to validate stream start. Please try again.');
+    }
   };
 
   const startStreamWithLabel = async (label: ContentLabel) => {
-    if (!user) return;
+    if (!user || !isMountedRef.current) return;
 
     setIsLoading(true);
 
@@ -489,21 +549,23 @@ export default function BroadcasterScreen() {
         startTime
       );
 
-      if (archiveResult.success && archiveResult.data) {
+      if (archiveResult.success && archiveResult.data && isMountedRef.current) {
         setArchiveId(archiveResult.data.id);
         console.log('📦 Stream archive created:', archiveResult.data.id);
       }
 
-      setCurrentStream(result.stream);
-      setIsLive(true);
-      setIsStreaming(true);
-      setViewerCount(0);
-      setPeakViewers(0);
-      setTotalViewers(0);
-      setTotalGifts(0);
-      setLiveTime(0);
-      setShowSetup(false);
-      setStreamTitle('');
+      if (isMountedRef.current) {
+        setCurrentStream(result.stream);
+        setIsLive(true);
+        setIsStreaming(true);
+        setViewerCount(0);
+        setPeakViewers(0);
+        setTotalViewers(0);
+        setTotalGifts(0);
+        setLiveTime(0);
+        setShowSetup(false);
+        setStreamTitle('');
+      }
 
       console.log('📺 Stream details:', {
         id: result.stream.id,
@@ -529,10 +591,15 @@ export default function BroadcasterScreen() {
       Alert.alert(
         'Cannot Start Stream',
         errorMessage,
-        [{ text: 'OK' }]
+        [
+          { text: 'Retry', onPress: () => startStreamWithLabel(label) },
+          { text: 'Cancel', style: 'cancel' }
+        ]
       );
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -555,7 +622,9 @@ export default function BroadcasterScreen() {
 
       // Get total unique viewers
       const totalViewerCount = await viewerTrackingService.getTotalViewerCount(currentStream.id);
-      setTotalViewers(totalViewerCount);
+      if (isMountedRef.current) {
+        setTotalViewers(totalViewerCount);
+      }
 
       // Clean up viewer sessions
       await viewerTrackingService.cleanupStreamViewers(currentStream.id);
@@ -590,21 +659,23 @@ export default function BroadcasterScreen() {
 
       console.log('✅ Stream ended successfully');
 
-      setIsLive(false);
-      setIsStreaming(false);
-      setViewerCount(0);
-      setPeakViewers(0);
-      setTotalViewers(0);
-      setTotalGifts(0);
-      setLiveTime(0);
-      setCurrentStream(null);
-      setGiftAnimations([]);
-      setIsMinimized(false);
-      setSelectedFilter('none');
-      setShowFilters(false);
-      setArchiveId(null);
-      setContentLabel(null);
-      streamStartTime.current = null;
+      if (isMountedRef.current) {
+        setIsLive(false);
+        setIsStreaming(false);
+        setViewerCount(0);
+        setPeakViewers(0);
+        setTotalViewers(0);
+        setTotalGifts(0);
+        setLiveTime(0);
+        setCurrentStream(null);
+        setGiftAnimations([]);
+        setIsMinimized(false);
+        setSelectedFilter('none');
+        setShowFilters(false);
+        setArchiveId(null);
+        setContentLabel(null);
+        streamStartTime.current = null;
+      }
 
       Alert.alert(
         'Stream Ended',
@@ -620,10 +691,15 @@ export default function BroadcasterScreen() {
       Alert.alert(
         'Error',
         errorMessage,
-        [{ text: 'OK' }]
+        [
+          { text: 'Retry', onPress: endStream },
+          { text: 'Cancel', style: 'cancel' }
+        ]
       );
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -659,7 +735,9 @@ export default function BroadcasterScreen() {
         <ForcedReviewLockModal
           visible={showForcedReviewLock}
           onClose={() => {
-            setShowForcedReviewLock(false);
+            if (isMountedRef.current) {
+              setShowForcedReviewLock(false);
+            }
             router.back();
           }}
           reportCount={forcedReviewReportCount}
@@ -697,7 +775,9 @@ export default function BroadcasterScreen() {
           style={styles.floatingThumbnail}
           onPress={() => {
             console.log('📱 Expanding from minimized mode');
-            setIsMinimized(false);
+            if (isMountedRef.current) {
+              setIsMinimized(false);
+            }
           }}
           activeOpacity={0.9}
         >
@@ -844,7 +924,9 @@ export default function BroadcasterScreen() {
               selectedFilter={selectedFilter}
               onSelectFilter={(filter) => {
                 console.log('🎨 Applying filter:', filter);
-                setSelectedFilter(filter);
+                if (isMountedRef.current) {
+                  setSelectedFilter(filter);
+                }
               }}
               visible={showFilters}
             />
@@ -956,8 +1038,10 @@ export default function BroadcasterScreen() {
         visible={showContentLabelModal}
         onSelect={handleContentLabelSelected}
         onCancel={() => {
-          setShowContentLabelModal(false);
-          setShowSetup(false);
+          if (isMountedRef.current) {
+            setShowContentLabelModal(false);
+            setShowSetup(false);
+          }
         }}
       />
 
@@ -966,8 +1050,10 @@ export default function BroadcasterScreen() {
         visible={showCreatorRulesModal}
         onConfirm={handleCreatorRulesConfirm}
         onCancel={() => {
-          setShowCreatorRulesModal(false);
-          setShowSetup(false);
+          if (isMountedRef.current) {
+            setShowCreatorRulesModal(false);
+            setShowSetup(false);
+          }
         }}
         isLoading={isLoading}
       />

@@ -60,12 +60,27 @@ export default function ViewerScreen() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [safetyHint, setSafetyHint] = useState<string | null>(null);
   const [streamDelay, setStreamDelay] = useState(0);
+  const [playerError, setPlayerError] = useState<string | null>(null);
+  const [isStreamOffline, setIsStreamOffline] = useState(false);
   const channelRef = useRef<any>(null);
   const giftChannelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
+  const playerRef = useRef<any>(null);
+
+  // Validate playback URL
+  const isValidPlaybackUrl = (url: string | null | undefined): boolean => {
+    if (!url) return false;
+    
+    try {
+      const urlObj = new URL(url);
+      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  };
 
   const player = useVideoPlayer(
-    stream?.playback_url
+    stream?.playback_url && isValidPlaybackUrl(stream.playback_url)
       ? {
           uri: stream.playback_url,
         }
@@ -73,14 +88,19 @@ export default function ViewerScreen() {
     (player) => {
       if (!isMountedRef.current) return;
       
-      player.loop = false;
-      player.staysActiveInBackground = false;
-      
-      // Safely play the video
       try {
-        player.play();
+        playerRef.current = player;
+        player.loop = false;
+        player.staysActiveInBackground = false;
+        
+        // Safely play the video
+        if (player.play) {
+          player.play();
+        }
       } catch (error) {
-        console.error('❌ Error playing video:', error);
+        console.error('❌ Error initializing player:', error);
+        setPlayerError('Failed to initialize video player');
+        setIsLoading(false);
       }
     }
   );
@@ -91,17 +111,46 @@ export default function ViewerScreen() {
 
   useEffect(() => {
     console.log('📹 Player status:', status);
+    
+    if (!isMountedRef.current) return;
+    
     if (status === 'readyToPlay') {
       setIsLoading(false);
+      setPlayerError(null);
+      setIsStreamOffline(false);
     } else if (status === 'error') {
       console.error('❌ Video player error');
       setIsLoading(false);
-      Alert.alert('Playback Error', 'Unable to play the stream. Please try again later.');
+      setPlayerError('Unable to play the stream');
+      
+      // Check if stream is actually offline
+      if (stream) {
+        checkStreamStatus(stream.id);
+      }
+    } else if (status === 'loading') {
+      setIsLoading(true);
     }
-  }, [status]);
+  }, [status, stream]);
+
+  const checkStreamStatus = async (streamId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('streams')
+        .select('status')
+        .eq('id', streamId)
+        .maybeSingle();
+
+      if (data && data.status !== 'live' && isMountedRef.current) {
+        setIsStreamOffline(true);
+        setPlayerError('Stream has ended');
+      }
+    } catch (error) {
+      console.error('Error checking stream status:', error);
+    }
+  };
 
   const checkFollowStatus = useCallback(async (broadcasterId: string) => {
-    if (!user) return;
+    if (!user || !isMountedRef.current) return;
 
     try {
       const { data } = await supabase
@@ -120,6 +169,8 @@ export default function ViewerScreen() {
   }, [user]);
 
   const fetchStream = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
     try {
       const { data, error } = await supabase
         .from('streams')
@@ -129,14 +180,18 @@ export default function ViewerScreen() {
 
       if (error) {
         console.error('❌ Error fetching stream:', error);
-        Alert.alert('Error', 'Stream not found');
-        router.back();
+        if (isMountedRef.current) {
+          Alert.alert('Error', 'Stream not found');
+          router.back();
+        }
         return;
       }
 
       if (!data) {
-        Alert.alert('Error', 'Stream not found');
-        router.back();
+        if (isMountedRef.current) {
+          Alert.alert('Error', 'Stream not found');
+          router.back();
+        }
         return;
       }
 
@@ -145,6 +200,20 @@ export default function ViewerScreen() {
       if (isMountedRef.current) {
         setStream(data as Stream);
         setViewerCount(data.viewer_count || 0);
+
+        // Validate playback URL
+        if (!isValidPlaybackUrl(data.playback_url)) {
+          console.error('❌ Invalid playback URL:', data.playback_url);
+          setPlayerError('Invalid stream URL');
+          setIsLoading(false);
+        }
+
+        // Check if stream is actually live
+        if (data.status !== 'live') {
+          setIsStreamOffline(true);
+          setPlayerError('Stream is not live');
+          setIsLoading(false);
+        }
       }
 
       if (data.broadcaster_id && user) {
@@ -163,17 +232,17 @@ export default function ViewerScreen() {
   }, [streamId, user, checkFollowStatus]);
 
   const joinViewerChannel = useCallback(() => {
-    if (!streamId) return;
+    if (!streamId || !isMountedRef.current) return;
 
     const channel = supabase
       .channel(`stream:${streamId}:viewers`)
       .on('presence', { event: 'sync' }, () => {
+        if (!isMountedRef.current) return;
+        
         const state = channel.presenceState();
         const count = Object.keys(state).length;
         
-        if (isMountedRef.current) {
-          setViewerCount(count);
-        }
+        setViewerCount(count);
 
         channel.send({
           type: 'broadcast',
@@ -194,8 +263,15 @@ export default function ViewerScreen() {
           setSafetyHint(hint);
         }
       })
+      .on('broadcast', { event: 'stream_ended' }, () => {
+        console.log('🛑 Stream ended by broadcaster');
+        if (isMountedRef.current) {
+          setIsStreamOffline(true);
+          setPlayerError('Stream has ended');
+        }
+      })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
+        if (status === 'SUBSCRIBED' && isMountedRef.current) {
           await channel.track({
             user_id: user?.id || 'anonymous',
             online_at: new Date().toISOString(),
@@ -207,7 +283,7 @@ export default function ViewerScreen() {
   }, [streamId, user]);
 
   const subscribeToGifts = useCallback(() => {
-    if (!streamId) return;
+    if (!streamId || !isMountedRef.current) return;
 
     const channel = supabase
       .channel(`stream:${streamId}:gifts`)
@@ -245,12 +321,15 @@ export default function ViewerScreen() {
       isMountedRef.current = false;
       
       // Safely pause the player
-      try {
-        if (player && player.pause) {
-          player.pause();
+      if (playerRef.current) {
+        try {
+          if (playerRef.current.pause) {
+            playerRef.current.pause();
+          }
+          playerRef.current = null;
+        } catch (error) {
+          console.error('⚠️ Error pausing player on unmount:', error);
         }
-      } catch (error) {
-        console.error('⚠️ Error pausing player on unmount:', error);
       }
       
       leaveViewerChannel();
@@ -259,7 +338,7 @@ export default function ViewerScreen() {
   }, [streamId, fetchStream]);
 
   useEffect(() => {
-    if (stream && !hasJoinedChannel) {
+    if (stream && !hasJoinedChannel && isMountedRef.current) {
       joinViewerChannel();
       subscribeToGifts();
       setHasJoinedChannel(true);
@@ -385,6 +464,13 @@ export default function ViewerScreen() {
     }
   };
 
+  const handleRetry = () => {
+    setPlayerError(null);
+    setIsStreamOffline(false);
+    setIsLoading(true);
+    fetchStream();
+  };
+
   if (!stream) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -394,7 +480,7 @@ export default function ViewerScreen() {
     );
   }
 
-  if (!stream.playback_url) {
+  if (!stream.playback_url || !isValidPlaybackUrl(stream.playback_url) || isStreamOffline || playerError) {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <IconSymbol
@@ -403,13 +489,26 @@ export default function ViewerScreen() {
           size={48}
           color={colors.gradientEnd}
         />
-        <Text style={styles.errorText}>Stream not available</Text>
-        <Text style={styles.errorSubtext}>
-          The broadcaster hasn&apos;t started streaming yet
+        <Text style={styles.errorText}>
+          {isStreamOffline ? 'Stream Offline' : 'Stream Not Available'}
         </Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </TouchableOpacity>
+        <Text style={styles.errorSubtext}>
+          {playerError || 'The broadcaster hasn\'t started streaming yet or the stream has ended'}
+        </Text>
+        <View style={styles.errorButtons}>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -595,6 +694,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginTop: 16,
+    textAlign: 'center',
   },
   errorSubtext: {
     fontSize: 14,
@@ -602,10 +702,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
+    paddingHorizontal: 20,
+  },
+  errorButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: colors.gradientEnd,
+    borderRadius: 25,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   backButton: {
-    marginTop: 24,
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
     paddingVertical: 12,
     backgroundColor: colors.gradientEnd,
     borderRadius: 25,

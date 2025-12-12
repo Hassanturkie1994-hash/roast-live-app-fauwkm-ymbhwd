@@ -41,7 +41,7 @@ export interface PinnedComment {
   stream_id: string;
   message_id: string;
   pinned_by: string;
-  expires_at: string;
+  pinned_until: string;
   created_at: string;
   chat_messages?: {
     id: string;
@@ -112,25 +112,55 @@ class ModerationService {
   // Get moderation history for a streamer
   async getModerationHistory(streamerId: string, limit: number = 50): Promise<ModerationHistoryEntry[]> {
     try {
-      const { data, error } = await supabase
+      // First fetch moderation history
+      const { data: history, error: historyError } = await supabase
         .from('moderation_history')
-        .select(`
-          *,
-          moderator:profiles!moderation_history_moderator_user_id_fkey(id, username, display_name, avatar_url),
-          target:profiles!moderation_history_target_user_id_fkey(id, username, display_name, avatar_url)
-        `)
+        .select('id, moderator_user_id, target_user_id, streamer_id, action_type, reason, duration_sec, created_at')
         .eq('streamer_id', streamerId)
         .order('created_at', { ascending: false })
         .limit(limit);
 
-      if (error) {
-        console.error('Error fetching moderation history:', error);
+      if (historyError) {
+        console.error('❌ Error fetching moderation history:', historyError);
         return [];
       }
 
-      return data as ModerationHistoryEntry[];
+      if (!history || history.length === 0) {
+        return [];
+      }
+
+      // Fetch profile data separately for moderators and targets
+      const moderatorIds = [...new Set(history.map(h => h.moderator_user_id))];
+      const targetIds = [...new Set(history.map(h => h.target_user_id))];
+
+      const { data: moderatorProfiles } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', moderatorIds);
+
+      const { data: targetProfiles } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', targetIds);
+
+      // Create maps for quick lookup
+      const moderatorMap = new Map(
+        (moderatorProfiles || []).map(p => [p.id, p])
+      );
+      const targetMap = new Map(
+        (targetProfiles || []).map(p => [p.id, p])
+      );
+
+      // Merge profile data with history
+      const result = history.map(h => ({
+        ...h,
+        moderator: moderatorMap.get(h.moderator_user_id),
+        target: targetMap.get(h.target_user_id),
+      }));
+
+      return result as ModerationHistoryEntry[];
     } catch (error) {
-      console.error('Error in getModerationHistory:', error);
+      console.error('❌ Error in getModerationHistory:', error);
       return [];
     }
   }
@@ -143,7 +173,7 @@ class ModerationService {
         .select('id')
         .eq('streamer_id', streamerId)
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error checking moderator status:', error);
@@ -165,7 +195,7 @@ class ModerationService {
         .select('id')
         .eq('streamer_id', streamerId)
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error checking ban status:', error);
@@ -205,7 +235,7 @@ class ModerationService {
         .from('streams')
         .select('broadcaster_id')
         .eq('id', data[0].stream_id)
-        .single();
+        .maybeSingle();
 
       if (streamData && streamData.broadcaster_id === streamerId) {
         return { isTimedOut: true, endTime: data[0].end_time };
@@ -269,23 +299,51 @@ class ModerationService {
     }
   }
 
-  // Get all moderators for a streamer
+  // Get all moderators for a streamer - Fixed: Fetch profiles separately to avoid recursion
   async getModerators(streamerId: string): Promise<Moderator[]> {
     try {
-      const { data, error } = await supabase
+      // First fetch moderators
+      const { data: moderators, error: moderatorsError } = await supabase
         .from('moderators')
-        .select('*, profiles(*)')
+        .select('id, streamer_id, user_id, created_at')
         .eq('streamer_id', streamerId)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching moderators:', error);
+      if (moderatorsError) {
+        console.error('❌ Error fetching moderators:', moderatorsError);
         return [];
       }
 
-      return data as Moderator[];
+      if (!moderators || moderators.length === 0) {
+        return [];
+      }
+
+      // Fetch profile data separately
+      const userIds = moderators.map(m => m.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', userIds);
+
+      if (profilesError) {
+        console.error('❌ Error fetching profiles:', profilesError);
+        // Return moderators without profile data
+        return moderators as Moderator[];
+      }
+
+      // Map profiles to moderators
+      const profileMap = new Map(
+        (profiles || []).map(p => [p.id, p])
+      );
+
+      const result = moderators.map(m => ({
+        ...m,
+        profiles: profileMap.get(m.user_id),
+      }));
+
+      return result as Moderator[];
     } catch (error) {
-      console.error('Error in getModerators:', error);
+      console.error('❌ Error in getModerators:', error);
       return [];
     }
   }
@@ -350,23 +408,51 @@ class ModerationService {
     }
   }
 
-  // Get all banned users for a streamer
+  // Get all banned users for a streamer - Fixed: Fetch profiles separately to avoid recursion
   async getBannedUsers(streamerId: string): Promise<BannedUser[]> {
     try {
-      const { data, error } = await supabase
+      // First fetch banned users
+      const { data: bannedUsers, error: bannedError } = await supabase
         .from('banned_users')
-        .select('*, profiles(*)')
+        .select('id, streamer_id, user_id, reason, created_at')
         .eq('streamer_id', streamerId)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching banned users:', error);
+      if (bannedError) {
+        console.error('❌ Error fetching banned users:', bannedError);
         return [];
       }
 
-      return data as BannedUser[];
+      if (!bannedUsers || bannedUsers.length === 0) {
+        return [];
+      }
+
+      // Fetch profile data separately
+      const userIds = bannedUsers.map(b => b.user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', userIds);
+
+      if (profilesError) {
+        console.error('❌ Error fetching profiles:', profilesError);
+        // Return banned users without profile data
+        return bannedUsers as BannedUser[];
+      }
+
+      // Map profiles to banned users
+      const profileMap = new Map(
+        (profiles || []).map(p => [p.id, p])
+      );
+
+      const result = bannedUsers.map(b => ({
+        ...b,
+        profiles: profileMap.get(b.user_id),
+      }));
+
+      return result as BannedUser[];
     } catch (error) {
-      console.error('Error in getBannedUsers:', error);
+      console.error('❌ Error in getBannedUsers:', error);
       return [];
     }
   }
@@ -445,15 +531,15 @@ class ModerationService {
     }
   }
 
-  // Pin a comment
+  // Pin a comment - Fixed: Use pinned_until instead of expires_at
   async pinComment(streamId: string, messageId: string, pinnedBy: string, streamerId: string, targetUserId: string, durationMinutes: number): Promise<{ success: boolean; error?: string }> {
     try {
       if (durationMinutes < 1 || durationMinutes > 5) {
         return { success: false, error: 'Pin duration must be between 1 and 5 minutes' };
       }
 
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + durationMinutes);
+      const pinnedUntil = new Date();
+      pinnedUntil.setMinutes(pinnedUntil.getMinutes() + durationMinutes);
 
       // Remove existing pinned comment if any
       await supabase
@@ -468,7 +554,7 @@ class ModerationService {
           stream_id: streamId,
           message_id: messageId,
           pinned_by: pinnedBy,
-          expires_at: expiresAt.toISOString(),
+          pinned_until: pinnedUntil.toISOString(),
         });
 
       if (error) {
@@ -511,14 +597,14 @@ class ModerationService {
     }
   }
 
-  // Get pinned comment for a stream
+  // Get pinned comment for a stream - Fixed: Use pinned_until instead of expires_at
   async getPinnedComment(streamId: string): Promise<PinnedComment | null> {
     try {
       const { data, error } = await supabase
         .from('pinned_comments')
         .select('*, chat_messages(*, users(display_name, username))')
         .eq('stream_id', streamId)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching pinned comment:', error);
@@ -528,9 +614,9 @@ class ModerationService {
       if (!data) return null;
 
       // Check if pin has expired
-      const expiresAt = new Date(data.expires_at);
+      const pinnedUntil = new Date(data.pinned_until);
       const now = new Date();
-      if (now > expiresAt) {
+      if (now > pinnedUntil) {
         // Auto-remove expired pin
         await this.unpinComment(streamId, data.pinned_by, data.pinned_by);
         return null;

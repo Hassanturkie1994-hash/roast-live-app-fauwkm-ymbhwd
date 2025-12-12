@@ -14,6 +14,30 @@ export interface StripeSubscription {
 
 class StripeService {
   /**
+   * Validate input parameters
+   */
+  private validateUserId(userId: any): { valid: boolean; error?: string } {
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      return { valid: false, error: 'Invalid user ID' };
+    }
+    return { valid: true };
+  }
+
+  private validateAmount(amount: any): { valid: boolean; error?: string } {
+    if (!amount || typeof amount !== 'number' || amount <= 0 || !isFinite(amount)) {
+      return { valid: false, error: 'Invalid amount' };
+    }
+    return { valid: true };
+  }
+
+  private validateCurrency(currency: any): { valid: boolean; error?: string } {
+    if (!currency || typeof currency !== 'string' || currency.trim() === '') {
+      return { valid: false, error: 'Invalid currency' };
+    }
+    return { valid: true };
+  }
+
+  /**
    * Create Stripe Checkout Session for wallet top-up
    */
   async createWalletTopUpSession(
@@ -23,19 +47,22 @@ class StripeService {
   ): Promise<{ success: boolean; error?: string; data?: StripeCheckoutSession }> {
     try {
       // Validate inputs
-      if (!userId || typeof userId !== 'string') {
+      const userIdValidation = this.validateUserId(userId);
+      if (!userIdValidation.valid) {
         console.error('Invalid userId:', userId);
-        return { success: false, error: 'Invalid user ID' };
+        return { success: false, error: userIdValidation.error };
       }
 
-      if (!amountCents || typeof amountCents !== 'number' || amountCents <= 0) {
+      const amountValidation = this.validateAmount(amountCents);
+      if (!amountValidation.valid) {
         console.error('Invalid amountCents:', amountCents);
-        return { success: false, error: 'Invalid amount' };
+        return { success: false, error: amountValidation.error };
       }
 
-      if (!currency || typeof currency !== 'string') {
+      const currencyValidation = this.validateCurrency(currency);
+      if (!currencyValidation.valid) {
         console.error('Invalid currency:', currency);
-        return { success: false, error: 'Invalid currency' };
+        return { success: false, error: currencyValidation.error };
       }
 
       console.log('Creating wallet top-up session:', { userId, amountCents, currency });
@@ -86,29 +113,34 @@ class StripeService {
   ): Promise<{ success: boolean; error?: string; data?: StripeSubscription }> {
     try {
       // Validate inputs
-      if (!userId || typeof userId !== 'string') {
+      const userIdValidation = this.validateUserId(userId);
+      if (!userIdValidation.valid) {
         console.error('Invalid userId:', userId);
-        return { success: false, error: 'Invalid user ID' };
+        return { success: false, error: userIdValidation.error };
       }
 
-      if (!clubId || typeof clubId !== 'string') {
+      const clubIdValidation = this.validateUserId(clubId);
+      if (!clubIdValidation.valid) {
         console.error('Invalid clubId:', clubId);
         return { success: false, error: 'Invalid club ID' };
       }
 
-      if (!creatorId || typeof creatorId !== 'string') {
+      const creatorIdValidation = this.validateUserId(creatorId);
+      if (!creatorIdValidation.valid) {
         console.error('Invalid creatorId:', creatorId);
         return { success: false, error: 'Invalid creator ID' };
       }
 
-      if (!monthlyPriceCents || typeof monthlyPriceCents !== 'number' || monthlyPriceCents <= 0) {
+      const priceValidation = this.validateAmount(monthlyPriceCents);
+      if (!priceValidation.valid) {
         console.error('Invalid monthlyPriceCents:', monthlyPriceCents);
         return { success: false, error: 'Invalid price' };
       }
 
-      if (!currency || typeof currency !== 'string') {
+      const currencyValidation = this.validateCurrency(currency);
+      if (!currencyValidation.valid) {
         console.error('Invalid currency:', currency);
-        return { success: false, error: 'Invalid currency' };
+        return { success: false, error: currencyValidation.error };
       }
 
       console.log('Creating club subscription:', {
@@ -164,7 +196,8 @@ class StripeService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // Validate inputs
-      if (!subscriptionId || typeof subscriptionId !== 'string') {
+      const subscriptionIdValidation = this.validateUserId(subscriptionId);
+      if (!subscriptionIdValidation.valid) {
         console.error('Invalid subscriptionId:', subscriptionId);
         return { success: false, error: 'Invalid subscription ID' };
       }
@@ -200,9 +233,10 @@ class StripeService {
   ): Promise<{ success: boolean; error?: string; url?: string }> {
     try {
       // Validate inputs
-      if (!userId || typeof userId !== 'string') {
+      const userIdValidation = this.validateUserId(userId);
+      if (!userIdValidation.valid) {
         console.error('Invalid userId:', userId);
-        return { success: false, error: 'Invalid user ID' };
+        return { success: false, error: userIdValidation.error };
       }
 
       console.log('Getting customer portal URL for user:', userId);
@@ -240,7 +274,8 @@ class StripeService {
   ): Promise<{ success: boolean; error?: string; status?: string }> {
     try {
       // Validate inputs
-      if (!sessionId || typeof sessionId !== 'string') {
+      const sessionIdValidation = this.validateUserId(sessionId);
+      if (!sessionIdValidation.valid) {
         console.error('Invalid sessionId:', sessionId);
         return { success: false, error: 'Invalid session ID' };
       }
