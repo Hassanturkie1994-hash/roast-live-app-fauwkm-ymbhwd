@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Platform, BackHandler, AppState, AppStateStatus } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, FlashMode } from 'expo-camera';
-import { colors, commonStyles } from '@/styles/commonStyles';
+import { useTheme } from '@/contexts/ThemeContext';
 import GradientButton from '@/components/GradientButton';
 import LiveBadge from '@/components/LiveBadge';
-import RoastLiveLogo from '@/components/RoastLiveLogo';
+import AppLogo from '@/components/AppLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStreaming } from '@/contexts/StreamingContext';
@@ -57,6 +57,7 @@ interface GiftAnimation {
 export default function BroadcasterScreen() {
   const { user } = useAuth();
   const { setIsStreaming } = useStreaming();
+  const { colors } = useTheme();
   const [facing, setFacing] = useState<CameraType>('front');
   const [permission, requestPermission] = useCameraPermissions();
   const [isLive, setIsLive] = useState(false);
@@ -342,19 +343,21 @@ export default function BroadcasterScreen() {
   };
 
   if (!permission) {
-    return <View style={commonStyles.container} />;
+    return <View style={[styles.container, { backgroundColor: colors.background }]} />;
   }
 
   if (!permission.granted) {
     return (
-      <View style={[commonStyles.container, styles.permissionContainer]}>
+      <View style={[styles.container, styles.permissionContainer, { backgroundColor: colors.background }]}>
         <IconSymbol
           ios_icon_name="video.fill"
           android_material_icon_name="videocam"
           size={64}
           color={colors.textSecondary}
         />
-        <Text style={styles.permissionText}>We need your permission to use the camera</Text>
+        <Text style={[styles.permissionText, { color: colors.textSecondary }]}>
+          We need your permission to use the camera
+        </Text>
         <GradientButton title="Grant Permission" onPress={requestPermission} />
       </View>
     );
@@ -718,7 +721,7 @@ export default function BroadcasterScreen() {
   // Show safety acknowledgement modal if needed
   if (showSafetyAcknowledgement) {
     return (
-      <View style={commonStyles.container}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         <SafetyAcknowledgementModal
           visible={showSafetyAcknowledgement}
           onAccept={handleSafetyAcknowledgement}
@@ -731,7 +734,7 @@ export default function BroadcasterScreen() {
   // Show forced review lock modal if needed
   if (showForcedReviewLock) {
     return (
-      <View style={commonStyles.container}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         <ForcedReviewLockModal
           visible={showForcedReviewLock}
           onClose={() => {
@@ -747,7 +750,7 @@ export default function BroadcasterScreen() {
   }
 
   return (
-    <View style={commonStyles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Camera View */}
       {isCameraOn ? (
         <CameraView 
@@ -758,21 +761,23 @@ export default function BroadcasterScreen() {
           ratio="16:9"
         />
       ) : (
-        <View style={styles.cameraOffContainer}>
+        <View style={[styles.cameraOffContainer, { backgroundColor: colors.background }]}>
           <IconSymbol
             ios_icon_name="video.slash.fill"
             android_material_icon_name="videocam_off"
             size={64}
             color={colors.textSecondary}
           />
-          <Text style={styles.cameraOffText}>Camera Off — Stream Still Active</Text>
+          <Text style={[styles.cameraOffText, { color: colors.text }]}>
+            Camera Off — Stream Still Active
+          </Text>
         </View>
       )}
 
       {/* Floating Thumbnail for Multitask Mode */}
       {isMinimized && isLive && (
         <TouchableOpacity 
-          style={styles.floatingThumbnail}
+          style={[styles.floatingThumbnail, { borderColor: colors.gradientEnd }]}
           onPress={() => {
             console.log('📱 Expanding from minimized mode');
             if (isMountedRef.current) {
@@ -789,7 +794,7 @@ export default function BroadcasterScreen() {
                 flash={flashMode}
               />
             ) : (
-              <View style={styles.thumbnailCameraOff}>
+              <View style={[styles.thumbnailCameraOff, { backgroundColor: colors.background }]}>
                 <IconSymbol
                   ios_icon_name="video.slash.fill"
                   android_material_icon_name="videocam_off"
@@ -817,16 +822,14 @@ export default function BroadcasterScreen() {
               maxAttempts={6}
             />
 
-            {/* Top Bar */}
+            {/* Top Bar with Logo */}
             <View style={styles.topBar}>
               <View style={styles.topLeft}>
+                <AppLogo size={80} opacity={0.35} alignment="left" />
                 <LiveBadge size="small" />
                 {contentLabel && (
                   <ContentLabelBadge label={contentLabel} size="small" />
                 )}
-                <View style={styles.watermark}>
-                  <Text style={styles.watermarkText}>ROAST LIVE</Text>
-                </View>
               </View>
               <View style={styles.statsContainer}>
                 <TouchableOpacity 
@@ -946,8 +949,8 @@ export default function BroadcasterScreen() {
 
         {!isLive && (
           <View style={styles.centerContent}>
-            <RoastLiveLogo size="large" />
-            <Text style={styles.welcomeText}>Ready to go live?</Text>
+            <AppLogo size="large" alignment="center" />
+            <Text style={[styles.welcomeText, { color: colors.text }]}>Ready to go live?</Text>
             <GradientButton
               title="Go Live"
               onPress={handleStartLiveSetup}
@@ -1066,14 +1069,14 @@ export default function BroadcasterScreen() {
         onRequestClose={() => !isLoading && setShowSetup(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <RoastLiveLogo size="medium" style={styles.modalLogo} />
-            <Text style={styles.modalTitle}>Setup Your Stream</Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <AppLogo size="medium" alignment="center" style={styles.modalLogo} />
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Setup Your Stream</Text>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Stream Title</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Stream Title</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
                 placeholder="What are you streaming?"
                 placeholderTextColor={colors.placeholder}
                 value={streamTitle}
@@ -1091,18 +1094,18 @@ export default function BroadcasterScreen() {
                 size={20}
                 color={colors.gradientEnd}
               />
-              <Text style={styles.infoText}>
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
                 Your stream will be broadcast live in vertical format (9:16) at up to 1080p quality. Make sure you have a stable internet connection!
               </Text>
             </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={styles.cancelButton}
+                style={[styles.cancelButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
                 onPress={() => setShowSetup(false)}
                 disabled={isLoading}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
               <View style={styles.goLiveButtonContainer}>
                 <GradientButton
@@ -1125,23 +1128,23 @@ export default function BroadcasterScreen() {
         onRequestClose={() => setShowExitConfirmation(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.confirmationModal}>
+          <View style={[styles.confirmationModal, { backgroundColor: colors.card }]}>
             <IconSymbol
               ios_icon_name="exclamationmark.triangle.fill"
               android_material_icon_name="warning"
               size={48}
               color={colors.gradientEnd}
             />
-            <Text style={styles.confirmationTitle}>End Livestream?</Text>
-            <Text style={styles.confirmationText}>
+            <Text style={[styles.confirmationTitle, { color: colors.text }]}>End Livestream?</Text>
+            <Text style={[styles.confirmationText, { color: colors.textSecondary }]}>
               You cannot leave your livestream until you end it.{'\n\n'}Are you sure you want to end the stream?
             </Text>
             <View style={styles.confirmationButtons}>
               <TouchableOpacity
-                style={styles.confirmationCancelButton}
+                style={[styles.confirmationCancelButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
                 onPress={() => setShowExitConfirmation(false)}
               >
-                <Text style={styles.confirmationCancelText}>Cancel</Text>
+                <Text style={[styles.confirmationCancelText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
               <View style={styles.confirmationEndButton}>
                 <GradientButton
@@ -1159,6 +1162,9 @@ export default function BroadcasterScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   camera: {
     flex: 1,
     width: '100%',
@@ -1166,7 +1172,6 @@ const styles = StyleSheet.create({
   },
   cameraOffContainer: {
     flex: 1,
-    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
@@ -1174,7 +1179,6 @@ const styles = StyleSheet.create({
   cameraOffText: {
     fontSize: 18,
     fontWeight: '600',
-    color: colors.text,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1189,7 +1193,6 @@ const styles = StyleSheet.create({
   permissionText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textSecondary,
     textAlign: 'center',
   },
   topBar: {
@@ -1206,19 +1209,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     flex: 1,
   },
-  watermark: {
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  watermarkText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.text,
-    opacity: 0.5,
-    letterSpacing: 1,
-  },
   statsContainer: {
     flexDirection: 'row',
     gap: 16,
@@ -1233,7 +1223,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statText: {
-    color: colors.text,
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -1252,7 +1242,7 @@ const styles = StyleSheet.create({
   warningText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.text,
+    color: '#FFFFFF',
   },
   filterToggle: {
     position: 'absolute',
@@ -1265,7 +1255,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   moderatorPanelToggle: {
     position: 'absolute',
@@ -1278,7 +1268,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.gradientEnd,
+    borderColor: '#A40028',
   },
   moderationHistoryToggle: {
     position: 'absolute',
@@ -1291,7 +1281,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   floatingThumbnail: {
     position: 'absolute',
@@ -1308,7 +1298,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 8,
     borderWidth: 3,
-    borderColor: colors.gradientEnd,
   },
   thumbnailContent: {
     flex: 1,
@@ -1318,7 +1307,6 @@ const styles = StyleSheet.create({
   },
   thumbnailCameraOff: {
     flex: 1,
-    backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1333,13 +1321,13 @@ const styles = StyleSheet.create({
   thumbnailText: {
     fontSize: 10,
     fontWeight: '600',
-    color: colors.text,
+    color: '#FFFFFF',
     textAlign: 'center',
   },
   thumbnailViewers: {
     fontSize: 10,
     fontWeight: '700',
-    color: colors.text,
+    color: '#FFFFFF',
     textAlign: 'center',
   },
   centerContent: {
@@ -1351,7 +1339,6 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
   },
   modalOverlay: {
     flex: 1,
@@ -1361,7 +1348,6 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalContent: {
-    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -1373,7 +1359,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: colors.text,
     marginBottom: 24,
     textAlign: 'center',
   },
@@ -1383,23 +1368,19 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    color: colors.text,
     fontSize: 16,
   },
   infoBox: {
     flexDirection: 'row',
     backgroundColor: 'rgba(164, 0, 40, 0.1)',
-    borderColor: colors.gradientEnd,
+    borderColor: '#A40028',
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
@@ -1410,7 +1391,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     fontWeight: '400',
-    color: colors.textSecondary,
     lineHeight: 18,
   },
   modalButtons: {
@@ -1419,8 +1399,6 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 25,
     paddingVertical: 14,
@@ -1429,13 +1407,11 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
   },
   goLiveButtonContainer: {
     flex: 1,
   },
   confirmationModal: {
-    backgroundColor: colors.card,
     borderRadius: 16,
     padding: 24,
     width: '100%',
@@ -1446,13 +1422,11 @@ const styles = StyleSheet.create({
   confirmationTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: colors.text,
     textAlign: 'center',
   },
   confirmationText: {
     fontSize: 16,
     fontWeight: '400',
-    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -1464,8 +1438,6 @@ const styles = StyleSheet.create({
   },
   confirmationCancelButton: {
     flex: 1,
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 25,
     paddingVertical: 14,
@@ -1474,7 +1446,6 @@ const styles = StyleSheet.create({
   confirmationCancelText: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
   },
   confirmationEndButton: {
     flex: 1,

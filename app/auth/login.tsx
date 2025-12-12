@@ -12,9 +12,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { colors, commonStyles } from '@/styles/commonStyles';
+import { useTheme } from '@/contexts/ThemeContext';
 import GradientButton from '@/components/GradientButton';
-import RoastLiveLogo from '@/components/RoastLiveLogo';
+import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginScreen() {
@@ -22,6 +22,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
+  const { colors } = useTheme();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -42,7 +43,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={commonStyles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -50,15 +51,17 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <RoastLiveLogo size="xlarge" />
-          <Text style={styles.subtitle}>Welcome back to the live experience</Text>
+          <AppLogo size="xlarge" alignment="center" />
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Welcome back to the live experience
+          </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
               placeholder="Enter your email"
               placeholderTextColor={colors.placeholder}
               value={email}
@@ -70,9 +73,9 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
               placeholder="Enter your password"
               placeholderTextColor={colors.placeholder}
               value={password}
@@ -83,7 +86,9 @@ export default function LoginScreen() {
           </View>
 
           <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+            <Text style={[styles.forgotPasswordText, { color: colors.brandPrimary }]}>
+              Forgot password?
+            </Text>
           </TouchableOpacity>
 
           <GradientButton
@@ -93,9 +98,9 @@ export default function LoginScreen() {
           />
 
           <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
           <GradientButton
@@ -111,6 +116,9 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -124,7 +132,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     fontWeight: '400',
-    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 24,
   },
@@ -137,17 +144,13 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: colors.background,
-    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    color: colors.text,
     fontSize: 16,
   },
   forgotPassword: {
@@ -157,7 +160,6 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.brandPrimary,
   },
   divider: {
     flexDirection: 'row',
@@ -167,12 +169,10 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.border,
   },
   dividerText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textSecondary,
     marginHorizontal: 16,
   },
 });

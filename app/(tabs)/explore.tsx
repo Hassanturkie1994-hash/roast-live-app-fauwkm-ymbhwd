@@ -15,6 +15,7 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useTheme } from '@/contexts/ThemeContext';
+import AppLogo from '@/components/AppLogo';
 import { CDNImage } from '@/components/CDNImage';
 import { useExplorePrefetch } from '@/hooks/useExplorePrefetch';
 import { cdnService } from '@/app/services/cdnService';
@@ -276,7 +277,7 @@ export default function ExploreScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Explore</Text>
+        <AppLogo size="small" alignment="left" />
         <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
           Discover trending content
         </Text>
@@ -326,13 +327,9 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     borderBottomWidth: 1,
   },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
   headerSubtitle: {
     fontSize: 14,
+    marginTop: 8,
   },
   scrollView: {
     flex: 1,

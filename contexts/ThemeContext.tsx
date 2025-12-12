@@ -88,11 +88,11 @@ const darkTheme: ThemeColors = {
 };
 
 const lightImages: ThemeImages = {
-  logo: require('@/assets/images/final_quest_240x240.png'),
+  logo: require('@/assets/images/8b6ce900-0e9f-485a-930b-53ed6d2cc04b.png'), // Light theme logo
 };
 
 const darkImages: ThemeImages = {
-  logo: require('@/assets/images/natively-dark.png'),
+  logo: require('@/assets/images/d2ce70c7-d116-4210-830b-f8f9732b4682.png'), // Dark theme logo
 };
 
 // Default theme values to prevent undefined errors

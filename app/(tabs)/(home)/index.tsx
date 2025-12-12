@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import StreamPreviewCard from '@/components/StreamPreviewCard';
 import StoriesBar from '@/components/StoriesBar';
-import RoastLiveLogo from '@/components/RoastLiveLogo';
+import AppLogo from '@/components/AppLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -270,7 +270,7 @@ export default function HomeScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header with Logo */}
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <RoastLiveLogo size="small" withShadow />
+        <AppLogo size="small" alignment="center" withShadow />
       </View>
 
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>

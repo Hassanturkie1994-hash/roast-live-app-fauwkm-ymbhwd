@@ -12,9 +12,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
-import { colors, commonStyles } from '@/styles/commonStyles';
+import { useTheme } from '@/contexts/ThemeContext';
 import GradientButton from '@/components/GradientButton';
-import RoastLiveLogo from '@/components/RoastLiveLogo';
+import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function RegisterScreen() {
@@ -24,6 +24,7 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signUp } = useAuth();
+  const { colors } = useTheme();
 
   const handleRegister = async () => {
     if (!displayName || !email || !password || !confirmPassword) {
@@ -63,7 +64,7 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={commonStyles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -71,15 +72,17 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <RoastLiveLogo size="xlarge" />
-          <Text style={styles.subtitle}>Join the live streaming revolution</Text>
+          <AppLogo size="xlarge" alignment="center" />
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Join the live streaming revolution
+          </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Display Name</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Display Name</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
               placeholder="Choose your display name"
               placeholderTextColor={colors.placeholder}
               value={displayName}
@@ -89,9 +92,9 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
               placeholder="Enter your email"
               placeholderTextColor={colors.placeholder}
               value={email}
@@ -103,9 +106,9 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
               placeholder="Create a password (min 6 characters)"
               placeholderTextColor={colors.placeholder}
               value={password}
@@ -116,9 +119,9 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Confirm Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Confirm Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
               placeholder="Confirm your password"
               placeholderTextColor={colors.placeholder}
               value={confirmPassword}
@@ -135,17 +138,19 @@ export default function RegisterScreen() {
           />
 
           <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
+            <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
           <TouchableOpacity
-            style={styles.secondaryButton}
+            style={[styles.secondaryButton, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => router.back()}
             disabled={loading}
           >
-            <Text style={styles.secondaryButtonText}>Already have an account? Sign In</Text>
+            <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+              Already have an account? Sign In
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -154,6 +159,9 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -167,7 +175,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     fontWeight: '400',
-    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 24,
   },
@@ -180,17 +187,13 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    color: colors.text,
     fontSize: 16,
   },
   divider: {
@@ -201,17 +204,13 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.border,
   },
   dividerText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.textSecondary,
     marginHorizontal: 16,
   },
   secondaryButton: {
-    backgroundColor: colors.card,
-    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 25,
     paddingVertical: 14,
@@ -220,6 +219,5 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.text,
   },
 });
