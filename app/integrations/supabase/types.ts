@@ -1,135 +1,138 @@
-
-// Database Types
 export type Json =
   | string
   | number
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[];
+  | Json[]
 
-// User Profile Type
-export interface UserProfile {
-  id: string;
-  username: string;
-  full_name?: string;
-  avatar_url?: string;
-  bio?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// Stream Type
-export interface Stream {
-  id: string;
-  user_id: string;
-  title: string;
-  description?: string;
-  thumbnail_url?: string;
-  is_live: boolean;
-  viewer_count: number;
-  started_at?: string;
-  ended_at?: string;
-  created_at: string;
-}
-
-// Message Type
-export interface Message {
-  id: string;
-  stream_id: string;
-  user_id: string;
-  content: string;
-  created_at: string;
-}
-
-// Gift Type
-export interface Gift {
-  id: string;
-  name: string;
-  description?: string;
-  image_url?: string;
-  coin_value: number;
-  created_at: string;
-}
-
-// Transaction Type
-export interface Transaction {
-  id: string;
-  user_id: string;
-  type: 'purchase' | 'gift_sent' | 'gift_received' | 'earning';
-  amount: number;
-  description?: string;
-  created_at: string;
-}
-
-// Notification Type
-export interface Notification {
-  id: string;
-  user_id: string;
-  type: string;
-  title: string;
-  message: string;
-  read: boolean;
-  data?: Json;
-  created_at: string;
-}
-
-// Follower Type
-export interface Follower {
-  id: string;
-  follower_id: string;
-  following_id: string;
-  created_at: string;
-}
-
-// Database Schema Type
-export interface Database {
+export type Database = {
   public: {
     Tables: {
-      profiles: {
-        Row: UserProfile;
-        Insert: Omit<UserProfile, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<UserProfile, 'id' | 'created_at'>>;
-      };
-      streams: {
-        Row: Stream;
-        Insert: Omit<Stream, 'id' | 'created_at'>;
-        Update: Partial<Omit<Stream, 'id' | 'created_at'>>;
-      };
-      messages: {
-        Row: Message;
-        Insert: Omit<Message, 'id' | 'created_at'>;
-        Update: Partial<Omit<Message, 'id' | 'created_at'>>;
-      };
-      gifts: {
-        Row: Gift;
-        Insert: Omit<Gift, 'id' | 'created_at'>;
-        Update: Partial<Omit<Gift, 'id' | 'created_at'>>;
-      };
-      transactions: {
-        Row: Transaction;
-        Insert: Omit<Transaction, 'id' | 'created_at'>;
-        Update: Partial<Omit<Transaction, 'id' | 'created_at'>>;
-      };
-      notifications: {
-        Row: Notification;
-        Insert: Omit<Notification, 'id' | 'created_at'>;
-        Update: Partial<Omit<Notification, 'id' | 'created_at'>>;
-      };
-      followers: {
-        Row: Follower;
-        Insert: Omit<Follower, 'id' | 'created_at'>;
-        Update: Partial<Omit<Follower, 'id' | 'created_at'>>;
-      };
-    };
+      [_ in never]: never
+    }
     Views: {
-      [_ in never]: never;
-    };
+      [_ in never]: never
+    }
     Functions: {
-      [_ in never]: never;
-    };
+      [_ in never]: never
+    }
     Enums: {
-      [_ in never]: never;
-    };
-  };
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
+
+type DefaultSchema = Database[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof Database },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof Database },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof Database },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof Database },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
+  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
