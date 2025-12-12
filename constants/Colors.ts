@@ -1,4 +1,5 @@
-const tintColorLight = "#0a7ea4";
+
+const tintColorLight = "#A40028";
 const tintColorDark = "#fff";
 
 export const zincColors = {
@@ -18,24 +19,25 @@ export const zincColors = {
 export const appleBlue = "#007AFF";
 export const appleRed = "#FF3B30";
 
-export const borderColor = "#A1A1AA80";
+export const borderColor = "#D4D4D4";
 export const appleGreen = "#34C759";
+
 export const Colors = {
   light: {
-    text: "#11181C",
-    background: "#fff",
+    text: "#000000",
+    background: "#FFFFFF",
     tint: tintColorLight,
-    icon: "#687076",
-    tabIconDefault: "#687076",
+    icon: "#505050",
+    tabIconDefault: "#505050",
     tabIconSelected: tintColorLight,
   },
   dark: {
-    text: "#ECEDEE",
-    background: "#151718",
-    tint: tintColorDark,
-    icon: "#9BA1A6",
-    tabIconDefault: "#9BA1A6",
-    tabIconSelected: tintColorDark,
+    text: "#000000",
+    background: "#FFFFFF",
+    tint: tintColorLight,
+    icon: "#505050",
+    tabIconDefault: "#505050",
+    tabIconSelected: tintColorLight,
   },
 };
 
