@@ -8,6 +8,7 @@ import LiveBadge from '@/components/LiveBadge';
 import RoastLiveLogo from '@/components/RoastLiveLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useStreaming } from '@/contexts/StreamingContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { cloudflareService } from '@/app/services/cloudflareService';
 import { router } from 'expo-router';
@@ -23,6 +24,7 @@ interface StreamData {
 
 export default function BroadcasterScreen() {
   const { user } = useAuth();
+  const { setIsStreaming, startStreamTimer, stopStreamTimer } = useStreaming();
   const [facing, setFacing] = useState<CameraType>('front');
   const [permission, requestPermission] = useCameraPermissions();
   const [isLive, setIsLive] = useState(false);
@@ -126,6 +128,9 @@ export default function BroadcasterScreen() {
         ]
       );
     } else {
+      // Hide tab bar when opening setup modal
+      console.log('🎬 Opening live setup - hiding tab bar');
+      setIsStreaming(true);
       setShowSetup(true);
     }
   };
@@ -146,7 +151,6 @@ export default function BroadcasterScreen() {
     try {
       console.log('🎬 Starting live stream with title:', streamTitle);
       
-      // Call cloudflareService.startLive with correct parameters
       const result = await cloudflareService.startLive({ 
         title: streamTitle, 
         userId: user.id 
@@ -161,6 +165,9 @@ export default function BroadcasterScreen() {
       setLiveTime(0);
       setShowSetup(false);
       setStreamTitle('');
+
+      // Start stream timer for tracking
+      startStreamTimer();
 
       console.log('📺 Stream details:', {
         id: result.stream.id,
@@ -188,6 +195,9 @@ export default function BroadcasterScreen() {
         errorMessage,
         [{ text: 'OK' }]
       );
+      
+      // Show tab bar again if stream failed to start
+      setIsStreaming(false);
     } finally {
       setIsLoading(false);
     }
@@ -207,7 +217,6 @@ export default function BroadcasterScreen() {
         streamId: currentStream.id,
       });
       
-      // Call cloudflareService.stopLive with correct parameters
       await cloudflareService.stopLive({
         liveInputId: currentStream.live_input_id,
         streamId: currentStream.id,
@@ -215,11 +224,20 @@ export default function BroadcasterScreen() {
 
       console.log('✅ Stream ended successfully');
 
+      // Stop stream timer and update database
+      if (user) {
+        await stopStreamTimer(user.id);
+      }
+
       // Reset all state
       setIsLive(false);
       setViewerCount(0);
       setLiveTime(0);
       setCurrentStream(null);
+
+      // Show tab bar again
+      console.log('✅ Stream ended - showing tab bar');
+      setIsStreaming(false);
 
       Alert.alert('Stream Ended', 'Your live stream has been ended successfully.');
     } catch (error) {
@@ -237,6 +255,14 @@ export default function BroadcasterScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCancelSetup = () => {
+    console.log('❌ Cancelled live setup - showing tab bar');
+    setShowSetup(false);
+    setStreamTitle('');
+    // Show tab bar again when cancelling setup
+    setIsStreaming(false);
   };
 
   const formatTime = (seconds: number): string => {
@@ -331,7 +357,7 @@ export default function BroadcasterScreen() {
         visible={showSetup}
         transparent
         animationType="slide"
-        onRequestClose={() => !isLoading && setShowSetup(false)}
+        onRequestClose={() => !isLoading && handleCancelSetup()}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -367,7 +393,7 @@ export default function BroadcasterScreen() {
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.cancelButton}
-                onPress={() => setShowSetup(false)}
+                onPress={handleCancelSetup}
                 disabled={isLoading}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>

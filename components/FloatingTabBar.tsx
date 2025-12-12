@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,19 @@ import {
   StyleSheet,
   Platform,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
-import Animated, {
+import {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   interpolate,
 } from 'react-native-reanimated';
+import AnimatedView from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -29,6 +31,7 @@ export interface TabBarItem {
   route: Href;
   icon: keyof typeof MaterialIcons.glyphMap;
   label: string;
+  isCenter?: boolean;
 }
 
 interface FloatingTabBarProps {
@@ -36,18 +39,22 @@ interface FloatingTabBarProps {
   containerWidth?: number;
   borderRadius?: number;
   bottomMargin?: number;
+  isStreaming?: boolean;
 }
 
 export default function FloatingTabBar({
   tabs,
   containerWidth = screenWidth / 2.5,
   borderRadius = 35,
-  bottomMargin
+  bottomMargin,
+  isStreaming = false,
 }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { colors, theme } = useTheme();
   const animatedValue = useSharedValue(0);
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
 
   const activeTabIndex = React.useMemo(() => {
     let bestMatch = -1;
@@ -84,6 +91,39 @@ export default function FloatingTabBar({
       });
     }
   }, [activeTabIndex, animatedValue]);
+
+  useEffect(() => {
+    // Animate tab bar hiding/showing when streaming status changes
+    if (isStreaming) {
+      console.log('🚫 Hiding tab bar - user is streaming (iOS)');
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 150,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      console.log('✅ Showing tab bar - user stopped streaming (iOS)');
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isStreaming, slideAnim, opacityAnim]);
 
   const handleTabPress = (route: Href) => {
     router.push(route);
@@ -137,66 +177,80 @@ export default function FloatingTabBar({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <View style={[
-        styles.container,
+    <Animated.View
+      style={[
+        styles.wrapper,
         {
-          width: containerWidth,
-          marginBottom: bottomMargin ?? 20
-        }
-      ]}>
-        <BlurView
-          intensity={80}
-          style={[blurContainerStyle, { borderRadius }]}
-        >
-          <View style={styles.background} />
-          <Animated.View style={[indicatorDynamicStyle, indicatorStyle]} />
-          <View style={styles.tabsContainer}>
-            {tabs.map((tab, index) => {
-              const isActive = activeTabIndex === index;
+          transform: [{ translateY: slideAnim }],
+          opacity: opacityAnim,
+        },
+      ]}
+      pointerEvents={isStreaming ? 'none' : 'auto'}
+    >
+      <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+        <View style={[
+          styles.container,
+          {
+            width: containerWidth,
+            marginBottom: bottomMargin ?? 20
+          }
+        ]}>
+          <BlurView
+            intensity={80}
+            style={[blurContainerStyle, { borderRadius }]}
+          >
+            <View style={styles.background} />
+            <AnimatedView style={[indicatorDynamicStyle, indicatorStyle]} />
+            <View style={styles.tabsContainer}>
+              {tabs.map((tab, index) => {
+                const isActive = activeTabIndex === index;
 
-              return (
-                <React.Fragment key={index}>
-                  <TouchableOpacity
-                    style={styles.tab}
-                    onPress={() => handleTabPress(tab.route)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.tabContent}>
-                      <IconSymbol
-                        android_material_icon_name={tab.icon}
-                        ios_icon_name={tab.icon}
-                        size={24}
-                        color={isActive ? colors.brandPrimary : colors.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.tabLabel,
-                          { color: isActive ? colors.brandPrimary : colors.textSecondary },
-                          isActive && { fontWeight: '600' },
-                        ]}
-                      >
-                        {tab.label}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </React.Fragment>
-              );
-            })}
-          </View>
-        </BlurView>
-      </View>
-    </SafeAreaView>
+                return (
+                  <React.Fragment key={index}>
+                    <TouchableOpacity
+                      style={styles.tab}
+                      onPress={() => handleTabPress(tab.route)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.tabContent}>
+                        <IconSymbol
+                          android_material_icon_name={tab.icon}
+                          ios_icon_name={tab.icon}
+                          size={24}
+                          color={isActive ? colors.brandPrimary : colors.textSecondary}
+                        />
+                        <Text
+                          style={[
+                            styles.tabLabel,
+                            { color: isActive ? colors.brandPrimary : colors.textSecondary },
+                            isActive && { fontWeight: '600' },
+                          ]}
+                        >
+                          {tab.label}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })}
+            </View>
+          </BlurView>
+        </View>
+      </SafeAreaView>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  wrapper: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     zIndex: 1000,
+    alignItems: 'center',
+  },
+  safeArea: {
     alignItems: 'center',
   },
   container: {

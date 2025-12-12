@@ -2,8 +2,11 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
+import { StreamingProvider, useStreaming } from '@/contexts/StreamingContext';
 
-export default function TabLayout() {
+function TabLayoutContent() {
+  const { isStreaming } = useStreaming();
+
   const tabs: TabBarItem[] = [
     {
       name: '(home)',
@@ -53,7 +56,15 @@ export default function TabLayout() {
         <Stack.Screen key="inbox" name="inbox" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>
-      <FloatingTabBar tabs={tabs} />
+      <FloatingTabBar tabs={tabs} isStreaming={isStreaming} />
     </>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <StreamingProvider>
+      <TabLayoutContent />
+    </StreamingProvider>
   );
 }
