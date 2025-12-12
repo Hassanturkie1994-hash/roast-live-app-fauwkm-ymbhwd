@@ -196,7 +196,7 @@ export default function InboxScreen() {
           <Text style={[styles.headerTitle, { color: colors.text }]}>Inbox & Notifications</Text>
           {totalUnread > 0 && (
             <TouchableOpacity
-              style={[styles.markAllButton, { backgroundColor: colors.brandPrimary }]}
+              style={[styles.markAllButton, { backgroundColor: colors.brandPrimary || '#A40028' }]}
               onPress={handleMarkAllAsRead}
               activeOpacity={0.7}
             >
@@ -216,7 +216,7 @@ export default function InboxScreen() {
             style={[
               styles.categoryChip,
               {
-                backgroundColor: selectedCategory === 'all' ? colors.brandPrimary : colors.backgroundAlt,
+                backgroundColor: selectedCategory === 'all' ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
               },
             ]}
             onPress={() => setSelectedCategory('all')}
@@ -239,7 +239,7 @@ export default function InboxScreen() {
                 styles.categoryChip,
                 {
                   backgroundColor:
-                    selectedCategory === key ? colors.brandPrimary : colors.backgroundAlt,
+                    selectedCategory === key ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
                 },
               ]}
               onPress={() => setSelectedCategory(key as NotificationCategory)}
@@ -272,7 +272,8 @@ export default function InboxScreen() {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh} 
-            tintColor={colors.brandPrimary} 
+            tintColor={colors.brandPrimary || '#A40028'}
+            colors={[colors.brandPrimary || '#A40028']}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -297,11 +298,11 @@ export default function InboxScreen() {
             </Text>
           </View>
         ) : (
-          notifications.map((notification) => {
+          notifications.map((notification, index) => {
             const icon = getNotificationIcon(notification.type);
             return (
               <TouchableOpacity
-                key={notification.id}
+                key={`notification-${notification.id}-${index}`}
                 style={[
                   styles.notificationCard,
                   {
@@ -323,7 +324,7 @@ export default function InboxScreen() {
                       ios_icon_name={icon.ios}
                       android_material_icon_name={icon.android}
                       size={24}
-                      color={colors.brandPrimary}
+                      color={colors.brandPrimary || '#A40028'}
                     />
                   </View>
                 )}
@@ -335,7 +336,7 @@ export default function InboxScreen() {
                       {notification.message}
                     </Text>
                     {!notification.read && (
-                      <View style={[styles.unreadDot, { backgroundColor: colors.brandPrimary }]} />
+                      <View style={[styles.unreadDot, { backgroundColor: colors.brandPrimary || '#A40028' }]} />
                     )}
                   </View>
                   <Text style={[styles.timestamp, { color: colors.textSecondary }]}>

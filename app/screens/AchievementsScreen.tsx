@@ -10,13 +10,14 @@ import {
   Alert,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors } from '@/styles/commonStyles';
+import { useTheme } from '@/contexts/ThemeContext';
 import { achievementService, Achievement, UserAchievement } from '@/app/services/achievementService';
 import { AchievementBadge } from '@/components/AchievementBadge';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function AchievementsScreen() {
   const { user } = useAuth();
+  const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [allAchievements, setAllAchievements] = useState<Achievement[]>([]);
   const [userAchievements, setUserAchievements] = useState<(UserAchievement & { achievement?: Achievement })[]>([]);
@@ -113,26 +114,28 @@ export default function AchievementsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary || colors.brandPrimary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Selected Badges Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Display Badges</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Display Badges</Text>
             <TouchableOpacity
               onPress={() => (editMode ? handleSaveBadges() : setEditMode(true))}
             >
-              <Text style={styles.editButton}>{editMode ? 'Save' : 'Edit'}</Text>
+              <Text style={[styles.editButton, { color: colors.primary || colors.brandPrimary }]}>
+                {editMode ? 'Save' : 'Edit'}
+              </Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.sectionDescription}>
+          <Text style={[styles.sectionDescription, { color: colors.textSecondary }]}>
             Choose up to 3 badges to display on your profile and in chat
           </Text>
 
@@ -149,8 +152,8 @@ export default function AchievementsScreen() {
                       onPress={editMode ? () => handleBadgeSelect(achievement.achievement_key) : undefined}
                     />
                   ) : (
-                    <View style={styles.emptyBadgeSlot}>
-                      <Text style={styles.emptyBadgeText}>Empty Slot</Text>
+                    <View style={[styles.emptyBadgeSlot, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={[styles.emptyBadgeText, { color: colors.textSecondary }]}>Empty Slot</Text>
                     </View>
                   )}
                 </View>
@@ -161,28 +164,28 @@ export default function AchievementsScreen() {
 
         {/* Progress Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Progress</Text>
-          <View style={styles.progressCard}>
-            <Text style={styles.progressNumber}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Progress</Text>
+          <View style={[styles.progressCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.progressNumber, { color: colors.text }]}>
               {userAchievements.length} / {allAchievements.length}
             </Text>
-            <Text style={styles.progressLabel}>Achievements Unlocked</Text>
+            <Text style={[styles.progressLabel, { color: colors.textSecondary }]}>Achievements Unlocked</Text>
           </View>
         </View>
 
         {/* Achievements by Category */}
         {Object.entries(groupedAchievements).map(([category, achievements]) => (
           <View key={`category-${category}`} style={styles.section}>
-            <Text style={styles.sectionTitle}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
               {categoryTitles[category as keyof typeof categoryTitles]}
             </Text>
             <View style={styles.achievementsGrid}>
-              {achievements.map((achievement) => {
+              {achievements.map((achievement, achievementIndex) => {
                 const unlocked = isUnlocked(achievement.achievement_key);
                 const isSelected = selectedBadges.includes(achievement.achievement_key);
 
                 return (
-                  <View key={`achievement-${achievement.id}`} style={styles.achievementWrapper}>
+                  <View key={`achievement-${achievement.id}-${achievementIndex}`} style={styles.achievementWrapper}>
                     <AchievementBadge
                       emoji={achievement.emoji}
                       name={achievement.name}
@@ -196,8 +199,8 @@ export default function AchievementsScreen() {
                       }
                     />
                     {isSelected && editMode && (
-                      <View style={styles.selectedIndicator}>
-                        <Text style={styles.selectedIndicatorText}>✓</Text>
+                      <View style={[styles.selectedIndicator, { backgroundColor: colors.primary || colors.brandPrimary }]}>
+                        <Text style={[styles.selectedIndicatorText, { color: colors.text }]}>✓</Text>
                       </View>
                     )}
                   </View>
@@ -214,13 +217,11 @@ export default function AchievementsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -237,15 +238,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: colors.text,
   },
   sectionDescription: {
     fontSize: 14,
-    color: colors.textSecondary,
     marginBottom: 16,
   },
   editButton: {
-    color: colors.primary,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -260,35 +258,28 @@ const styles = StyleSheet.create({
   emptyBadgeSlot: {
     width: 120,
     height: 120,
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.border,
     borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyBadgeText: {
-    color: colors.textSecondary,
     fontSize: 12,
     textAlign: 'center',
   },
   progressCard: {
-    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.border,
   },
   progressNumber: {
     fontSize: 48,
     fontWeight: 'bold',
-    color: colors.text,
   },
   progressLabel: {
     fontSize: 16,
-    color: colors.textSecondary,
     marginTop: 8,
   },
   achievementsGrid: {
@@ -306,12 +297,10 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   selectedIndicatorText: {
-    color: colors.text,
     fontSize: 16,
     fontWeight: 'bold',
   },

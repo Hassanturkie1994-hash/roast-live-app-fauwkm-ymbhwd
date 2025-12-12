@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Animated } from 'react-native';
 
@@ -109,14 +109,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const themeOpacity = useRef(new Animated.Value(1)).current;
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    let mounted = true;
+    isMountedRef.current = true;
 
     const loadTheme = async () => {
       try {
         const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-        if (mounted) {
+        if (isMountedRef.current) {
           if (savedTheme === 'light' || savedTheme === 'dark') {
             setThemeState(savedTheme);
             console.log('✅ Theme loaded from storage:', savedTheme);
@@ -126,8 +127,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('❌ Error loading theme:', error);
+        // Use default theme on error
+        if (isMountedRef.current) {
+          setThemeState('light');
+        }
       } finally {
-        if (mounted) {
+        if (isMountedRef.current) {
           setIsLoading(false);
         }
       }
@@ -136,7 +141,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     loadTheme();
 
     return () => {
-      mounted = false;
+      isMountedRef.current = false;
     };
   }, []);
 
@@ -146,10 +151,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       console.log('✅ Theme saved to storage:', newTheme);
     } catch (error) {
       console.error('❌ Error saving theme:', error);
+      // Don't throw - just log the error
     }
   }, []);
 
   const setTheme = useCallback((newTheme: ThemeMode) => {
+    if (!isMountedRef.current) return;
     if (theme === newTheme) return;
 
     console.log('🎨 Theme changing to:', newTheme);
@@ -161,6 +168,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       duration: THEME_TRANSITION_DURATION / 2,
       useNativeDriver: true,
     }).start(() => {
+      if (!isMountedRef.current) return;
+      
       // Change theme at the midpoint
       setThemeState(newTheme);
       saveTheme(newTheme);
@@ -171,7 +180,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         duration: THEME_TRANSITION_DURATION / 2,
         useNativeDriver: true,
       }).start(() => {
-        setIsTransitioning(false);
+        if (isMountedRef.current) {
+          setIsTransitioning(false);
+        }
       });
     });
   }, [theme, themeOpacity, saveTheme]);
@@ -181,8 +192,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setTheme(newTheme);
   }, [theme, setTheme]);
 
-  const colors = theme === 'light' ? lightTheme : darkTheme;
-  const images = theme === 'light' ? lightImages : darkImages;
+  // Ensure colors and images are always defined
+  const colors = theme === 'light' ? { ...lightTheme } : { ...darkTheme };
+  const images = theme === 'light' ? { ...lightImages } : { ...darkImages };
 
   if (isLoading) {
     return null;
@@ -202,8 +214,8 @@ export function useTheme() {
     console.warn('useTheme must be used within a ThemeProvider. Using default theme.');
     return {
       theme: 'light' as ThemeMode,
-      colors: defaultTheme,
-      images: defaultImages,
+      colors: { ...defaultTheme },
+      images: { ...defaultImages },
       toggleTheme: () => console.warn('toggleTheme called outside ThemeProvider'),
       setTheme: () => console.warn('setTheme called outside ThemeProvider'),
       themeOpacity: new Animated.Value(1),

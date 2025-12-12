@@ -216,9 +216,9 @@ export default function ExploreScreen() {
     }
   }, [router]);
 
-  const renderItem = useCallback((item: ExploreItem) => (
+  const renderItem = useCallback((item: ExploreItem, index: number) => (
     <TouchableOpacity
-      key={item.id}
+      key={`${item.type}-${item.id}-${index}`}
       style={styles.item}
       onPress={() => handleItemPress(item)}
       activeOpacity={0.8}
@@ -245,7 +245,7 @@ export default function ExploreScreen() {
         </View>
         
         {item.type === 'story' && (
-          <View style={[styles.storyBadge, { backgroundColor: colors.brandPrimary }]}>
+          <View style={[styles.storyBadge, { backgroundColor: colors.brandPrimary || '#A40028' }]}>
             <Text style={styles.storyBadgeText}>STORY</Text>
           </View>
         )}
@@ -298,7 +298,7 @@ export default function ExploreScreen() {
         onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        {items.map(renderItem)}
+        {items.map((item, index) => renderItem(item, index))}
 
         {loading && page === 0 && (
           <View style={styles.loadingContainer}>
