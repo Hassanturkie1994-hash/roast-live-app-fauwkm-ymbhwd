@@ -36,8 +36,8 @@ export default function LivePlayerScreen() {
   const [hasJoinedChannel, setHasJoinedChannel] = useState(false);
   const channelRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
+  const isMounted = useRef(true);
 
-  // Create video player with HLS support
   const player = useVideoPlayer(
     stream?.playback_url
       ? {
@@ -45,23 +45,24 @@ export default function LivePlayerScreen() {
         }
       : null,
     (player) => {
-      playerRef.current = player;
-      player.loop = false;
-      player.staysActiveInBackground = false;
-      player.play();
+      if (isMounted.current) {
+        playerRef.current = player;
+        player.loop = false;
+        player.staysActiveInBackground = false;
+        player.play();
+      }
     }
   );
 
-  // Listen to player status changes
   const { status } = useEvent(player, 'statusChange', {
     status: player.status,
   });
 
   useEffect(() => {
     console.log('Player status:', status);
-    if (status === 'readyToPlay') {
+    if (status === 'readyToPlay' && isMounted.current) {
       setIsLoading(false);
-    } else if (status === 'error') {
+    } else if (status === 'error' && isMounted.current) {
       console.error('Video player error');
       setIsLoading(false);
       Alert.alert('Playback Error', 'Unable to play the stream. Please try again later.');
@@ -69,7 +70,7 @@ export default function LivePlayerScreen() {
   }, [status]);
 
   const checkFollowStatus = useCallback(async (broadcasterId: string) => {
-    if (!user) return;
+    if (!user || !isMounted.current) return;
 
     try {
       const { data } = await supabase
@@ -79,13 +80,17 @@ export default function LivePlayerScreen() {
         .eq('following_id', broadcasterId)
         .single();
 
-      setIsFollowing(!!data);
+      if (isMounted.current) {
+        setIsFollowing(!!data);
+      }
     } catch (error) {
       console.log('Not following');
     }
   }, [user]);
 
   const fetchStream = useCallback(async () => {
+    if (!isMounted.current) return;
+
     try {
       const { data, error } = await supabase
         .from('streams')
@@ -95,17 +100,21 @@ export default function LivePlayerScreen() {
 
       if (error) {
         console.error('Error fetching stream:', error);
-        Alert.alert('Error', 'Stream not found');
-        router.back();
+        if (isMounted.current) {
+          Alert.alert('Error', 'Stream not found');
+          router.back();
+        }
         return;
       }
 
       console.log('Stream data:', data);
-      setStream(data as Stream);
-      setViewerCount(data.viewer_count || 0);
+      if (isMounted.current) {
+        setStream(data as Stream);
+        setViewerCount(data.viewer_count || 0);
 
-      if (data.broadcaster_id && user) {
-        checkFollowStatus(data.broadcaster_id);
+        if (data.broadcaster_id && user) {
+          checkFollowStatus(data.broadcaster_id);
+        }
       }
     } catch (error) {
       console.error('Error in fetchStream:', error);
@@ -113,17 +122,16 @@ export default function LivePlayerScreen() {
   }, [streamId, user, checkFollowStatus]);
 
   const joinViewerChannel = useCallback(() => {
-    if (!streamId) return;
+    if (!streamId || !isMounted.current) return;
 
-    // Join the viewer channel to track viewer count
     const channel = supabase
       .channel(`stream:${streamId}:viewers`)
       .on('presence', { event: 'sync' }, () => {
+        if (!isMounted.current) return;
         const state = channel.presenceState();
         const count = Object.keys(state).length;
         setViewerCount(count);
 
-        // Broadcast viewer count to broadcaster
         channel.send({
           type: 'broadcast',
           event: 'viewer_count',
@@ -137,8 +145,7 @@ export default function LivePlayerScreen() {
         console.log('Viewer left');
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          // Track this viewer's presence
+        if (status === 'SUBSCRIBED' && isMounted.current) {
           await channel.track({
             user_id: user?.id || 'anonymous',
             online_at: new Date().toISOString(),
@@ -150,25 +157,30 @@ export default function LivePlayerScreen() {
   }, [streamId, user]);
 
   useEffect(() => {
+    isMounted.current = true;
+
     if (streamId) {
       fetchStream();
     }
 
     return () => {
-      // Properly cleanup player
+      isMounted.current = false;
+      
       if (playerRef.current) {
         try {
           playerRef.current.pause();
+          playerRef.current = null;
         } catch (error) {
           console.log('Error pausing player:', error);
         }
       }
+      
       leaveViewerChannel();
     };
   }, [streamId, fetchStream]);
 
   useEffect(() => {
-    if (stream && !hasJoinedChannel) {
+    if (stream && !hasJoinedChannel && isMounted.current) {
       joinViewerChannel();
       setHasJoinedChannel(true);
     }
@@ -176,13 +188,18 @@ export default function LivePlayerScreen() {
 
   const leaveViewerChannel = () => {
     if (channelRef.current) {
-      channelRef.current.untrack();
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
+      try {
+        channelRef.current.untrack();
+        supabase.removeChannel(channelRef.current);
+      } catch (error) {
+        console.log('Error leaving channel:', error);
+      } finally {
+        channelRef.current = null;
+      }
     }
   };
 
-  const handleFollow = async () => {
+  const handleFollow = useCallback(async () => {
     if (!user || !stream) {
       Alert.alert('Login Required', 'Please login to follow streamers');
       return;
@@ -195,15 +212,18 @@ export default function LivePlayerScreen() {
           .delete()
           .eq('follower_id', user.id)
           .eq('following_id', stream.broadcaster_id);
-        setIsFollowing(false);
+        if (isMounted.current) {
+          setIsFollowing(false);
+        }
       } else {
         await supabase.from('followers').insert({
           follower_id: user.id,
           following_id: stream.broadcaster_id,
         });
-        setIsFollowing(true);
+        if (isMounted.current) {
+          setIsFollowing(true);
+        }
 
-        // Create notification
         await supabase.from('notifications').insert({
           type: 'follow',
           sender_id: user.id,
@@ -215,15 +235,14 @@ export default function LivePlayerScreen() {
       console.error('Error toggling follow:', error);
       Alert.alert('Error', 'Failed to update follow status');
     }
-  };
+  }, [user, stream, isFollowing]);
 
-  const handleLike = async () => {
+  const handleLike = useCallback(async () => {
     if (!user) {
       Alert.alert('Login Required', 'Please login to like streams');
       return;
     }
 
-    // Send a like animation via broadcast
     if (channelRef.current) {
       await channelRef.current.send({
         type: 'broadcast',
@@ -235,11 +254,10 @@ export default function LivePlayerScreen() {
       });
     }
 
-    // Show local feedback
     Alert.alert('❤️', 'Like sent!');
-  };
+  }, [user]);
 
-  const handleShare = () => {
+  const handleShare = useCallback(() => {
     if (!stream) return;
 
     Alert.alert(
@@ -250,7 +268,7 @@ export default function LivePlayerScreen() {
         { text: 'Cancel', style: 'cancel' },
       ]
     );
-  };
+  }, [stream]);
 
   if (!stream) {
     return (

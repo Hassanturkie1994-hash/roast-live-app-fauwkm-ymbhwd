@@ -16,6 +16,7 @@ interface ThemeColors {
   gradientStart: string;
   gradientEnd: string;
   highlight: string;
+  primary: string; // Add primary as alias for brandPrimary
   
   // Text Colors
   text: string;
@@ -53,6 +54,7 @@ const lightTheme: ThemeColors = {
   backgroundAlt: '#F7F7F7',
   card: '#FBFBFB',
   brandPrimary: '#A40028',
+  primary: '#A40028', // Add primary as alias
   gradientStart: '#A40028',
   gradientEnd: '#A40028',
   highlight: '#A40028',
@@ -71,6 +73,7 @@ const darkTheme: ThemeColors = {
   backgroundAlt: '#0A0A0A',
   card: '#161616',
   brandPrimary: '#A40028',
+  primary: '#A40028', // Add primary as alias
   gradientStart: '#A40028',
   gradientEnd: '#A40028',
   highlight: '#A40028',
@@ -85,17 +88,21 @@ const darkTheme: ThemeColors = {
 };
 
 const lightImages: ThemeImages = {
-  logo: require('@/assets/images/final_quest_240x240.png'), // Placeholder - replace with actual light theme logo
+  logo: require('@/assets/images/final_quest_240x240.png'),
 };
 
 const darkImages: ThemeImages = {
-  logo: require('@/assets/images/natively-dark.png'), // Placeholder - replace with actual dark theme logo
+  logo: require('@/assets/images/natively-dark.png'),
 };
+
+// Default theme values to prevent undefined errors
+const defaultTheme: ThemeColors = lightTheme;
+const defaultImages: ThemeImages = lightImages;
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_STORAGE_KEY = '@roastlive_theme';
-const THEME_TRANSITION_DURATION = 500; // 500ms fade animation
+const THEME_TRANSITION_DURATION = 500;
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>('light');
@@ -133,16 +140,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const saveTheme = async (newTheme: ThemeMode) => {
+  const saveTheme = useCallback(async (newTheme: ThemeMode) => {
     try {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, newTheme);
       console.log('✅ Theme saved to storage:', newTheme);
     } catch (error) {
       console.error('❌ Error saving theme:', error);
     }
-  };
+  }, []);
 
-  const setTheme = (newTheme: ThemeMode) => {
+  const setTheme = useCallback((newTheme: ThemeMode) => {
     if (theme === newTheme) return;
 
     console.log('🎨 Theme changing to:', newTheme);
@@ -167,12 +174,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setIsTransitioning(false);
       });
     });
-  };
+  }, [theme, themeOpacity, saveTheme]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
-  };
+  }, [theme, setTheme]);
 
   const colors = theme === 'light' ? lightTheme : darkTheme;
   const images = theme === 'light' ? lightImages : darkImages;
@@ -191,7 +198,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+    // Return default theme instead of throwing error to prevent crashes
+    console.warn('useTheme must be used within a ThemeProvider. Using default theme.');
+    return {
+      theme: 'light' as ThemeMode,
+      colors: defaultTheme,
+      images: defaultImages,
+      toggleTheme: () => console.warn('toggleTheme called outside ThemeProvider'),
+      setTheme: () => console.warn('setTheme called outside ThemeProvider'),
+      themeOpacity: new Animated.Value(1),
+      isTransitioning: false,
+    };
   }
   return context;
 }

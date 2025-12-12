@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
-import { Session, User } from '@supabase/supabase-js';
+import { Session, User, AuthError } from '@supabase/supabase-js';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceBanService } from '@/app/services/deviceBanService';
 import { useRouter } from 'expo-router';
@@ -41,10 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileFetched, setProfileFetched] = useState(false);
 
-  // Register push notifications when user logs in
   usePushNotifications(user?.id || null);
 
-  const ensureWalletExists = async (userId: string) => {
+  const ensureWalletExists = useCallback(async (userId: string) => {
     try {
       const { data: existingWallet } = await supabase
         .from('wallet')
@@ -69,12 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Error in ensureWalletExists:', error);
     }
-  };
+  }, []);
 
-  const checkDeviceBan = async (): Promise<boolean> => {
+  const checkDeviceBan = useCallback(async (): Promise<boolean> => {
     const { banned } = await deviceBanService.isDeviceBanned();
     return banned;
-  };
+  }, []);
 
   const fetchProfile = useCallback(async (userId: string, userEmail?: string) => {
     try {
@@ -138,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfileFetched(true);
       return null;
     }
-  }, []);
+  }, [ensureWalletExists]);
 
   const refreshProfile = useCallback(async () => {
     if (user) {
@@ -147,12 +146,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, fetchProfile]);
 
+  const handleAuthError = useCallback(async (error: AuthError) => {
+    console.error('Auth error:', error);
+    
+    if (error.message?.includes('Invalid Refresh Token') || 
+        error.message?.includes('Refresh Token Not Found')) {
+      console.log('🔄 Invalid or missing refresh token, logging out user');
+      
+      try {
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+      } catch (signOutError) {
+        console.error('Error during forced sign out:', signOutError);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
       try {
-        // Check device ban first
         const isBanned = await checkDeviceBan();
         if (isBanned) {
           if (mounted) {
@@ -161,7 +177,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          handleAuthError(error);
+        }
         
         if (!mounted) return;
         
@@ -190,10 +210,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
-      // Check device ban on auth state change
+      console.log('Auth state changed:', event);
+      
+      if (event === 'TOKEN_REFRESHED') {
+        console.log('✅ Token refreshed successfully');
+      }
+      
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setProfileFetched(false);
+        return;
+      }
+      
       const isBanned = await checkDeviceBan();
       if (isBanned) {
         setSession(null);
@@ -221,10 +254,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, profileFetched]);
+  }, [fetchProfile, profileFetched, checkDeviceBan, handleAuthError]);
 
-  const signIn = async (email: string, password: string) => {
-    // Check device ban before sign in
+  const signIn = useCallback(async (email: string, password: string) => {
     const isBanned = await checkDeviceBan();
     if (isBanned) {
       return { error: { message: 'This device is banned from accessing Roast Live' } };
@@ -234,11 +266,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       password,
     });
+    
+    if (error) {
+      handleAuthError(error);
+    }
+    
     return { error };
-  };
+  }, [checkDeviceBan, handleAuthError]);
 
-  const signUp = async (email: string, password: string, displayName: string) => {
-    // Check device ban before sign up
+  const signUp = useCallback(async (email: string, password: string, displayName: string) => {
     const isBanned = await checkDeviceBan();
     if (isBanned) {
       return { error: { message: 'This device is banned from accessing Roast Live' } };
@@ -277,16 +313,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: profileError };
       }
 
-      // Store device fingerprint
       await deviceBanService.storeDeviceFingerprint(data.user.id);
     }
 
     return { error: null };
-  };
+  }, [checkDeviceBan]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-  };
+  }, []);
 
   return (
     <AuthContext.Provider

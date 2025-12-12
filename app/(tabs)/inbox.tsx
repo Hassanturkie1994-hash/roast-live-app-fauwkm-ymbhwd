@@ -81,7 +81,6 @@ export default function InboxScreen() {
         setNotifications(result.notifications as Notification[]);
       }
 
-      // Fetch unread counts for each category
       const counts: Record<string, number> = {};
       for (const cat of Object.keys(CATEGORY_CONFIG)) {
         const countResult = await notificationService.getUnreadCountByCategory(
@@ -102,34 +101,46 @@ export default function InboxScreen() {
   }, [user, selectedCategory]);
 
   useEffect(() => {
+    let mounted = true;
+
     if (!user) {
       router.replace('/auth/login');
-    } else {
+    } else if (mounted) {
       fetchNotifications();
       
-      const interval = setInterval(fetchNotifications, 10000);
-      return () => clearInterval(interval);
+      const interval = setInterval(() => {
+        if (mounted) {
+          fetchNotifications();
+        }
+      }, 10000);
+      
+      return () => {
+        mounted = false;
+        clearInterval(interval);
+      };
     }
+
+    return () => {
+      mounted = false;
+    };
   }, [user, fetchNotifications]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchNotifications();
-  };
+  }, [fetchNotifications]);
 
-  const handleMarkAllAsRead = async () => {
+  const handleMarkAllAsRead = useCallback(async () => {
     if (!user) return;
 
     const category = selectedCategory === 'all' ? undefined : selectedCategory;
     await notificationService.markAllAsRead(user.id, category);
     fetchNotifications();
-  };
+  }, [user, selectedCategory, fetchNotifications]);
 
-  const handleNotificationPress = async (notification: Notification) => {
-    // Mark as read
+  const handleNotificationPress = useCallback(async (notification: Notification) => {
     await notificationService.markAsRead(notification.id);
 
-    // Navigate to relevant page
     if (notification.ref_post_id) {
       router.push(`/screens/PostDetailScreen?postId=${notification.ref_post_id}`);
     } else if (notification.ref_story_id) {
@@ -141,9 +152,9 @@ export default function InboxScreen() {
     }
 
     fetchNotifications();
-  };
+  }, [fetchNotifications]);
 
-  const formatTime = (timestamp: string) => {
+  const formatTime = useCallback((timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
@@ -155,9 +166,9 @@ export default function InboxScreen() {
     if (hours > 0) return `${hours}h ago`;
     if (minutes > 0) return `${minutes}m ago`;
     return 'Just now';
-  };
+  }, []);
 
-  const getNotificationIcon = (type: string) => {
+  const getNotificationIcon = useCallback((type: string) => {
     switch (type) {
       case 'like':
         return { ios: 'heart.fill', android: 'favorite' };
@@ -174,7 +185,7 @@ export default function InboxScreen() {
       default:
         return { ios: 'bell.fill', android: 'notifications' };
     }
-  };
+  }, []);
 
   const totalUnread = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
 
@@ -201,6 +212,7 @@ export default function InboxScreen() {
           contentContainerStyle={styles.categoryScrollContent}
         >
           <TouchableOpacity
+            key="all"
             style={[
               styles.categoryChip,
               {

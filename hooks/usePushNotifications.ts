@@ -5,7 +5,6 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { pushNotificationService } from '@/app/services/pushNotificationService';
 
-// Configure notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -20,49 +19,61 @@ export function usePushNotifications(userId: string | null) {
   const registrationAttempted = useRef(false);
 
   useEffect(() => {
+    let mounted = true;
+
     if (!userId || registrationAttempted.current) return;
 
     registrationAttempted.current = true;
 
-    // Register for push notifications
     registerForPushNotifications(userId).catch(error => {
       console.error('Failed to register for push notifications:', error);
     });
 
-    // Listen for notifications received while app is foregrounded
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('📲 Notification received:', notification);
+      if (mounted) {
+        console.log('📲 Notification received:', notification);
+      }
     });
 
-    // Listen for user interactions with notifications
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('📲 Notification response:', response);
-      
-      const data = response.notification.request.content.data;
-      
-      // Handle deep linking based on notification payload
-      if (data.route) {
-        handleDeepLink(data);
+      if (mounted) {
+        console.log('📲 Notification response:', response);
+        
+        const data = response.notification.request.content.data;
+        
+        if (data.route) {
+          handleDeepLink(data);
+        }
       }
     });
 
     return () => {
-      // Use .remove() method instead of removeNotificationSubscription
+      mounted = false;
+      
       if (notificationListener.current) {
-        notificationListener.current.remove();
+        try {
+          notificationListener.current.remove();
+        } catch (error) {
+          console.log('Error removing notification listener:', error);
+        }
         notificationListener.current = null;
       }
+      
       if (responseListener.current) {
-        responseListener.current.remove();
+        try {
+          responseListener.current.remove();
+        } catch (error) {
+          console.log('Error removing response listener:', error);
+        }
         responseListener.current = null;
       }
+      
       registrationAttempted.current = false;
     };
   }, [userId]);
 
   const registerForPushNotifications = async (userId: string) => {
     try {
-      // Check if running in Expo Go
       const isExpoGo = Constants.appOwnership === 'expo';
       
       if (isExpoGo && Platform.OS === 'android') {
@@ -71,7 +82,6 @@ export function usePushNotifications(userId: string | null) {
         return;
       }
 
-      // Request permissions
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
 
@@ -85,11 +95,9 @@ export function usePushNotifications(userId: string | null) {
         return;
       }
 
-      // Get push token
       let token: string;
       
       try {
-        // Get projectId from app.json extra.eas.projectId
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
         
         if (!projectId) {
@@ -97,11 +105,9 @@ export function usePushNotifications(userId: string | null) {
           console.warn('You can find your project ID at https://expo.dev/');
           console.warn('Falling back to device push token...');
           
-          // Fallback to device push token
           const deviceToken = await Notifications.getDevicePushTokenAsync();
           token = deviceToken.data;
         } else {
-          // Use Expo push token with projectId
           const tokenData = await Notifications.getExpoPushTokenAsync({
             projectId: projectId,
           });
@@ -110,7 +116,6 @@ export function usePushNotifications(userId: string | null) {
       } catch (error) {
         console.error('Error getting Expo push token:', error);
         
-        // Fallback to device push token if Expo token fails
         try {
           const deviceToken = await Notifications.getDevicePushTokenAsync();
           token = deviceToken.data;
@@ -121,10 +126,8 @@ export function usePushNotifications(userId: string | null) {
         }
       }
 
-      // Determine platform
       const platform = Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'web';
 
-      // Register token with backend
       const result = await pushNotificationService.registerDeviceToken(
         userId,
         token,
@@ -142,10 +145,6 @@ export function usePushNotifications(userId: string | null) {
   };
 
   const handleDeepLink = (data: any) => {
-    // Handle deep linking based on route
     console.log('Handling deep link:', data);
-    
-    // This would typically use navigation to navigate to the appropriate screen
-    // Example: navigation.navigate(data.route, { appealId: data.appealId });
   };
 }

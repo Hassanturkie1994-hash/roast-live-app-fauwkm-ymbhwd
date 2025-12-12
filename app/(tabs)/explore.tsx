@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/app/integrations/supabase/client';
-import { colors } from '@/styles/commonStyles';
+import { useTheme } from '@/contexts/ThemeContext';
 import { CDNImage } from '@/components/CDNImage';
 import { useExplorePrefetch } from '@/hooks/useExplorePrefetch';
 import { cdnService } from '@/app/services/cdnService';
@@ -23,7 +23,7 @@ import { NormalizedStream } from '@/utils/streamNormalizer';
 import { IconSymbol } from '@/components/IconSymbol';
 
 const { width } = Dimensions.get('window');
-const ITEM_WIDTH = (width - 48) / 2; // 2 columns with padding
+const ITEM_WIDTH = (width - 48) / 2;
 
 interface ExploreItem {
   id: string;
@@ -40,13 +40,13 @@ interface ExploreItem {
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
   const [items, setItems] = useState<ExploreItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(0);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Use prefetch hook for instant scrolling
   const {
     prefetchNextPage,
     handleScroll: handlePrefetchScroll,
@@ -55,7 +55,7 @@ export default function ExploreScreen() {
   } = useExplorePrefetch({
     enabled: true,
     itemsPerPage: 20,
-    prefetchThreshold: 0.5, // Prefetch when scrolled past 50%
+    prefetchThreshold: 0.5,
   });
 
   const loadExploreContent = useCallback(async (pageNum: number = 0) => {
@@ -66,10 +66,8 @@ export default function ExploreScreen() {
       const start = pageNum * itemsPerPage;
       const end = start + itemsPerPage - 1;
 
-      // Fetch live streams using the stream service
       const liveStreams = await fetchLiveStreams();
 
-      // Fetch posts
       const { data: posts } = await supabase
         .from('posts')
         .select(`
@@ -86,7 +84,6 @@ export default function ExploreScreen() {
         .order('created_at', { ascending: false })
         .range(start, end);
 
-      // Fetch stories
       const { data: stories } = await supabase
         .from('stories')
         .select(`
@@ -103,7 +100,6 @@ export default function ExploreScreen() {
         .order('created_at', { ascending: false })
         .range(start, end);
 
-      // Convert streams to explore items
       const streamItems: ExploreItem[] = liveStreams.map(stream => ({
         id: stream.id,
         type: 'stream' as const,
@@ -117,7 +113,6 @@ export default function ExploreScreen() {
         isLive: stream.is_live,
       }));
 
-      // Convert posts to explore items
       const postItems: ExploreItem[] = (posts || []).map(post => ({
         id: post.id,
         type: 'post' as const,
@@ -129,7 +124,6 @@ export default function ExploreScreen() {
         createdAt: post.created_at,
       }));
 
-      // Convert stories to explore items
       const storyItems: ExploreItem[] = (stories || []).map(story => ({
         id: story.id,
         type: 'story' as const,
@@ -140,7 +134,6 @@ export default function ExploreScreen() {
         createdAt: story.created_at,
       }));
 
-      // Combine and shuffle
       const allItems = [...streamItems, ...postItems, ...storyItems].sort(
         () => Math.random() - 0.5
       );
@@ -154,7 +147,6 @@ export default function ExploreScreen() {
       setPage(pageNum);
       setCurrentPage(pageNum);
 
-      // Prefetch next page
       if (allItems.length > 0) {
         await prefetchNextPage(pageNum);
       }
@@ -167,10 +159,14 @@ export default function ExploreScreen() {
   }, [prefetchNextPage, setCurrentPage]);
 
   useEffect(() => {
-    loadExploreContent();
+    let mounted = true;
+
+    if (mounted) {
+      loadExploreContent();
+    }
 
     return () => {
-      // Cleanup prefetch cache on unmount
+      mounted = false;
       clearCache();
     };
   }, []);
@@ -191,14 +187,12 @@ export default function ExploreScreen() {
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
 
-      // Handle prefetch scroll
       handlePrefetchScroll(
         contentOffset.y,
         contentSize.height,
         layoutMeasurement.height
       );
 
-      // Load more when near bottom
       const isNearBottom =
         contentOffset.y + layoutMeasurement.height >= contentSize.height - 500;
 
@@ -209,23 +203,20 @@ export default function ExploreScreen() {
     [handlePrefetchScroll, loading, handleLoadMore]
   );
 
-  const handleItemPress = (item: ExploreItem) => {
+  const handleItemPress = useCallback((item: ExploreItem) => {
     if (item.type === 'stream') {
-      // Navigate to live stream
       router.push({
         pathname: '/live-player',
         params: { streamId: item.id },
       });
     } else if (item.type === 'post') {
-      // Navigate to post detail
       router.push(`/post/${item.id}`);
     } else {
-      // Navigate to story viewer
       router.push(`/story/${item.userId}`);
     }
-  };
+  }, [router]);
 
-  const renderItem = (item: ExploreItem) => (
+  const renderItem = useCallback((item: ExploreItem) => (
     <TouchableOpacity
       key={item.id}
       style={styles.item}
@@ -248,13 +239,13 @@ export default function ExploreScreen() {
               style={styles.avatar}
             />
           )}
-          <Text style={styles.username} numberOfLines={1}>
+          <Text style={[styles.username, { color: colors.text }]} numberOfLines={1}>
             {item.username}
           </Text>
         </View>
         
         {item.type === 'story' && (
-          <View style={styles.storyBadge}>
+          <View style={[styles.storyBadge, { backgroundColor: colors.brandPrimary }]}>
             <Text style={styles.storyBadgeText}>STORY</Text>
           </View>
         )}
@@ -280,13 +271,13 @@ export default function ExploreScreen() {
         )}
       </View>
     </TouchableOpacity>
-  );
+  ), [colors, handleItemPress]);
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Explore</Text>
-        <Text style={styles.headerSubtitle}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Explore</Text>
+        <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
           Discover trending content
         </Text>
       </View>
@@ -300,8 +291,8 @@ export default function ExploreScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
+            tintColor={colors.brandPrimary || '#A40028'}
+            colors={[colors.brandPrimary || '#A40028']}
           />
         }
         onScroll={handleScroll}
@@ -311,14 +302,13 @@ export default function ExploreScreen() {
 
         {loading && page === 0 && (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Loading...</Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading...</Text>
           </View>
         )}
       </ScrollView>
 
-      {/* Device tier indicator (for debugging) */}
       <View style={styles.deviceTierIndicator}>
-        <Text style={styles.deviceTierText}>
+        <Text style={[styles.deviceTierText, { color: colors.textSecondary }]}>
           Device: {cdnService.getDeviceTier().toUpperCase()}
         </Text>
       </View>
@@ -329,25 +319,20 @@ export default function ExploreScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   header: {
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 20,
-    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   headerTitle: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: colors.text,
     marginBottom: 4,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: colors.textSecondary,
   },
   scrollView: {
     flex: 1,
@@ -389,12 +374,10 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.text,
     flex: 1,
   },
   storyBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
@@ -402,7 +385,7 @@ const styles = StyleSheet.create({
   storyBadgeText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: colors.text,
+    color: '#FFFFFF',
   },
   liveBadgeContainer: {
     flexDirection: 'row',
@@ -450,7 +433,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: colors.textSecondary,
   },
   deviceTierIndicator: {
     position: 'absolute',
@@ -463,7 +445,6 @@ const styles = StyleSheet.create({
   },
   deviceTierText: {
     fontSize: 10,
-    color: colors.textSecondary,
     fontWeight: '600',
   },
 });
