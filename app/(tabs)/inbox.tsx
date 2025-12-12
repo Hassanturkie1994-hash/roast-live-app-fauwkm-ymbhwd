@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Image,
   RefreshControl,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -69,6 +71,8 @@ export default function InboxScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
@@ -141,6 +145,15 @@ export default function InboxScreen() {
   const handleNotificationPress = useCallback(async (notification: Notification) => {
     await notificationService.markAsRead(notification.id);
 
+    // If it's an admin announcement or system update, show in modal
+    if (notification.type === 'admin_announcement' || notification.type === 'system_update') {
+      setSelectedNotification(notification);
+      setModalVisible(true);
+      fetchNotifications();
+      return;
+    }
+
+    // Otherwise navigate to the relevant screen
     if (notification.ref_post_id) {
       router.push(`/screens/PostDetailScreen?postId=${notification.ref_post_id}`);
     } else if (notification.ref_story_id) {
@@ -181,7 +194,12 @@ export default function InboxScreen() {
       case 'payout_completed':
         return { ios: 'checkmark.circle.fill', android: 'check_circle' };
       case 'warning':
+      case 'timeout_ended':
+      case 'ban_lifted':
         return { ios: 'exclamationmark.triangle.fill', android: 'warning' };
+      case 'admin_announcement':
+      case 'system_update':
+        return { ios: 'megaphone.fill', android: 'campaign' };
       default:
         return { ios: 'bell.fill', android: 'notifications' };
     }
@@ -348,6 +366,53 @@ export default function InboxScreen() {
           })
         )}
       </ScrollView>
+
+      {/* Announcement Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <IconSymbol
+                ios_icon_name="megaphone.fill"
+                android_material_icon_name="campaign"
+                size={32}
+                color={colors.brandPrimary || '#A40028'}
+              />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {selectedNotification?.type === 'admin_announcement' ? 'Admin Announcement' : 'System Update'}
+              </Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={28}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.modalMessage, { color: colors.text }]}>
+                {selectedNotification?.message}
+              </Text>
+              <Text style={[styles.modalTimestamp, { color: colors.textSecondary }]}>
+                {selectedNotification && formatTime(selectedNotification.created_at)}
+              </Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.brandPrimary || '#A40028' }]}
+              onPress={() => setModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -490,5 +555,55 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 12,
     fontWeight: '400',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    flex: 1,
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalBody: {
+    marginBottom: 20,
+  },
+  modalMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 16,
+  },
+  modalTimestamp: {
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  modalButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

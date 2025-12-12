@@ -112,6 +112,70 @@ function RootLayoutContent() {
                     animation: "slide_from_bottom",
                   }}
                 />
+                
+                {/* All Screen Routes */}
+                <Stack.Screen name="screens/AccessRestrictedScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AccountSecurityScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AccountSettingsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AchievementsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AddBalanceScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminAIModerationScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminAnalyticsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminAnnouncementsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminAppealsReviewScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminBanAppealsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminDashboardScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminEscalationQueueScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminLiveStreamsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminMessagingScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminPayoutPanelScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminPenaltiesScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminPushNotificationsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminReportsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminStrikesScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AdminSuspensionsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AppealsCenterScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AppealsViolationsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/AppearanceSettingsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ArchivedStreamsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/BlockedUsersScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/BroadcasterScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ChangePasswordScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ChatScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/CreatePostScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/CreateStoryScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/CreatorClubSetupScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/CreatorEarningsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/EditProfileScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/FanClubManagementScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/GiftInformationScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/HeadAdminDashboardScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/LeaderboardScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ManageSubscriptionsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ModeratorDashboardScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ModeratorReviewQueueScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/NotificationSettingsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/PerformanceGrowthScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/PremiumMembershipScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/PrivacyPolicyScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/PublicProfileScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ReplayPlayerScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ReplaysTabScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/RetentionAnalyticsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/RoleManagementScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/SafetyCommunityRulesScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/SavedStreamsScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/SearchScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ServiceHealthScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/StoryViewerScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/StreamDashboardScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/StreamRevenueScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/SupportDashboardScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/TermsOfServiceScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/TransactionHistoryScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/ViewerScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/WalletScreen" options={{ headerShown: false }} />
+                <Stack.Screen name="screens/WithdrawScreen" options={{ headerShown: false }} />
               </Stack>
             </WidgetProvider>
           </AuthProvider>

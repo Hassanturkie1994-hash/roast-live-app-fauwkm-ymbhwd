@@ -15,7 +15,7 @@ import RoastIcon from '@/components/Icons/RoastIcon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { messagingService } from '@/app/services/messagingService';
+import { notificationService } from '@/app/services/notificationService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -35,10 +35,13 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
   const fetchUnreadCount = useCallback(async () => {
     if (!user) return;
     
-    const result = await messagingService.getConversations(user.id);
-    if (result.success && result.conversations) {
-      const total = result.conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
-      setUnreadCount(total);
+    try {
+      const result = await notificationService.getUnreadCount(user.id);
+      if (result.success) {
+        setUnreadCount(result.count);
+      }
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
     }
   }, [user]);
 
@@ -46,6 +49,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
     if (user) {
       fetchUnreadCount();
       
+      // Poll for new notifications every 30 seconds
       const interval = setInterval(fetchUnreadCount, 30000);
       return () => clearInterval(interval);
     }
@@ -93,6 +97,11 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
 
   const handleTabPress = (route: string) => {
     router.push(route as any);
+    
+    // Refresh unread count when navigating to inbox
+    if (route === '/(tabs)/inbox') {
+      setTimeout(fetchUnreadCount, 500);
+    }
   };
 
   return (
