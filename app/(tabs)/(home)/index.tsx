@@ -18,10 +18,8 @@ import RoastLiveLogo from '@/components/RoastLiveLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
-import { Tables } from '@/app/integrations/supabase/types';
 import { queryCache } from '@/app/services/queryCache';
-
-type Stream = Tables<'streams'>;
+import { normalizeStreams, NormalizedStream, RawStreamData } from '@/utils/streamNormalizer';
 
 interface Post {
   id: string;
@@ -123,7 +121,7 @@ PostItem.displayName = 'PostItem';
 export default function HomeScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
-  const [streams, setStreams] = useState<Stream[]>([]);
+  const [streams, setStreams] = useState<NormalizedStream[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'posts'>('live');
@@ -134,9 +132,18 @@ export default function HomeScreen() {
       const data = await queryCache.getCached(
         'streams_live',
         async () => {
+          // Query with user join to get profile data
           const { data, error } = await supabase
             .from('streams')
-            .select('*')
+            .select(`
+              *,
+              users:broadcaster_id (
+                id,
+                display_name,
+                avatar,
+                verified_status
+              )
+            `)
             .eq('status', 'live')
             .order('started_at', { ascending: false });
 
@@ -145,7 +152,8 @@ export default function HomeScreen() {
             return [];
           }
 
-          return data || [];
+          // Normalize streams to ensure consistent data shape
+          return normalizeStreams((data || []) as RawStreamData[]);
         },
         30000 // 30 seconds cache for live streams
       );
@@ -213,7 +221,7 @@ export default function HomeScreen() {
   }, [activeTab, fetchData]);
 
   // Memoize stream press handler
-  const handleStreamPress = useCallback((stream: Stream) => {
+  const handleStreamPress = useCallback((stream: NormalizedStream) => {
     router.push({
       pathname: '/live-player',
       params: { streamId: stream.id },
@@ -226,7 +234,7 @@ export default function HomeScreen() {
   }, []);
 
   // Memoize stream render function
-  const renderStream = useCallback(({ item }: { item: Stream }) => (
+  const renderStream = useCallback(({ item }: { item: NormalizedStream }) => (
     <StreamPreviewCard
       stream={item}
       onPress={() => handleStreamPress(item)}
@@ -243,7 +251,7 @@ export default function HomeScreen() {
   ), [handlePostPress, colors]);
 
   // Memoize key extractors
-  const streamKeyExtractor = useCallback((item: Stream) => item.id, []);
+  const streamKeyExtractor = useCallback((item: NormalizedStream) => item.id, []);
   const postKeyExtractor = useCallback((item: Post) => item.id, []);
 
   // Memoize tab change handlers

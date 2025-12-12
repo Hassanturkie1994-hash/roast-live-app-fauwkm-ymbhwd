@@ -10,6 +10,7 @@ import {
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -17,19 +18,24 @@ import { colors } from '@/styles/commonStyles';
 import { CDNImage } from '@/components/CDNImage';
 import { useExplorePrefetch } from '@/hooks/useExplorePrefetch';
 import { cdnService } from '@/app/services/cdnService';
+import { fetchLiveStreams } from '@/app/services/streamService';
+import { NormalizedStream } from '@/utils/streamNormalizer';
+import { IconSymbol } from '@/components/IconSymbol';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = (width - 48) / 2; // 2 columns with padding
 
 interface ExploreItem {
   id: string;
-  type: 'post' | 'story';
+  type: 'post' | 'story' | 'stream';
   mediaUrl: string;
   username: string;
   userId: string;
   avatarUrl?: string;
   caption?: string;
   createdAt: string;
+  viewerCount?: number;
+  isLive?: boolean;
 }
 
 export default function ExploreScreen() {
@@ -59,6 +65,9 @@ export default function ExploreScreen() {
       const itemsPerPage = 20;
       const start = pageNum * itemsPerPage;
       const end = start + itemsPerPage - 1;
+
+      // Fetch live streams using the stream service
+      const liveStreams = await fetchLiveStreams();
 
       // Fetch posts
       const { data: posts } = await supabase
@@ -94,7 +103,21 @@ export default function ExploreScreen() {
         .order('created_at', { ascending: false })
         .range(start, end);
 
-      // Combine and format items
+      // Convert streams to explore items
+      const streamItems: ExploreItem[] = liveStreams.map(stream => ({
+        id: stream.id,
+        type: 'stream' as const,
+        mediaUrl: stream.thumbnail_url,
+        username: stream.user.username,
+        userId: stream.user.id,
+        avatarUrl: stream.user.avatar,
+        caption: stream.title,
+        createdAt: stream.start_time,
+        viewerCount: stream.viewer_count,
+        isLive: stream.is_live,
+      }));
+
+      // Convert posts to explore items
       const postItems: ExploreItem[] = (posts || []).map(post => ({
         id: post.id,
         type: 'post' as const,
@@ -106,6 +129,7 @@ export default function ExploreScreen() {
         createdAt: post.created_at,
       }));
 
+      // Convert stories to explore items
       const storyItems: ExploreItem[] = (stories || []).map(story => ({
         id: story.id,
         type: 'story' as const,
@@ -117,7 +141,7 @@ export default function ExploreScreen() {
       }));
 
       // Combine and shuffle
-      const allItems = [...postItems, ...storyItems].sort(
+      const allItems = [...streamItems, ...postItems, ...storyItems].sort(
         () => Math.random() - 0.5
       );
 
@@ -149,7 +173,6 @@ export default function ExploreScreen() {
       // Cleanup prefetch cache on unmount
       clearCache();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -187,7 +210,13 @@ export default function ExploreScreen() {
   );
 
   const handleItemPress = (item: ExploreItem) => {
-    if (item.type === 'post') {
+    if (item.type === 'stream') {
+      // Navigate to live stream
+      router.push({
+        pathname: '/live-player',
+        params: { streamId: item.id },
+      });
+    } else if (item.type === 'post') {
       // Navigate to post detail
       router.push(`/post/${item.id}`);
     } else {
@@ -227,6 +256,26 @@ export default function ExploreScreen() {
         {item.type === 'story' && (
           <View style={styles.storyBadge}>
             <Text style={styles.storyBadgeText}>STORY</Text>
+          </View>
+        )}
+
+        {item.type === 'stream' && item.isLive && (
+          <View style={styles.liveBadgeContainer}>
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveBadgeText}>LIVE</Text>
+            </View>
+            {item.viewerCount !== undefined && (
+              <View style={styles.viewerBadge}>
+                <IconSymbol
+                  ios_icon_name="eye.fill"
+                  android_material_icon_name="visibility"
+                  size={12}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.viewerCount}>{item.viewerCount}</Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -354,6 +403,45 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  liveBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF0000',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    gap: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+  },
+  liveBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  viewerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    gap: 4,
+  },
+  viewerCount: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   loadingContainer: {
     width: '100%',

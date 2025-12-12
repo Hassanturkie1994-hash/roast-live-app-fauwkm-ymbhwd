@@ -5,32 +5,25 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import LiveBadge from '@/components/LiveBadge';
 import PremiumBadge from '@/components/PremiumBadge';
-import { Tables } from '@/app/integrations/supabase/types';
-
-type Stream = Tables<'streams'> & {
-  users: Tables<'users'>;
-};
+import { NormalizedStream } from '@/utils/streamNormalizer';
 
 interface StreamPreviewCardProps {
-  stream: Stream;
+  stream: NormalizedStream;
   onPress: () => void;
 }
 
 export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCardProps) {
-  // Generate a placeholder thumbnail (in production, use actual thumbnails)
-  const thumbnailUrl = stream.users.avatar || 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&h=600&fit=crop';
-
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.thumbnailContainer}>
         <Image
-          source={{ uri: thumbnailUrl }}
+          source={{ uri: stream.thumbnail_url }}
           style={styles.thumbnail}
           resizeMode="cover"
         />
         <View style={styles.overlay}>
           <View style={styles.topRow}>
-            <LiveBadge size="small" />
+            {stream.is_live && <LiveBadge size="small" />}
             <View style={styles.viewerBadge}>
               <IconSymbol
                 ios_icon_name="eye.fill"
@@ -38,7 +31,7 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
                 size={12}
                 color="#FFFFFF"
               />
-              <Text style={styles.viewerCount}>{stream.viewer_count || 0}</Text>
+              <Text style={styles.viewerCount}>{stream.viewer_count}</Text>
             </View>
           </View>
         </View>
@@ -46,9 +39,9 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
 
       <View style={styles.info}>
         <View style={styles.avatarContainer}>
-          {stream.users.avatar ? (
+          {stream.user.avatar ? (
             <Image
-              source={{ uri: stream.users.avatar }}
+              source={{ uri: stream.user.avatar }}
               style={styles.avatar}
               resizeMode="cover"
             />
@@ -70,9 +63,9 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
           </Text>
           <View style={styles.broadcasterRow}>
             <Text style={styles.broadcasterName} numberOfLines={1}>
-              {stream.users.display_name}
+              {stream.user.display_name}
             </Text>
-            {stream.users.verified_status && (
+            {stream.user.verified_status && (
               <IconSymbol
                 ios_icon_name="checkmark.seal.fill"
                 android_material_icon_name="verified"
