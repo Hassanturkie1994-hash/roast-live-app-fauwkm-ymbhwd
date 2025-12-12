@@ -1,17 +1,58 @@
+
 import React from 'react';
-import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
+import { Stack } from 'expo-router';
+import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
 
 export default function TabLayout() {
+  const tabs: TabBarItem[] = [
+    {
+      name: '(home)',
+      route: '/(tabs)/(home)/',
+      icon: 'home',
+      label: 'Home',
+    },
+    {
+      name: 'explore',
+      route: '/(tabs)/explore',
+      icon: 'search',
+      label: 'Explore',
+    },
+    {
+      name: 'golive',
+      route: '/(tabs)/golive',
+      icon: 'add-circle',
+      label: 'Go Live',
+      isCenter: true,
+    },
+    {
+      name: 'inbox',
+      route: '/(tabs)/inbox',
+      icon: 'mail',
+      label: 'Inbox',
+    },
+    {
+      name: 'profile',
+      route: '/(tabs)/profile',
+      icon: 'person',
+      label: 'Profile',
+    },
+  ];
+
   return (
-    <NativeTabs>
-      <NativeTabs.Trigger key="home" name="(home)">
-        <Icon sf="house.fill" />
-        <Label>Home</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger key="profile" name="profile">
-        <Icon sf="person.fill" />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+        }}
+      >
+        <Stack.Screen key="home" name="(home)" />
+        <Stack.Screen key="explore" name="explore" />
+        <Stack.Screen key="golive" name="golive" />
+        <Stack.Screen key="inbox" name="inbox" />
+        <Stack.Screen key="profile" name="profile" />
+      </Stack>
+      <FloatingTabBar tabs={tabs} />
+    </>
   );
 }
