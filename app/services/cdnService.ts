@@ -607,6 +607,17 @@ class CDNService {
           console.error(`❌ Edge Function error (attempt ${attempt}):`, uploadError);
           lastError = uploadError;
           
+          // Check if it's a configuration error (don't retry)
+          if (uploadError.message?.includes('R2 storage not configured')) {
+            console.error('🚨 R2 is not configured properly. Please check environment variables.');
+            console.error('Required variables: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY');
+            console.error('See docs/R2_UPLOAD_FIX_GUIDE.md for detailed instructions.');
+            return { 
+              success: false, 
+              error: 'R2 storage not configured. Please contact support or check the R2_UPLOAD_FIX_GUIDE.md for setup instructions.' 
+            };
+          }
+          
           // Wait before retry (exponential backoff)
           if (attempt < maxRetries) {
             const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
@@ -619,6 +630,18 @@ class CDNService {
 
         if (!uploadData || !uploadData.success) {
           console.error(`❌ Upload data error (attempt ${attempt}):`, uploadData);
+          
+          // Check if it's a configuration error
+          if (uploadData?.error?.includes('R2 storage not configured')) {
+            console.error('🚨 R2 is not configured properly. Please check environment variables.');
+            console.error('Required variables: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY');
+            console.error('See docs/R2_UPLOAD_FIX_GUIDE.md for detailed instructions.');
+            return { 
+              success: false, 
+              error: 'R2 storage not configured. Please set R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY in Supabase Edge Functions settings. See docs/R2_UPLOAD_FIX_GUIDE.md for instructions.' 
+            };
+          }
+          
           lastError = new Error(uploadData?.error || 'Upload failed - no data returned');
           
           // Wait before retry (exponential backoff)
@@ -722,6 +745,7 @@ class CDNService {
     // All retries failed
     const errorMessage = lastError?.message || 'Failed to upload media after multiple attempts';
     console.error('❌ All upload attempts failed:', errorMessage);
+    console.error('💡 Tip: Check docs/R2_UPLOAD_FIX_GUIDE.md for troubleshooting steps');
     return { success: false, error: errorMessage };
   }
 
