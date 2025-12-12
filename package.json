@@ -9,7 +9,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "dev": "EXPO_NO_TELEMETRY=1 expo start --tunnel",
+    "dev": "expo start --clear --tunnel",
     "build:web": "expo export -p web && npx workbox generateSW workbox-config.js",
     "build:android": "expo prebuild -p android",
     "prebuild": "npx expo prebuild --clean",
