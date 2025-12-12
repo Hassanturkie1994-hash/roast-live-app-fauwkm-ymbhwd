@@ -10,7 +10,7 @@ import * as Device from 'expo-device';
  * Handles all static asset uploads and delivery through Cloudflare R2 CDN.
  * This service does NOT modify any live-streaming API logic.
  * 
- * UPDATED: Now uses refreshed R2 API keys and proper S3-compatible upload flow
+ * UPDATED: Now uses Cloudflare R2 for uploads via Supabase Edge Functions
  * 
  * CDN integration applies only to:
  * - Profile images
@@ -513,10 +513,10 @@ class CDNService {
   }
 
   /**
-   * Upload media to Supabase storage and return CDN URL with deduplication
+   * Upload media to Cloudflare R2 via Supabase Edge Function
    * Triggers CDN mutation events
    * Includes retry logic with exponential backoff
-   * UPDATED: Improved error handling and validation
+   * UPDATED: Now uses R2 instead of Supabase Storage
    */
   async uploadMedia(options: UploadOptions): Promise<{
     success: boolean;
@@ -567,23 +567,24 @@ class CDNService {
           }
         }
 
-        // Get cache control based on tier
-        const cacheControl = this.getCacheControlForTier(mediaTier);
-
         console.log(`📤 Upload attempt ${attempt}/${maxRetries} for ${path}`);
 
-        // Upload to Supabase storage
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .upload(path, file, {
-            contentType: contentType || file.type || 'application/octet-stream',
-            cacheControl,
-            upsert: true,
-          });
+        // Upload to Cloudflare R2 via Edge Function
+        const fileName = path.split('/').pop() || `file_${Date.now()}`;
+        const fileType = contentType || file.type || 'application/octet-stream';
 
-        if (error) {
-          console.error(`❌ Upload error (attempt ${attempt}):`, error);
-          lastError = error;
+        // Call the upload-to-r2 edge function
+        const { data: uploadData, error: uploadError } = await supabase.functions.invoke('upload-to-r2', {
+          body: {
+            fileName,
+            fileType,
+            mediaType,
+          },
+        });
+
+        if (uploadError || !uploadData || !uploadData.success) {
+          console.error(`❌ Upload error (attempt ${attempt}):`, uploadError || uploadData?.error);
+          lastError = uploadError || new Error(uploadData?.error || 'Upload failed');
           
           // Wait before retry (exponential backoff)
           if (attempt < maxRetries) {
@@ -592,26 +593,38 @@ class CDNService {
             await new Promise(resolve => setTimeout(resolve, waitTime));
             continue;
           }
-          throw error;
+          throw lastError;
         }
 
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(path);
+        // Upload file to R2 using presigned URL
+        const uploadResult = await fetch(uploadData.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': fileType,
+          },
+        });
 
-        if (!urlData || !urlData.publicUrl) {
-          throw new Error('Failed to get public URL');
+        if (!uploadResult.ok) {
+          console.error(`❌ R2 upload failed (attempt ${attempt}):`, uploadResult.status, uploadResult.statusText);
+          lastError = new Error(`R2 upload failed: ${uploadResult.statusText}`);
+          
+          // Wait before retry (exponential backoff)
+          if (attempt < maxRetries) {
+            const waitTime = Math.pow(2, attempt) * 1000;
+            console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw lastError;
         }
 
-        const supabaseUrl = urlData.publicUrl;
-
-        // Convert to CDN URL
-        const cdnUrl = this.convertToCDNUrl(supabaseUrl);
+        const publicUrl = uploadData.publicUrl;
+        const cdnUrl = this.convertToCDNUrl(publicUrl);
 
         // Store hash for future deduplication
         const fileSize = file.size || 0;
-        await this.storeMediaHash(userId, fileHash, mediaType, cdnUrl, supabaseUrl, fileSize);
+        await this.storeMediaHash(userId, fileHash, mediaType, cdnUrl, publicUrl, fileSize);
 
         // Trigger CDN mutation event
         const eventTypeMap: Record<string, CDNEventType> = {
@@ -631,7 +644,7 @@ class CDNService {
         }
 
         console.log('✅ Media uploaded successfully:', {
-          supabaseUrl,
+          publicUrl,
           cdnUrl,
           tier: mediaTier,
           deduplicated: false,
@@ -640,7 +653,7 @@ class CDNService {
         return {
           success: true,
           cdnUrl,
-          supabaseUrl,
+          supabaseUrl: publicUrl,
           deduplicated: false,
         };
       } catch (error) {
