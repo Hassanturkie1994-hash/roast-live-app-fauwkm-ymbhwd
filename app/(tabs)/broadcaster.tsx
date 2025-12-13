@@ -404,6 +404,7 @@ export default function BroadcasterScreen() {
   };
 
   const handleContentLabelSelected = (label: ContentLabel) => {
+    console.log('📝 Content label selected:', label);
     if (isMountedRef.current) {
       setContentLabel(label);
       setShowContentLabelModal(false);
@@ -413,7 +414,22 @@ export default function BroadcasterScreen() {
   };
 
   const handleCreatorRulesConfirm = async () => {
-    if (!user || !isMountedRef.current) return;
+    console.log('✅ Creator rules confirmed, starting stream with label:', contentLabel);
+    
+    if (!user || !isMountedRef.current) {
+      console.error('❌ Cannot start stream: user or component unmounted');
+      return;
+    }
+
+    if (!contentLabel) {
+      console.error('❌ Cannot start stream: no content label selected');
+      Alert.alert('Error', 'Please select a content label');
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+        setShowContentLabelModal(true);
+      }
+      return;
+    }
 
     setLoading(true);
 
@@ -431,13 +447,14 @@ export default function BroadcasterScreen() {
       }
       
       // Now start the stream
-      await startLiveWithLabel(contentLabel!);
+      await startLiveWithLabel(contentLabel);
     } catch (error) {
       console.error('Error in handleCreatorRulesConfirm:', error);
       if (isMountedRef.current) {
         setShowCreatorRulesModal(false);
       }
-      await startLiveWithLabel(contentLabel!);
+      // Still try to start the stream
+      await startLiveWithLabel(contentLabel);
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -446,7 +463,18 @@ export default function BroadcasterScreen() {
   };
 
   const startLiveWithLabel = async (label: ContentLabel) => {
-    if (!user || !isMountedRef.current) return;
+    console.log('🎬 Starting live stream with label:', label);
+    
+    if (!user || !isMountedRef.current) {
+      console.error('❌ Cannot start stream: user or component unmounted');
+      return;
+    }
+
+    if (!label) {
+      console.error('❌ Cannot start stream: no label provided');
+      Alert.alert('Error', 'Content label is required');
+      return;
+    }
 
     setLoading(true);
 
