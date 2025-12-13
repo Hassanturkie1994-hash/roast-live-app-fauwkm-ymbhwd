@@ -1,5 +1,8 @@
-
 import { supabase } from '@/app/integrations/supabase/client';
+
+/* =========================
+   Types
+========================= */
 
 interface StartLiveParams {
   title: string;
@@ -7,23 +10,23 @@ interface StartLiveParams {
 }
 
 interface StopLiveParams {
-  liveInputId: string;
-  streamId: string;
+  liveInputId?: string;
+  streamId?: string;
 }
 
 interface StartLiveResponse {
   success: boolean;
-  stream: {
+  stream?: {
     id: string;
     live_input_id: string;
     title: string;
     status: string;
     playback_url: string;
   };
-  ingest: {
-    webRTC_url: string | null;
+  ingest?: {
     rtmps_url: string | null;
     stream_key: string | null;
+    webRTC_url: string | null;
   };
   error?: string;
 }
@@ -34,206 +37,179 @@ interface StopLiveResponse {
   error?: string;
 }
 
+/* =========================
+   CloudflareService
+========================= */
+
 class CloudflareService {
   private maxRetries = 3;
-  private retryDelay = 2000; // 2 seconds
+  private retryDelay = 2000;
 
-  /**
-   * Start live stream with retry logic
-   */
+  /* =========================
+     START LIVE
+  ========================= */
+
   async startLive({ title, userId }: StartLiveParams): Promise<StartLiveResponse> {
-    console.log('📡 Calling start-live edge function with:', { title, userId });
+    console.log('📡 startLive → invoking edge function', { title, userId });
 
     let lastError: any = null;
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        const { data, error } = await supabase.functions.invoke<StartLiveResponse>('start-live', {
-          body: { title, user_id: userId },
-        });
+        const { data, error } =
+          await supabase.functions.invoke<StartLiveResponse>('start-live', {
+            body: {
+              title,
+              user_id: userId,
+            },
+          });
 
-        console.log(`📡 start-live response (attempt ${attempt}):`, { data, error });
+        console.log(`📡 start-live response (attempt ${attempt})`, { data, error });
 
         if (error) {
-          console.error(`❌ Edge function error (attempt ${attempt}):`, error);
           lastError = error;
-          
-          // Retry on temporary failures
+
           if (attempt < this.maxRetries) {
-            const waitTime = this.retryDelay * attempt;
-            console.log(`⏳ Retrying in ${waitTime}ms...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
+            await this.wait(attempt);
             continue;
           }
-          
-          throw new Error(`Failed to start live stream: ${error.message || 'Unknown error'}`);
+
+          throw new Error(error.message || 'start-live failed');
         }
 
         if (!data) {
-          console.error('❌ No data returned from edge function');
-          lastError = new Error('No response from server');
-          
+          lastError = new Error('No response from start-live');
+
           if (attempt < this.maxRetries) {
-            const waitTime = this.retryDelay * attempt;
-            console.log(`⏳ Retrying in ${waitTime}ms...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
+            await this.wait(attempt);
             continue;
           }
-          
-          throw new Error('No response from server');
+
+          throw lastError;
         }
 
         if (!data.success) {
-          console.error('❌ Server returned success=false:', data.error);
-          throw new Error(data.error || 'Failed to start live stream');
+          throw new Error(data.error || 'start-live returned success=false');
         }
 
-        // Validate response structure
-        if (!data.stream || !data.stream.id || !data.stream.live_input_id) {
-          console.error('❌ Invalid response structure:', data);
-          throw new Error('Invalid response from server: missing stream data');
+        // Defensive: backend might still be under development
+        if (!data.stream || !data.stream.live_input_id) {
+          console.warn('⚠️ start-live returned success but missing stream data');
         }
 
-        if (!data.ingest) {
-          console.error('❌ Invalid response structure: missing ingest data:', data);
-          throw new Error('Invalid response from server: missing ingest data');
-        }
-
-        console.log('✅ Successfully started live stream:', {
-          id: data.stream.id,
-          live_input_id: data.stream.live_input_id,
-          playback_url: data.stream.playback_url,
-        });
-
+        console.log('✅ Live stream started');
         return data;
-      } catch (error) {
-        console.error(`❌ Error in startLive (attempt ${attempt}):`, error);
-        lastError = error;
-        
-        // Retry on temporary failures
+      } catch (err) {
+        console.error(`❌ startLive error (attempt ${attempt})`, err);
+        lastError = err;
+
         if (attempt < this.maxRetries) {
-          const waitTime = this.retryDelay * attempt;
-          console.log(`⏳ Retrying in ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+          await this.wait(attempt);
         }
       }
     }
 
-    // All retries failed
-    const errorMessage = lastError?.message || 'Failed to start live stream after multiple attempts';
-    console.error('❌ All start-live attempts failed:', errorMessage);
-    throw new Error(errorMessage);
+    throw new Error(
+      lastError?.message || 'Failed to start live stream after retries'
+    );
   }
 
-  /**
-   * Stop live stream with validation and retry logic
-   * Now returns success even if Cloudflare cleanup fails (database update is what matters)
-   */
-  async stopLive({ liveInputId, streamId }: StopLiveParams): Promise<StopLiveResponse> {
-    console.log('📡 Calling stop-live edge function with:', { liveInputId, streamId });
+  /* =========================
+     STOP LIVE
+  ========================= */
 
-    // Defensive check: ensure we have a valid ID
+  async stopLive({ liveInputId, streamId }: StopLiveParams): Promise<StopLiveResponse> {
     const idToUse = liveInputId || streamId;
 
+    console.log('📡 stopLive → invoking edge function', { idToUse });
+
     if (!idToUse) {
-      console.error('❌ Missing both live_input_id and stream_id');
-      
-      // Don't throw - return graceful error
       return {
         success: false,
-        error: 'Cannot stop stream: missing stream identifier',
+        error: 'Missing liveInputId / streamId',
       };
     }
 
-    console.log('📡 Using ID for stop-live:', idToUse);
-
     let lastError: any = null;
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        const { data, error } = await supabase.functions.invoke<StopLiveResponse>('stop-live', {
-          body: { live_input_id: idToUse },
-        });
+        const { data, error } =
+          await supabase.functions.invoke<StopLiveResponse>('stop-live', {
+            body: {
+              live_input_id: idToUse,
+            },
+          });
 
-        console.log(`📡 stop-live response (attempt ${attempt}):`, { data, error });
+        console.log(`📡 stop-live response (attempt ${attempt})`, { data, error });
 
         if (error) {
-          console.error(`❌ Edge function error (attempt ${attempt}):`, error);
           lastError = error;
-          
-          // Retry on temporary failures
+
           if (attempt < this.maxRetries) {
-            const waitTime = this.retryDelay * attempt;
-            console.log(`⏳ Retrying in ${waitTime}ms...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
+            await this.wait(attempt);
             continue;
           }
-          
-          // Don't throw - return graceful error
-          console.warn('⚠️ All stop-live attempts failed, but continuing gracefully');
+
           return {
             success: false,
-            error: `Failed to stop live stream: ${error.message || 'Unknown error'}`,
+            error: error.message || 'stop-live failed',
           };
         }
 
         if (!data) {
-          console.error('❌ No data returned from edge function');
-          lastError = new Error('No response from server');
-          
-          // Retry on temporary failures
+          lastError = new Error('No response from stop-live');
+
           if (attempt < this.maxRetries) {
-            const waitTime = this.retryDelay * attempt;
-            console.log(`⏳ Retrying in ${waitTime}ms...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
+            await this.wait(attempt);
             continue;
           }
-          
-          // Don't throw - return graceful error
-          console.warn('⚠️ No response from stop-live, but continuing gracefully');
+
           return {
             success: false,
-            error: 'No response from server',
+            error: 'No response from stop-live',
           };
         }
 
-        // Check for warnings (e.g., Cloudflare cleanup failed but database updated)
         if (data.warning) {
-          console.warn('⚠️ Stop-live completed with warning:', data.warning);
+          console.warn('⚠️ stop-live warning:', data.warning);
         }
 
         if (!data.success) {
-          console.error('❌ Server returned success=false:', data.error);
-          
-          // Don't throw - return the error response
           return data;
         }
 
-        console.log('✅ Successfully stopped live stream');
-
+        console.log('✅ Live stream stopped');
         return data;
-      } catch (error) {
-        console.error(`❌ Error in stopLive (attempt ${attempt}):`, error);
-        lastError = error;
-        
-        // Retry on temporary failures
+      } catch (err) {
+        console.error(`❌ stopLive error (attempt ${attempt})`, err);
+        lastError = err;
+
         if (attempt < this.maxRetries) {
-          const waitTime = this.retryDelay * attempt;
-          console.log(`⏳ Retrying in ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+          await this.wait(attempt);
         }
       }
     }
 
-    // All retries failed - return graceful error instead of throwing
-    const errorMessage = lastError?.message || 'Failed to stop live stream after multiple attempts';
-    console.warn('⚠️ All stop-live attempts failed:', errorMessage);
-    
     return {
       success: false,
-      error: errorMessage,
+      error: lastError?.message || 'Failed to stop live stream',
     };
   }
+
+  /* =========================
+     Utils
+  ========================= */
+
+  private async wait(attempt: number) {
+    const delay = this.retryDelay * attempt;
+    console.log(`⏳ retrying in ${delay}ms`);
+    await new Promise((res) => setTimeout(res, delay));
+  }
 }
+
+/* =========================
+   Export singleton
+========================= */
 
 export const cloudflareService = new CloudflareService();

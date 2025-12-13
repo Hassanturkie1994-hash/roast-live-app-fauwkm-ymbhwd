@@ -1040,21 +1040,23 @@ export default function BroadcasterScreen() {
         />
       ))}
 
-      {/* Control Panel */}
+      {/* Control Panel - Positioned higher to avoid navigation bar */}
       {isLive && !isMinimized && (
-        <LiveStreamControlPanel
-          isMicOn={isMicOn}
-          onToggleMic={toggleMic}
-          isCameraOn={isCameraOn}
-          onToggleCamera={toggleCamera}
-          facing={facing}
-          onFlipCamera={toggleCameraFacing}
-          isFlashOn={flashMode === 'on'}
-          onToggleFlash={toggleFlash}
-          onEndStream={() => setShowExitConfirmation(true)}
-          isLoading={isLoading}
-          isBackCamera={facing === 'back'}
-        />
+        <View style={styles.controlPanelWrapper}>
+          <LiveStreamControlPanel
+            isMicOn={isMicOn}
+            onToggleMic={toggleMic}
+            isCameraOn={isCameraOn}
+            onToggleCamera={toggleCamera}
+            facing={facing}
+            onFlipCamera={toggleCameraFacing}
+            isFlashOn={flashMode === 'on'}
+            onToggleFlash={toggleFlash}
+            onEndStream={() => setShowExitConfirmation(true)}
+            isLoading={isLoading}
+            isBackCamera={facing === 'back'}
+          />
+        </View>
       )}
 
       {/* Viewer List Modal */}
@@ -1407,10 +1409,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 24,
+    paddingBottom: 120,
   },
   welcomeText: {
     fontSize: 24,
     fontWeight: '800',
+  },
+  controlPanelWrapper: {
+    position: 'absolute',
+    bottom: 120,
+    left: 0,
+    right: 0,
+    zIndex: 100,
   },
   modalOverlay: {
     flex: 1,
