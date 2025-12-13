@@ -58,7 +58,7 @@ interface GiftAnimation {
 export default function BroadcasterScreen() {
   const { user } = useAuth();
   const { setIsStreaming, startStreamTimer, stopStreamTimer } = useStreaming();
-  const { t } = useTranslation();
+  const t = useTranslation();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
@@ -185,17 +185,17 @@ export default function BroadcasterScreen() {
       if (result.success && isMountedRef.current) {
         setShowSafetyAcknowledgement(false);
         Alert.alert(
-          t('safety.acknowledgement.successTitle'),
-          t('safety.acknowledgement.successMessage'),
-          [{ text: t('common.ok') }]
+          t.safety.acknowledgement.successTitle,
+          t.safety.acknowledgement.successMessage,
+          [{ text: t.common.ok }]
         );
       } else if (isMountedRef.current) {
-        Alert.alert(t('common.error'), result.error || 'Failed to record acknowledgement');
+        Alert.alert(t.common.error, result.error || 'Failed to record acknowledgement');
       }
     } catch (error) {
       console.error('Error recording safety acknowledgement:', error);
       if (isMountedRef.current) {
-        Alert.alert(t('common.error'), 'Failed to record acknowledgement');
+        Alert.alert(t.common.error, 'Failed to record acknowledgement');
       }
     } finally {
       if (isMountedRef.current) {
@@ -336,7 +336,7 @@ export default function BroadcasterScreen() {
   /* ───────────────── START STREAM FLOW ───────────────── */
   const handleGoLivePress = async () => {
     if (!user) {
-      Alert.alert(t('common.error'), t('broadcaster.errors.notLoggedIn'));
+      Alert.alert(t.common.error, t.broadcaster.errors.notLoggedIn);
       return;
     }
 
@@ -360,7 +360,7 @@ export default function BroadcasterScreen() {
       // Check if user has accepted safety guidelines
       const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
       if (!canStream.canStream) {
-        Alert.alert(t('broadcaster.errors.cannotStartStream'), canStream.reason, [{ text: t('common.ok') }]);
+        Alert.alert(t.broadcaster.errors.cannotStartStream, canStream.reason, [{ text: t.common.ok }]);
         if (isMountedRef.current) {
           setShowSafetyAcknowledgement(true);
         }
@@ -373,18 +373,18 @@ export default function BroadcasterScreen() {
       }
     } catch (error) {
       console.error('Error in handleGoLivePress:', error);
-      Alert.alert(t('common.error'), t('broadcaster.errors.failedToStart'));
+      Alert.alert(t.common.error, t.broadcaster.errors.failedToStart);
     }
   };
 
   const startStreamSetup = async () => {
     if (!streamTitle.trim()) {
-      Alert.alert(t('broadcaster.setup.missingTitle'), t('broadcaster.setup.enterTitle'));
+      Alert.alert(t.broadcaster.setup.missingTitle, t.broadcaster.setup.enterTitle);
       return;
     }
 
     if (!user) {
-      Alert.alert(t('common.error'), t('broadcaster.errors.notLoggedIn'));
+      Alert.alert(t.common.error, t.broadcaster.errors.notLoggedIn);
       return;
     }
 
@@ -393,9 +393,9 @@ export default function BroadcasterScreen() {
       const validation = await contentSafetyService.validateStreamStart(user.id);
       if (!validation.canStream) {
         Alert.alert(
-          t('broadcaster.errors.cannotStartStream'),
+          t.broadcaster.errors.cannotStartStream,
           validation.reason || 'You are not allowed to stream at this time.',
-          [{ text: t('common.ok') }]
+          [{ text: t.common.ok }]
         );
         if (isMountedRef.current) {
           setShowSetup(false);
@@ -409,7 +409,7 @@ export default function BroadcasterScreen() {
       }
     } catch (error) {
       console.error('Error in startStreamSetup:', error);
-      Alert.alert(t('common.error'), t('broadcaster.errors.failedToStart'));
+      Alert.alert(t.common.error, t.broadcaster.errors.failedToStart);
     }
   };
 
@@ -433,7 +433,7 @@ export default function BroadcasterScreen() {
 
     if (!contentLabel) {
       console.error('❌ Cannot start stream: no content label selected');
-      Alert.alert(t('common.error'), 'Please select a content label');
+      Alert.alert(t.common.error, 'Please select a content label');
       if (isMountedRef.current) {
         setShowCreatorRulesModal(false);
         setShowContentLabelModal(true);
@@ -473,14 +473,14 @@ export default function BroadcasterScreen() {
       // Show error to user
       const errorMessage = error instanceof Error 
         ? error.message 
-        : t('broadcaster.errors.failedToStart');
+        : t.broadcaster.errors.failedToStart;
       
       Alert.alert(
-        t('broadcaster.errors.cannotStartStream'),
+        t.broadcaster.errors.cannotStartStream,
         errorMessage,
         [
           { 
-            text: t('common.retry'), 
+            text: t.common.retry, 
             onPress: () => {
               if (isMountedRef.current) {
                 setShowCreatorRulesModal(true);
@@ -488,7 +488,7 @@ export default function BroadcasterScreen() {
             }
           },
           { 
-            text: t('common.cancel'), 
+            text: t.common.cancel, 
             style: 'cancel',
             onPress: () => {
               if (isMountedRef.current) {
@@ -583,9 +583,9 @@ export default function BroadcasterScreen() {
       });
 
       Alert.alert(
-        t('broadcaster.live.youAreLive'),
-        `${t('broadcaster.live.streamStarted').replace('{streamId}', result.stream.id)}\n\n${t('broadcaster.live.viewerCount').replace('{count}', '0')}`,
-        [{ text: t('common.ok') }]
+        t.broadcaster.live.youAreLive,
+        `${t.broadcaster.live.streamStarted.replace('{streamId}', result.stream.id)}\n\n${t.broadcaster.live.viewerCount.replace('{count}', '0')}`,
+        [{ text: t.common.ok }]
       );
     } catch (error) {
       console.error('❌ Error starting stream:', error);
@@ -597,7 +597,7 @@ export default function BroadcasterScreen() {
       
       const errorMessage = error instanceof Error 
         ? error.message 
-        : t('broadcaster.errors.failedToStart');
+        : t.broadcaster.errors.failedToStart;
       
       // Re-throw the error so it can be caught by handleCreatorRulesConfirm
       throw new Error(errorMessage);
@@ -607,7 +607,7 @@ export default function BroadcasterScreen() {
   /* ───────────────── END STREAM ───────────────── */
   const endLive = async () => {
     if (!currentStream) {
-      Alert.alert(t('common.error'), t('broadcaster.errors.noActiveStream'));
+      Alert.alert(t.common.error, t.broadcaster.errors.noActiveStream);
       return;
     }
 
@@ -685,8 +685,8 @@ export default function BroadcasterScreen() {
       }
 
       Alert.alert(
-        t('broadcaster.endStream.streamEnded'),
-        t('broadcaster.endStream.stats')
+        t.broadcaster.endStream.streamEnded,
+        t.broadcaster.endStream.stats
           .replace('{peak}', peakViewers.toString())
           .replace('{total}', totalViewerCount.toString())
           .replace('{gifts}', totalGifts.toString())
@@ -697,14 +697,14 @@ export default function BroadcasterScreen() {
       
       const errorMessage = error instanceof Error 
         ? error.message 
-        : t('broadcaster.errors.failedToEnd');
+        : t.broadcaster.errors.failedToEnd;
       
       Alert.alert(
-        t('common.error'),
+        t.common.error,
         errorMessage,
         [
-          { text: t('common.retry'), onPress: endLive },
-          { text: t('common.cancel'), style: 'cancel' }
+          { text: t.common.retry, onPress: endLive },
+          { text: t.common.cancel, style: 'cancel' }
         ]
       );
     } finally {
@@ -796,8 +796,8 @@ export default function BroadcasterScreen() {
             size={64}
             color={colors.textSecondary}
           />
-          <Text style={styles.permissionText}>{t('broadcaster.permissions.title')}</Text>
-          <GradientButton title={t('broadcaster.permissions.grantPermission')} onPress={requestPermission} />
+          <Text style={styles.permissionText}>{t.broadcaster.permissions.title}</Text>
+          <GradientButton title={t.broadcaster.permissions.grantPermission} onPress={requestPermission} />
         </View>
       </View>
     );
@@ -840,7 +840,7 @@ export default function BroadcasterScreen() {
             size={64}
             color={colors.textSecondary}
           />
-          <Text style={styles.cameraOffText}>{t('broadcaster.cameraOff')}</Text>
+          <Text style={styles.cameraOffText}>{t.broadcaster.cameraOff}</Text>
         </View>
       )}
 
@@ -899,7 +899,7 @@ export default function BroadcasterScreen() {
                   size={14}
                   color={colors.text}
                 />
-                <Text style={styles.warningText}>{t('broadcaster.live.viewerDiscretionAdvised')}</Text>
+                <Text style={styles.warningText}>{t.broadcaster.live.viewerDiscretionAdvised}</Text>
               </View>
             )}
 
@@ -923,7 +923,7 @@ export default function BroadcasterScreen() {
         {!isLive && (
           <View style={styles.centerContent}>
             <AppLogo size="large" alignment="center" />
-            <Text style={styles.welcomeText}>{t('broadcaster.readyToGoLive')}</Text>
+            <Text style={styles.welcomeText}>{t.broadcaster.readyToGoLive}</Text>
           </View>
         )}
       </View>
@@ -959,7 +959,7 @@ export default function BroadcasterScreen() {
             </TouchableOpacity>
 
             <GradientButton
-              title={t('broadcaster.endLive')}
+              title={t.broadcaster.endLive}
               onPress={() => setShowExitConfirmation(true)}
               disabled={loading}
               size="large"
@@ -980,7 +980,7 @@ export default function BroadcasterScreen() {
           </View>
         ) : (
           <GradientButton
-            title={t('broadcaster.goLive')}
+            title={t.broadcaster.goLive}
             onPress={handleGoLivePress}
             disabled={loading || isCheckingSafety}
             size="large"
@@ -1033,12 +1033,12 @@ export default function BroadcasterScreen() {
         <View style={styles.modal}>
           <View style={styles.modalContent}>
             <AppLogo size="medium" alignment="center" style={styles.modalLogo} />
-            <Text style={styles.modalTitle}>{t('broadcaster.setup.title')}</Text>
+            <Text style={styles.modalTitle}>{t.broadcaster.setup.title}</Text>
             
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>{t('broadcaster.setup.streamTitle')}</Text>
+              <Text style={styles.label}>{t.broadcaster.setup.streamTitle}</Text>
               <TextInput
-                placeholder={t('broadcaster.setup.streamTitlePlaceholder')}
+                placeholder={t.broadcaster.setup.streamTitlePlaceholder}
                 placeholderTextColor={colors.textSecondary}
                 value={streamTitle}
                 onChangeText={setStreamTitle}
@@ -1057,7 +1057,7 @@ export default function BroadcasterScreen() {
                 color={colors.gradientEnd}
               />
               <Text style={styles.infoText}>
-                {t('broadcaster.setup.info')}
+                {t.broadcaster.setup.info}
               </Text>
             </View>
 
@@ -1072,11 +1072,11 @@ export default function BroadcasterScreen() {
                 }}
                 disabled={loading}
               >
-                <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
+                <Text style={styles.cancelButtonText}>{t.common.cancel}</Text>
               </TouchableOpacity>
               <View style={styles.startButtonContainer}>
                 <GradientButton
-                  title={loading ? t('broadcaster.setup.starting') : t('broadcaster.setup.startLive')}
+                  title={loading ? t.broadcaster.setup.starting : t.broadcaster.setup.startLive}
                   onPress={startStreamSetup}
                   disabled={loading}
                   size="medium"
@@ -1097,20 +1097,20 @@ export default function BroadcasterScreen() {
               size={48}
               color={colors.gradientEnd}
             />
-            <Text style={styles.confirmationTitle}>{t('broadcaster.endStream.title')}</Text>
+            <Text style={styles.confirmationTitle}>{t.broadcaster.endStream.title}</Text>
             <Text style={styles.confirmationText}>
-              {t('broadcaster.endStream.message')}
+              {t.broadcaster.endStream.message}
             </Text>
             <View style={styles.confirmationButtons}>
               <TouchableOpacity
                 style={styles.confirmationCancelButton}
                 onPress={() => setShowExitConfirmation(false)}
               >
-                <Text style={styles.confirmationCancelText}>{t('common.cancel')}</Text>
+                <Text style={styles.confirmationCancelText}>{t.common.cancel}</Text>
               </TouchableOpacity>
               <View style={styles.confirmationEndButton}>
                 <GradientButton
-                  title={t('broadcaster.endStream.endStream')}
+                  title={t.broadcaster.endStream.endStream}
                   onPress={() => {
                     setShowExitConfirmation(false);
                     endLive();
