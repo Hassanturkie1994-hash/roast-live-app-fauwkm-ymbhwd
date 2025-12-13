@@ -196,7 +196,7 @@ export default function CreatorRulesModal({
             {isLoading && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={colors.gradientEnd} />
-                <Text style={styles.loadingText}>Startar din stream...</Text>
+                <Text style={styles.loadingText}>{t.creatorRules.startingStream}</Text>
               </View>
             )}
           </ScrollView>

@@ -11,6 +11,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export type ContentLabel = 'family_friendly' | 'roast_mode' | 'adult_only';
 
@@ -26,6 +27,7 @@ export default function ContentLabelModal({
   onCancel,
 }: ContentLabelModalProps) {
   const [selectedLabel, setSelectedLabel] = useState<ContentLabel | null>(null);
+  const t = useTranslation();
 
   const handleConfirm = () => {
     if (selectedLabel) {
@@ -37,22 +39,22 @@ export default function ContentLabelModal({
     {
       value: 'family_friendly' as ContentLabel,
       icon: '⭐',
-      title: 'Family Friendly',
-      description: 'Suitable for all ages. Clean content with no explicit language or themes.',
+      title: t.contentLabel.familyFriendly.title,
+      description: t.contentLabel.familyFriendly.description,
       color: '#4CAF50',
     },
     {
       value: 'roast_mode' as ContentLabel,
       icon: '🔥',
-      title: 'Roast & Comedy Mode',
-      description: 'Comedic roasting and banter. May contain mild language and jokes.',
+      title: t.contentLabel.roastMode.title,
+      description: t.contentLabel.roastMode.description,
       color: '#FF9800',
     },
     {
       value: 'adult_only' as ContentLabel,
       icon: '🔞',
-      title: '18+ Restricted',
-      description: 'Explicit roast content. Strong language and adult themes. Age verification required.',
+      title: t.contentLabel.adultOnly.title,
+      description: t.contentLabel.adultOnly.description,
       color: colors.gradientEnd,
     },
   ];
@@ -67,9 +69,9 @@ export default function ContentLabelModal({
       <View style={styles.overlay}>
         <View style={styles.container}>
           <View style={styles.header}>
-            <Text style={styles.title}>Select Content Label</Text>
+            <Text style={styles.title}>{t.contentLabel.title}</Text>
             <Text style={styles.subtitle}>
-              Choose the appropriate content rating for your stream
+              {t.contentLabel.subtitle}
             </Text>
           </View>
 
@@ -112,17 +114,17 @@ export default function ContentLabelModal({
               color={colors.gradientEnd}
             />
             <Text style={styles.warningText}>
-              Misrepresenting your content may result in strikes or suspension
+              {t.contentLabel.warning}
             </Text>
           </View>
 
           <View style={styles.buttons}>
             <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.cancelButtonText}>{t.contentLabel.cancel}</Text>
             </TouchableOpacity>
             <View style={styles.confirmButton}>
               <GradientButton
-                title="Confirm"
+                title={t.contentLabel.confirm}
                 onPress={handleConfirm}
                 size="medium"
                 disabled={!selectedLabel}
