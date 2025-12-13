@@ -431,30 +431,58 @@ export default function BroadcasterScreen() {
       return;
     }
 
+    // Close the creator rules modal immediately
+    if (isMountedRef.current) {
+      setShowCreatorRulesModal(false);
+    }
+
     setLoading(true);
 
     try {
       // Log creator rules acceptance
+      console.log('📝 Logging creator rules acceptance...');
       const result = await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
       
       if (!result.success) {
-        console.error('Failed to log creator rules acceptance:', result.error);
+        console.warn('⚠️ Failed to log creator rules acceptance:', result.error);
         // Continue anyway - don't block streaming
-      }
-
-      if (isMountedRef.current) {
-        setShowCreatorRulesModal(false);
       }
       
       // Now start the stream
+      console.log('🎬 Starting live stream...');
       await startLiveWithLabel(contentLabel);
     } catch (error) {
-      console.error('Error in handleCreatorRulesConfirm:', error);
-      if (isMountedRef.current) {
-        setShowCreatorRulesModal(false);
-      }
-      // Still try to start the stream
-      await startLiveWithLabel(contentLabel);
+      console.error('❌ Error in handleCreatorRulesConfirm:', error);
+      
+      // Show error to user
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Failed to start stream. Please try again.';
+      
+      Alert.alert(
+        'Cannot Start Stream',
+        errorMessage,
+        [
+          { 
+            text: 'Retry', 
+            onPress: () => {
+              if (isMountedRef.current) {
+                setShowCreatorRulesModal(true);
+              }
+            }
+          },
+          { 
+            text: 'Cancel', 
+            style: 'cancel',
+            onPress: () => {
+              if (isMountedRef.current) {
+                setShowSetup(false);
+                setContentLabel(null);
+              }
+            }
+          }
+        ]
+      );
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
@@ -467,34 +495,38 @@ export default function BroadcasterScreen() {
     
     if (!user || !isMountedRef.current) {
       console.error('❌ Cannot start stream: user or component unmounted');
-      return;
+      throw new Error('User not authenticated or component unmounted');
     }
 
     if (!label) {
       console.error('❌ Cannot start stream: no label provided');
-      Alert.alert('Error', 'Content label is required');
-      return;
+      throw new Error('Content label is required');
     }
 
-    setLoading(true);
-
     try {
-      console.log('🎬 Starting live stream with title:', streamTitle, 'and label:', label);
+      console.log('📡 Calling cloudflareService.startLive...');
+      console.log('📡 Parameters:', { title: streamTitle, userId: user.id });
       
       const result = await cloudflareService.startLive({ 
         title: streamTitle, 
         userId: user.id 
       });
 
-      console.log('✅ Stream created successfully:', result);
+      console.log('✅ cloudflareService.startLive response:', result);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to start stream');
+      }
 
       if (!result.stream) {
         throw new Error('No stream data returned from server');
       }
 
+      console.log('📝 Setting content label on stream...');
       // Set content label on stream
       await contentSafetyService.setStreamContentLabel(result.stream.id, label);
 
+      console.log('📦 Creating archive record...');
       // Create archive record
       const startTime = new Date().toISOString();
       streamStartTime.current = startTime;
@@ -510,6 +542,7 @@ export default function BroadcasterScreen() {
       }
 
       if (isMountedRef.current) {
+        console.log('✅ Setting stream state...');
         setCurrentStream(result.stream);
         setIsLive(true);
         setIsStreaming(true);
@@ -542,18 +575,8 @@ export default function BroadcasterScreen() {
         ? error.message 
         : 'Failed to start stream. Please try again.';
       
-      Alert.alert(
-        'Cannot Start Stream',
-        errorMessage,
-        [
-          { text: 'Retry', onPress: () => startLiveWithLabel(label) },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
+      // Re-throw the error so it can be caught by handleCreatorRulesConfirm
+      throw new Error(errorMessage);
     }
   };
 
