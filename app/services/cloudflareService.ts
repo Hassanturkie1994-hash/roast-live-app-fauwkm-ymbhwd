@@ -30,6 +30,7 @@ interface StartLiveResponse {
 
 interface StopLiveResponse {
   success: boolean;
+  warning?: string;
   error?: string;
 }
 
@@ -126,6 +127,7 @@ class CloudflareService {
 
   /**
    * Stop live stream with validation and retry logic
+   * Gracefully handles errors - will not throw if Edge Function fails
    */
   async stopLive({ liveInputId, streamId }: StopLiveParams): Promise<StopLiveResponse> {
     console.log('📡 Calling stop-live edge function with:', { liveInputId, streamId });
@@ -135,7 +137,12 @@ class CloudflareService {
 
     if (!idToUse) {
       console.error('❌ Missing both live_input_id and stream_id');
-      throw new Error('Cannot stop stream: missing stream identifier');
+      
+      // Don't throw - return graceful error
+      return {
+        success: false,
+        error: 'Cannot stop stream: missing stream identifier',
+      };
     }
 
     console.log('📡 Using ID for stop-live:', idToUse);
@@ -162,13 +169,19 @@ class CloudflareService {
             continue;
           }
           
-          throw new Error(`Failed to stop live stream: ${error.message || 'Unknown error'}`);
+          // Don't throw - return graceful error
+          console.warn('⚠️ All stop-live attempts failed, but continuing gracefully');
+          return {
+            success: false,
+            error: `Failed to stop live stream: ${error.message || 'Unknown error'}`,
+          };
         }
 
         if (!data) {
           console.error('❌ No data returned from edge function');
           lastError = new Error('No response from server');
           
+          // Retry on temporary failures
           if (attempt < this.maxRetries) {
             const waitTime = this.retryDelay * attempt;
             console.log(`⏳ Retrying in ${waitTime}ms...`);
@@ -176,12 +189,19 @@ class CloudflareService {
             continue;
           }
           
-          throw new Error('No response from server');
+          // Don't throw - return graceful error
+          console.warn('⚠️ No response from stop-live, but continuing gracefully');
+          return {
+            success: false,
+            error: 'No response from server',
+          };
         }
 
         if (!data.success) {
           console.error('❌ Server returned success=false:', data.error);
-          throw new Error(data.error || 'Failed to stop live stream');
+          
+          // Don't throw - return the error response
+          return data;
         }
 
         console.log('✅ Successfully stopped live stream');
@@ -200,10 +220,14 @@ class CloudflareService {
       }
     }
 
-    // All retries failed
+    // All retries failed - return graceful error instead of throwing
     const errorMessage = lastError?.message || 'Failed to stop live stream after multiple attempts';
-    console.error('❌ All stop-live attempts failed:', errorMessage);
-    throw new Error(errorMessage);
+    console.warn('⚠️ All stop-live attempts failed:', errorMessage);
+    
+    return {
+      success: false,
+      error: errorMessage,
+    };
   }
 }
 

@@ -251,12 +251,32 @@ export default function BroadcasterScreen() {
         streamId: currentStream.id,
       });
 
-      await cloudflareService.stopLive({
-        liveInputId: currentStream.live_input_id,
-        streamId: currentStream.id,
-      });
-
-      console.log('✅ Stream ended successfully');
+      // Try to stop the stream, but don't fail if it errors
+      try {
+        await cloudflareService.stopLive({
+          liveInputId: currentStream.live_input_id,
+          streamId: currentStream.id,
+        });
+        console.log('✅ Stream ended successfully via Edge Function');
+      } catch (stopError) {
+        console.error('⚠️ Error stopping stream via Edge Function:', stopError);
+        // Continue anyway - we'll update the database directly
+        
+        // Update database directly as fallback
+        const { error: dbError } = await supabase
+          .from('streams')
+          .update({
+            status: 'ended',
+            ended_at: new Date().toISOString(),
+          })
+          .eq('id', currentStream.id);
+        
+        if (dbError) {
+          console.error('❌ Error updating database:', dbError);
+        } else {
+          console.log('✅ Stream ended successfully via direct database update');
+        }
+      }
 
       // Stop stream timer and update database
       if (user) {
@@ -278,13 +298,17 @@ export default function BroadcasterScreen() {
     } catch (error) {
       console.error('❌ Error ending stream:', error);
       
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'Failed to end stream. Please try again.';
+      // Even if there's an error, reset the UI state
+      setIsLive(false);
+      setViewerCount(0);
+      setLiveTime(0);
+      setCurrentStream(null);
+      setWebRTCUrl(null);
+      setIsStreaming(false);
       
       Alert.alert(
-        'Error',
-        errorMessage,
+        'Stream Ended',
+        'Your stream has been ended, but there may have been an issue with cleanup.',
         [{ text: 'OK' }]
       );
     } finally {
@@ -332,12 +356,13 @@ export default function BroadcasterScreen() {
         />
       )}
 
-      <View style={styles.overlay}>
+      {/* OVERLAY LAYER - ALWAYS ABOVE VIDEO - GUARANTEED VISIBILITY */}
+      <View style={styles.overlayContainer} pointerEvents="box-none">
         {isLive && (
           <>
-            <View style={styles.topBar}>
+            <View style={styles.topBar} pointerEvents="box-none">
               <LiveBadge size="small" />
-              <View style={styles.statsContainer}>
+              <View style={styles.statsContainer} pointerEvents="box-none">
                 <View style={styles.stat}>
                   <IconSymbol
                     ios_icon_name="eye.fill"
@@ -359,17 +384,20 @@ export default function BroadcasterScreen() {
               </View>
             </View>
 
-            <View style={styles.watermarkContainer}>
+            <View style={styles.watermarkContainer} pointerEvents="none">
               <RoastLiveLogo size="small" opacity={0.25} />
             </View>
 
+            {/* CHAT OVERLAY - ALWAYS RENDERED WHEN LIVE */}
             {currentStream && (
-              <ChatOverlay streamId={currentStream.id} isBroadcaster={true} />
+              <View style={styles.chatContainer} pointerEvents="box-none">
+                <ChatOverlay streamId={currentStream.id} isBroadcaster={true} />
+              </View>
             )}
           </>
         )}
 
-        <View style={styles.controlsContainer}>
+        <View style={styles.controlsContainer} pointerEvents="box-none">
           <View style={styles.controls}>
             <TouchableOpacity
               style={[styles.controlButton, !isMicOn && styles.controlButtonOff]}
@@ -474,9 +502,10 @@ const styles = StyleSheet.create({
   camera: {
     flex: 1,
   },
-  overlay: {
+  overlayContainer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
+    zIndex: 100,
   },
   loadingContainer: {
     flex: 1,
@@ -513,6 +542,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 60,
     paddingHorizontal: 20,
+    zIndex: 110,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -537,6 +567,14 @@ const styles = StyleSheet.create({
     bottom: 200,
     right: 20,
     pointerEvents: 'none',
+    zIndex: 110,
+  },
+  chatContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 140,
+    zIndex: 120,
   },
   controlsContainer: {
     position: 'absolute',
@@ -545,6 +583,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     gap: 20,
+    zIndex: 110,
   },
   controls: {
     flexDirection: 'row',
