@@ -19,7 +19,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { moderationService, Moderator, BannedUser } from '@/app/services/moderationService';
 import { supabase } from '@/app/integrations/supabase/client';
 import BadgeEditorModal from '@/components/BadgeEditorModal';
-import { cdnService } from '@/app/services/cdnService';
 
 const BADGE_COLORS = [
   '#FF1493', // Deep Pink
@@ -45,12 +44,6 @@ interface VIPMember {
   };
 }
 
-interface CacheHitPerUser {
-  userId: string;
-  username: string;
-  cacheHitPercentage: number;
-}
-
 export default function StreamDashboardScreen() {
   const { user } = useAuth();
   const [moderators, setModerators] = useState<Moderator[]>([]);
@@ -72,16 +65,6 @@ export default function StreamDashboardScreen() {
   const [announcementMessage, setAnnouncementMessage] = useState('');
   const [isSendingAnnouncement, setIsSendingAnnouncement] = useState(false);
 
-  // CDN Monitoring state
-  const [cdnStats, setCdnStats] = useState({
-    totalRequests: 0,
-    cacheHitPercentage: 0,
-    avgDeliveryLatency: 0,
-    topMedia: [] as { url: string; accessCount: number; type: string }[],
-  });
-  const [cacheHitPerUser, setCacheHitPerUser] = useState<CacheHitPerUser[]>([]);
-  const [showCDNDetails, setShowCDNDetails] = useState(false);
-
   const fetchData = useCallback(async () => {
     if (!user) return;
 
@@ -96,9 +79,6 @@ export default function StreamDashboardScreen() {
 
       // Fetch VIP club data
       await fetchVIPClubData();
-
-      // Fetch CDN monitoring data
-      await fetchCDNMonitoringData();
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -116,22 +96,6 @@ export default function StreamDashboardScreen() {
     setIsRefreshing(true);
     await fetchData();
     setIsRefreshing(false);
-  };
-
-  const fetchCDNMonitoringData = async () => {
-    if (!user) return;
-
-    try {
-      // Fetch overall CDN stats
-      const data = await cdnService.getCDNMonitoringData(user.id);
-      setCdnStats(data);
-
-      // Fetch cache hit percentage per user
-      const cacheHitData = await cdnService.getCacheHitPercentagePerUser();
-      setCacheHitPerUser(cacheHitData);
-    } catch (error) {
-      console.error('Error fetching CDN monitoring data:', error);
-    }
   };
 
   const fetchVIPClubData = async () => {
@@ -199,24 +163,24 @@ export default function StreamDashboardScreen() {
 
     // Check if already a moderator
     if (moderators.some((mod) => mod.user_id === userId)) {
-      Alert.alert('Already a Moderator', `${username} is already a moderator.`);
+      Alert.alert('Redan moderator', `${username} är redan en moderator.`);
       return;
     }
 
     // Check limit
     if (moderators.length >= 30) {
-      Alert.alert('Limit Reached', 'You can have a maximum of 30 moderators.');
+      Alert.alert('Gräns nådd', 'Du kan ha maximalt 30 moderatorer.');
       return;
     }
 
     const result = await moderationService.addModerator(user.id, userId);
     if (result.success) {
-      Alert.alert('Success', `${username} has been added as a moderator.`);
+      Alert.alert('Framgång', `${username} har lagts till som moderator.`);
       setSearchUsername('');
       setSearchResults([]);
       fetchData();
     } else {
-      Alert.alert('Error', result.error || 'Failed to add moderator.');
+      Alert.alert('Fel', result.error || 'Misslyckades med att lägga till moderator.');
     }
   };
 
@@ -224,20 +188,20 @@ export default function StreamDashboardScreen() {
     if (!user) return;
 
     Alert.alert(
-      'Remove Moderator',
-      `Are you sure you want to remove ${username} as a moderator?`,
+      'Ta bort moderator',
+      `Är du säker på att du vill ta bort ${username} som moderator?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Avbryt', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Ta bort',
           style: 'destructive',
           onPress: async () => {
             const result = await moderationService.removeModerator(user.id, userId);
             if (result.success) {
-              Alert.alert('Success', `${username} has been removed as a moderator.`);
+              Alert.alert('Framgång', `${username} har tagits bort som moderator.`);
               fetchData();
             } else {
-              Alert.alert('Error', result.error || 'Failed to remove moderator.');
+              Alert.alert('Fel', result.error || 'Misslyckades med att ta bort moderator.');
             }
           },
         },
@@ -249,19 +213,19 @@ export default function StreamDashboardScreen() {
     if (!user) return;
 
     Alert.alert(
-      'Unban User',
-      `Are you sure you want to unban ${username}?`,
+      'Avbanna användare',
+      `Är du säker på att du vill avbanna ${username}?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Avbryt', style: 'cancel' },
         {
-          text: 'Unban',
+          text: 'Avbanna',
           onPress: async () => {
             const result = await moderationService.unbanUser(user.id, userId);
             if (result.success) {
-              Alert.alert('Success', `${username} has been unbanned.`);
+              Alert.alert('Framgång', `${username} har avbannats.`);
               fetchData();
             } else {
-              Alert.alert('Error', result.error || 'Failed to unban user.');
+              Alert.alert('Fel', result.error || 'Misslyckades med att avbanna användare.');
             }
           },
         },
@@ -273,12 +237,12 @@ export default function StreamDashboardScreen() {
     if (!user) return;
 
     Alert.alert(
-      'Remove VIP Member',
-      `Are you sure you want to remove ${username} from your VIP club?`,
+      'Ta bort VIP-medlem',
+      `Är du säker på att du vill ta bort ${username} från din VIP-klubb?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Avbryt', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Ta bort',
           style: 'destructive',
           onPress: async () => {
             const { error } = await supabase
@@ -287,9 +251,9 @@ export default function StreamDashboardScreen() {
               .eq('id', memberId);
 
             if (error) {
-              Alert.alert('Error', 'Failed to remove member');
+              Alert.alert('Fel', 'Misslyckades med att ta bort medlem');
             } else {
-              Alert.alert('Success', `${username} has been removed from your VIP club`);
+              Alert.alert('Framgång', `${username} har tagits bort från din VIP-klubb`);
               fetchData();
             }
           },
@@ -302,7 +266,7 @@ export default function StreamDashboardScreen() {
     if (!user) return;
 
     if (!announcementTitle.trim() || !announcementMessage.trim()) {
-      Alert.alert('Error', 'Please enter both title and message');
+      Alert.alert('Fel', 'Vänligen ange både titel och meddelande');
       return;
     }
 
@@ -328,12 +292,12 @@ export default function StreamDashboardScreen() {
 
       if (error) throw error;
 
-      Alert.alert('Success', `Announcement sent to ${activeMembers.length} VIP members`);
+      Alert.alert('Framgång', `Meddelande skickat till ${activeMembers.length} VIP-medlemmar`);
       setAnnouncementTitle('');
       setAnnouncementMessage('');
     } catch (error) {
       console.error('Error sending announcement:', error);
-      Alert.alert('Error', 'Failed to send announcement');
+      Alert.alert('Fel', 'Misslyckades med att skicka meddelande');
     } finally {
       setIsSendingAnnouncement(false);
     }
@@ -341,19 +305,6 @@ export default function StreamDashboardScreen() {
 
   const handleRequestPayout = () => {
     router.push('/screens/WithdrawScreen');
-  };
-
-  const getTierColor = (tier: string) => {
-    switch (tier) {
-      case 'A':
-        return '#FFD700'; // Gold
-      case 'B':
-        return '#C0C0C0'; // Silver
-      case 'C':
-        return '#CD7F32'; // Bronze
-      default:
-        return colors.textSecondary;
-    }
   };
 
   if (isLoading) {
@@ -373,7 +324,7 @@ export default function StreamDashboardScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.gradientEnd} />
-          <Text style={styles.loadingText}>Loading dashboard...</Text>
+          <Text style={styles.loadingText}>Laddar dashboard...</Text>
         </View>
       </View>
     );
@@ -411,7 +362,7 @@ export default function StreamDashboardScreen() {
       >
         {/* Quick Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <Text style={styles.sectionTitle}>Snabbåtgärder</Text>
           <View style={styles.quickActions}>
             <TouchableOpacity
               style={styles.quickActionButton}
@@ -423,7 +374,7 @@ export default function StreamDashboardScreen() {
                 size={32}
                 color={colors.gradientEnd}
               />
-              <Text style={styles.quickActionText}>Analytics</Text>
+              <Text style={styles.quickActionText}>Analys</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -449,215 +400,9 @@ export default function StreamDashboardScreen() {
                 size={32}
                 color={colors.gradientEnd}
               />
-              <Text style={styles.quickActionText}>Blocked Users</Text>
+              <Text style={styles.quickActionText}>Blockerade</Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* CDN Monitoring Panel */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <IconSymbol
-                ios_icon_name="network"
-                android_material_icon_name="cloud"
-                size={20}
-                color={colors.gradientEnd}
-              />
-              <Text style={styles.sectionTitle}>CDN Performance</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.expandButton}
-              onPress={() => setShowCDNDetails(!showCDNDetails)}
-            >
-              <Text style={styles.expandButtonText}>
-                {showCDNDetails ? 'Hide' : 'Show'} Details
-              </Text>
-              <IconSymbol
-                ios_icon_name={showCDNDetails ? 'chevron.up' : 'chevron.down'}
-                android_material_icon_name={showCDNDetails ? 'expand_less' : 'expand_more'}
-                size={16}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.sectionSubtitle}>
-            Monitor your media delivery performance
-          </Text>
-
-          <View style={styles.cdnStatsGrid}>
-            {/* CDN Usage */}
-            <View style={styles.cdnStatCard}>
-              <IconSymbol
-                ios_icon_name="arrow.up.arrow.down"
-                android_material_icon_name="swap_vert"
-                size={24}
-                color={colors.gradientEnd}
-              />
-              <Text style={styles.cdnStatLabel}>CDN Usage</Text>
-              <Text style={styles.cdnStatValue}>{cdnStats.totalRequests.toLocaleString()}</Text>
-              <Text style={styles.cdnStatUnit}>requests</Text>
-            </View>
-
-            {/* Cache HIT % */}
-            <View style={styles.cdnStatCard}>
-              <IconSymbol
-                ios_icon_name="bolt.fill"
-                android_material_icon_name="flash_on"
-                size={24}
-                color="#4CAF50"
-              />
-              <Text style={styles.cdnStatLabel}>Cache HIT %</Text>
-              <Text style={[styles.cdnStatValue, { color: '#4CAF50' }]}>
-                {cdnStats.cacheHitPercentage.toFixed(1)}%
-              </Text>
-              <Text style={styles.cdnStatUnit}>efficiency</Text>
-            </View>
-
-            {/* Average Latency */}
-            <View style={styles.cdnStatCard}>
-              <IconSymbol
-                ios_icon_name="timer"
-                android_material_icon_name="schedule"
-                size={24}
-                color="#FF9800"
-              />
-              <Text style={styles.cdnStatLabel}>Avg Latency</Text>
-              <Text style={[styles.cdnStatValue, { color: '#FF9800' }]}>
-                {cdnStats.avgDeliveryLatency.toFixed(0)}
-              </Text>
-              <Text style={styles.cdnStatUnit}>ms</Text>
-            </View>
-          </View>
-
-          {showCDNDetails && (
-            <>
-              {/* Top Media Accessed */}
-              {cdnStats.topMedia.length > 0 && (
-                <View style={styles.topMediaContainer}>
-                  <Text style={styles.topMediaTitle}>
-                    <IconSymbol
-                      ios_icon_name="star.fill"
-                      android_material_icon_name="star"
-                      size={16}
-                      color="#FFD700"
-                    />
-                    {' '}Top Media Accessed
-                  </Text>
-                  {cdnStats.topMedia.slice(0, 5).map((media, index) => (
-                    <View key={index} style={styles.topMediaItem}>
-                      <View style={styles.topMediaRank}>
-                        <Text style={styles.topMediaRankText}>#{index + 1}</Text>
-                      </View>
-                      <View style={styles.topMediaInfo}>
-                        <View style={styles.topMediaTypeRow}>
-                          <Text style={[styles.topMediaType, { color: getTierColor(media.type) }]}>
-                            {media.type.toUpperCase()}
-                          </Text>
-                        </View>
-                        <Text style={styles.topMediaUrl} numberOfLines={1}>
-                          {media.url.split('/').pop()}
-                        </Text>
-                      </View>
-                      <View style={styles.topMediaCountContainer}>
-                        <Text style={styles.topMediaCount}>{media.accessCount}</Text>
-                        <Text style={styles.topMediaCountLabel}>views</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Cache HIT % Per User */}
-              {cacheHitPerUser.length > 0 && (
-                <View style={styles.cacheHitPerUserContainer}>
-                  <Text style={styles.cacheHitPerUserTitle}>
-                    <IconSymbol
-                      ios_icon_name="person.3.fill"
-                      android_material_icon_name="group"
-                      size={16}
-                      color={colors.gradientEnd}
-                    />
-                    {' '}Cache HIT % Per User
-                  </Text>
-                  <Text style={styles.cacheHitPerUserSubtitle}>
-                    Top users by cache efficiency
-                  </Text>
-                  {cacheHitPerUser.slice(0, 10).map((user, index) => (
-                    <View key={index} style={styles.cacheHitPerUserItem}>
-                      <View style={styles.cacheHitPerUserRank}>
-                        <Text style={styles.cacheHitPerUserRankText}>{index + 1}</Text>
-                      </View>
-                      <View style={styles.cacheHitPerUserInfo}>
-                        <Text style={styles.cacheHitPerUserName}>{user.username}</Text>
-                        <View style={styles.cacheHitPerUserBar}>
-                          <View
-                            style={[
-                              styles.cacheHitPerUserBarFill,
-                              { width: `${user.cacheHitPercentage}%` },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                      <Text style={styles.cacheHitPerUserPercentage}>
-                        {user.cacheHitPercentage.toFixed(1)}%
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* CDN Info */}
-              <View style={styles.cdnInfoContainer}>
-                <Text style={styles.cdnInfoTitle}>
-                  <IconSymbol
-                    ios_icon_name="info.circle.fill"
-                    android_material_icon_name="info"
-                    size={16}
-                    color={colors.textSecondary}
-                  />
-                  {' '}About CDN Tiers
-                </Text>
-                <View style={styles.cdnInfoItem}>
-                  <View style={[styles.cdnInfoBadge, { backgroundColor: '#FFD700' }]}>
-                    <Text style={styles.cdnInfoBadgeText}>A</Text>
-                  </View>
-                  <Text style={styles.cdnInfoText}>
-                    High Priority: Profile images, badges, receipts (30d cache)
-                  </Text>
-                </View>
-                <View style={styles.cdnInfoItem}>
-                  <View style={[styles.cdnInfoBadge, { backgroundColor: '#C0C0C0' }]}>
-                    <Text style={styles.cdnInfoBadgeText}>B</Text>
-                  </View>
-                  <Text style={styles.cdnInfoText}>
-                    Medium Priority: Posts, stories, thumbnails (14d cache)
-                  </Text>
-                </View>
-                <View style={styles.cdnInfoItem}>
-                  <View style={[styles.cdnInfoBadge, { backgroundColor: '#CD7F32' }]}>
-                    <Text style={styles.cdnInfoBadgeText}>C</Text>
-                  </View>
-                  <Text style={styles.cdnInfoText}>
-                    Low Priority: Cached media, banners, previews (3d cache)
-                  </Text>
-                </View>
-              </View>
-            </>
-          )}
-
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={fetchCDNMonitoringData}
-          >
-            <IconSymbol
-              ios_icon_name="arrow.clockwise"
-              android_material_icon_name="refresh"
-              size={16}
-              color={colors.text}
-            />
-            <Text style={styles.refreshButtonText}>Refresh CDN Stats</Text>
-          </TouchableOpacity>
         </View>
 
         {/* VIP Club Overview */}
@@ -666,11 +411,11 @@ export default function StreamDashboardScreen() {
             <View style={styles.sectionTitleRow}>
               <IconSymbol
                 ios_icon_name="crown.fill"
-                android_material_icon_name="workspace_premium"
+                android_material_icon_name="star"
                 size={20}
                 color="#FFD700"
               />
-              <Text style={styles.sectionTitle}>VIP Club Overview</Text>
+              <Text style={styles.sectionTitle}>VIP-klubb översikt</Text>
             </View>
             <TouchableOpacity
               style={styles.editButton}
@@ -682,14 +427,14 @@ export default function StreamDashboardScreen() {
                 size={14}
                 color={colors.text}
               />
-              <Text style={styles.editButtonText}>Edit Badge</Text>
+              <Text style={styles.editButtonText}>Redigera märke</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.clubOverviewCard}>
             <View style={styles.clubInfoRow}>
               <View style={styles.clubInfoItem}>
-                <Text style={styles.clubInfoLabel}>Club Name</Text>
+                <Text style={styles.clubInfoLabel}>Klubbnamn</Text>
                 <View style={[styles.badgePreview, { backgroundColor: badgeColor }]}>
                   <IconSymbol
                     ios_icon_name="heart.fill"
@@ -701,18 +446,18 @@ export default function StreamDashboardScreen() {
                 </View>
               </View>
               <View style={styles.clubInfoItem}>
-                <Text style={styles.clubInfoLabel}>Monthly Price</Text>
+                <Text style={styles.clubInfoLabel}>Månadspris</Text>
                 <Text style={styles.clubInfoValue}>$3.00</Text>
               </View>
             </View>
 
             <View style={styles.clubInfoRow}>
               <View style={styles.clubInfoItem}>
-                <Text style={styles.clubInfoLabel}>Total Members</Text>
+                <Text style={styles.clubInfoLabel}>Totalt medlemmar</Text>
                 <Text style={styles.clubInfoValue}>{activeVIPMembers.length}</Text>
               </View>
               <View style={styles.clubInfoItem}>
-                <Text style={styles.clubInfoLabel}>Your Share (70%)</Text>
+                <Text style={styles.clubInfoLabel}>Din andel (70%)</Text>
                 <Text style={styles.clubInfoValue}>${monthlyRevenue.toFixed(2)}</Text>
               </View>
             </View>
@@ -728,7 +473,7 @@ export default function StreamDashboardScreen() {
               size={20}
               color={colors.text}
             />
-            <Text style={styles.sectionTitle}>VIP Members ({activeVIPMembers.length})</Text>
+            <Text style={styles.sectionTitle}>VIP-medlemmar ({activeVIPMembers.length})</Text>
           </View>
 
           {activeVIPMembers.length === 0 ? (
@@ -739,9 +484,9 @@ export default function StreamDashboardScreen() {
                 size={48}
                 color={colors.textSecondary}
               />
-              <Text style={styles.emptyText}>No VIP members yet</Text>
+              <Text style={styles.emptyText}>Inga VIP-medlemmar ännu</Text>
               <Text style={styles.emptySubtext}>
-                Members will appear here when they subscribe
+                Medlemmar kommer att visas här när de prenumererar
               </Text>
             </View>
           ) : (
@@ -773,10 +518,10 @@ export default function StreamDashboardScreen() {
                       @{member.profiles?.username}
                     </Text>
                     <Text style={styles.memberDate}>
-                      Joined: {new Date(member.started_at).toLocaleDateString()}
+                      Gick med: {new Date(member.started_at).toLocaleDateString('sv-SE')}
                     </Text>
                     <Text style={styles.memberDate}>
-                      Renews: {new Date(member.renewed_at).toLocaleDateString()}
+                      Förnyas: {new Date(member.renewed_at).toLocaleDateString('sv-SE')}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -784,7 +529,7 @@ export default function StreamDashboardScreen() {
                     onPress={() =>
                       handleRemoveVIPMember(
                         member.id,
-                        member.profiles?.username || 'User'
+                        member.profiles?.username || 'Användare'
                       )
                     }
                   >
@@ -810,22 +555,22 @@ export default function StreamDashboardScreen() {
               size={20}
               color={colors.gradientEnd}
             />
-            <Text style={styles.sectionTitle}>Earnings Breakdown</Text>
+            <Text style={styles.sectionTitle}>Intjäningsöversikt</Text>
           </View>
 
           <View style={styles.earningsCard}>
             <View style={styles.earningsRow}>
-              <Text style={styles.earningsLabel}>Total Earnings (70%)</Text>
+              <Text style={styles.earningsLabel}>Totala intäkter (70%)</Text>
               <Text style={styles.earningsValue}>${totalRevenue.toFixed(2)}</Text>
             </View>
             <View style={styles.earningsRow}>
-              <Text style={styles.earningsLabel}>Platform Fee (30%)</Text>
+              <Text style={styles.earningsLabel}>Plattformsavgift (30%)</Text>
               <Text style={styles.earningsValue}>
                 ${(totalRevenue * 0.3 / 0.7).toFixed(2)}
               </Text>
             </View>
             <View style={[styles.earningsRow, styles.earningsTotalRow]}>
-              <Text style={styles.earningsTotalLabel}>Creator Revenue Balance</Text>
+              <Text style={styles.earningsTotalLabel}>Skaparintäkter saldo</Text>
               <Text style={styles.earningsTotalValue}>${totalRevenue.toFixed(2)}</Text>
             </View>
             <TouchableOpacity
@@ -838,7 +583,7 @@ export default function StreamDashboardScreen() {
                 size={20}
                 color={colors.text}
               />
-              <Text style={styles.payoutButtonText}>Request Payout</Text>
+              <Text style={styles.payoutButtonText}>Begär utbetalning</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -848,20 +593,20 @@ export default function StreamDashboardScreen() {
           <View style={styles.sectionTitleRow}>
             <IconSymbol
               ios_icon_name="megaphone.fill"
-              android_material_icon_name="campaign"
+              android_material_icon_name="notifications"
               size={20}
               color={colors.gradientEnd}
             />
-            <Text style={styles.sectionTitle}>Send Announcement</Text>
+            <Text style={styles.sectionTitle}>Skicka meddelande</Text>
           </View>
           <Text style={styles.sectionSubtitle}>
-            Send a message to all active VIP members
+            Skicka ett meddelande till alla aktiva VIP-medlemmar
           </Text>
 
           <View style={styles.announcementForm}>
             <TextInput
               style={styles.input}
-              placeholder="Announcement Title"
+              placeholder="Meddelandetitel"
               placeholderTextColor={colors.placeholder}
               value={announcementTitle}
               onChangeText={setAnnouncementTitle}
@@ -869,7 +614,7 @@ export default function StreamDashboardScreen() {
             />
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Announcement Message"
+              placeholder="Meddelandetext"
               placeholderTextColor={colors.placeholder}
               value={announcementMessage}
               onChangeText={setAnnouncementMessage}
@@ -895,7 +640,7 @@ export default function StreamDashboardScreen() {
                     size={20}
                     color={colors.text}
                   />
-                  <Text style={styles.sendButtonText}>Send to All Members</Text>
+                  <Text style={styles.sendButtonText}>Skicka till alla medlemmar</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -911,16 +656,16 @@ export default function StreamDashboardScreen() {
               size={20}
               color={colors.gradientEnd}
             />
-            <Text style={styles.sectionTitle}>Add Moderator</Text>
+            <Text style={styles.sectionTitle}>Lägg till moderator</Text>
           </View>
           <Text style={styles.sectionSubtitle}>
-            Search by username to add a moderator ({moderators.length}/30)
+            Sök efter användarnamn för att lägga till en moderator ({moderators.length}/30)
           </Text>
 
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search username..."
+              placeholder="Sök användarnamn..."
               placeholderTextColor={colors.placeholder}
               value={searchUsername}
               onChangeText={setSearchUsername}
@@ -990,7 +735,7 @@ export default function StreamDashboardScreen() {
               size={20}
               color={colors.text}
             />
-            <Text style={styles.sectionTitle}>Current Moderators ({moderators.length})</Text>
+            <Text style={styles.sectionTitle}>Nuvarande moderatorer ({moderators.length})</Text>
           </View>
 
           {moderators.length === 0 ? (
@@ -1001,9 +746,9 @@ export default function StreamDashboardScreen() {
                 size={48}
                 color={colors.textSecondary}
               />
-              <Text style={styles.emptyText}>No moderators yet</Text>
+              <Text style={styles.emptyText}>Inga moderatorer ännu</Text>
               <Text style={styles.emptySubtext}>
-                Add moderators to help manage your streams
+                Lägg till moderatorer för att hjälpa till att hantera dina streams
               </Text>
             </View>
           ) : (
@@ -1029,7 +774,7 @@ export default function StreamDashboardScreen() {
                   <TouchableOpacity
                     style={styles.removeButton}
                     onPress={() =>
-                      handleRemoveModerator(mod.user_id, mod.profiles?.username || 'User')
+                      handleRemoveModerator(mod.user_id, mod.profiles?.username || 'Användare')
                     }
                   >
                     <IconSymbol
@@ -1054,7 +799,7 @@ export default function StreamDashboardScreen() {
               size={20}
               color={colors.gradientEnd}
             />
-            <Text style={styles.sectionTitle}>Banned Users ({bannedUsers.length})</Text>
+            <Text style={styles.sectionTitle}>Bannade användare ({bannedUsers.length})</Text>
           </View>
 
           {bannedUsers.length === 0 ? (
@@ -1065,9 +810,9 @@ export default function StreamDashboardScreen() {
                 size={48}
                 color="#4CAF50"
               />
-              <Text style={styles.emptyText}>No banned users</Text>
+              <Text style={styles.emptyText}>Inga bannade användare</Text>
               <Text style={styles.emptySubtext}>
-                Users you ban will appear here
+                Användare du bannar kommer att visas här
               </Text>
             </View>
           ) : (
@@ -1090,16 +835,16 @@ export default function StreamDashboardScreen() {
                     <Text style={styles.listItemName}>{banned.profiles?.display_name}</Text>
                     <Text style={styles.listItemUsername}>@{banned.profiles?.username}</Text>
                     {banned.reason && (
-                      <Text style={styles.banReason}>Reason: {banned.reason}</Text>
+                      <Text style={styles.banReason}>Anledning: {banned.reason}</Text>
                     )}
                   </View>
                   <TouchableOpacity
                     style={styles.unbanButton}
                     onPress={() =>
-                      handleUnbanUser(banned.user_id, banned.profiles?.username || 'User')
+                      handleUnbanUser(banned.user_id, banned.profiles?.username || 'Användare')
                     }
                   >
-                    <Text style={styles.unbanButtonText}>Unban</Text>
+                    <Text style={styles.unbanButtonText}>Avbanna</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -1206,22 +951,6 @@ const styles = StyleSheet.create({
   editButtonText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.text,
-  },
-  expandButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.backgroundAlt,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  expandButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
     color: colors.text,
   },
   clubOverviewCard: {
@@ -1538,228 +1267,6 @@ const styles = StyleSheet.create({
   sendButtonText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
-  },
-  cdnStatsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
-  },
-  cdnStatCard: {
-    flex: 1,
-    minWidth: '30%',
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cdnStatLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  cdnStatValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  cdnStatUnit: {
-    fontSize: 10,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-  },
-  topMediaContainer: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  topMediaTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  topMediaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  topMediaRank: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.gradientEnd,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topMediaRankText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  topMediaInfo: {
-    flex: 1,
-  },
-  topMediaTypeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  topMediaType: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  topMediaUrl: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: colors.textSecondary,
-  },
-  topMediaCountContainer: {
-    alignItems: 'flex-end',
-  },
-  topMediaCount: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.gradientEnd,
-  },
-  topMediaCountLabel: {
-    fontSize: 10,
-    fontWeight: '400',
-    color: colors.textSecondary,
-  },
-  cacheHitPerUserContainer: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cacheHitPerUserTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  cacheHitPerUserSubtitle: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  cacheHitPerUserItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    gap: 12,
-  },
-  cacheHitPerUserRank: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cacheHitPerUserRankText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  cacheHitPerUserInfo: {
-    flex: 1,
-  },
-  cacheHitPerUserName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  cacheHitPerUserBar: {
-    height: 6,
-    backgroundColor: colors.background,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  cacheHitPerUserBarFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 3,
-  },
-  cacheHitPerUserPercentage: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4CAF50',
-    minWidth: 50,
-    textAlign: 'right',
-  },
-  cdnInfoContainer: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cdnInfoTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  cdnInfoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-  cdnInfoBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cdnInfoBadgeText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  cdnInfoText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.textSecondary,
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.backgroundAlt,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  refreshButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
     color: colors.text,
   },
 });
