@@ -85,7 +85,55 @@ class CommentService {
     }
   }
 
-  // Save a live comment to the database
+  /**
+   * Add a comment to a live stream (uses chat_messages table)
+   * This method also broadcasts the comment to all viewers
+   */
+  async addComment(
+    streamId: string,
+    userId: string,
+    message: string
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      console.log('💬 Adding comment to stream:', streamId);
+      
+      // Insert message into database
+      const { data: newMessage, error } = await supabase
+        .from('chat_messages')
+        .insert({
+          stream_id: streamId,
+          user_id: userId,
+          message: message.trim(),
+        })
+        .select('*, users(id, display_name)')
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving comment:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('✅ Comment saved to database');
+
+      // Broadcast the message to all viewers via the chat channel
+      const channel = supabase.channel(`stream:${streamId}:chat`);
+      
+      await channel.send({
+        type: 'broadcast',
+        event: 'new_message',
+        payload: newMessage,
+      });
+
+      console.log('📡 Comment broadcasted to all viewers');
+
+      return { success: true, data: newMessage };
+    } catch (error) {
+      console.error('❌ Error in addComment:', error);
+      return { success: false, error: 'Failed to add comment' };
+    }
+  }
+
+  // Save a live comment to the database (legacy method for backward compatibility)
   async saveComment(
     streamId: string,
     userId: string,

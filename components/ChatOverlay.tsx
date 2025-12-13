@@ -24,19 +24,50 @@ type ChatMessage = Tables<'chat_messages'> & {
 interface ChatOverlayProps {
   streamId: string;
   isBroadcaster?: boolean;
+  streamDelay?: number;
 }
 
-export default function ChatOverlay({ streamId, isBroadcaster = false }: ChatOverlayProps) {
+export default function ChatOverlay({ 
+  streamId, 
+  isBroadcaster = false,
+  streamDelay = 0 
+}: ChatOverlayProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const channelRef = useRef<any>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const isMountedRef = useRef(true);
+
+  // Debug indicator
+  const [debugVisible, setDebugVisible] = useState(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎨 ChatOverlay mounted for stream:', streamId);
+    
+    // Hide debug indicator after 3 seconds
+    const debugTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDebugVisible(false);
+      }
+    }, 3000);
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(debugTimer);
+    };
+  }, [streamId]);
 
   const fetchRecentMessages = useCallback(async () => {
+    if (!streamId || !isMountedRef.current) return;
+
     try {
+      console.log('📥 Fetching recent messages for stream:', streamId);
+      
       const { data, error } = await supabase
         .from('chat_messages')
         .select('*, users(*)')
@@ -45,53 +76,101 @@ export default function ChatOverlay({ streamId, isBroadcaster = false }: ChatOve
         .limit(50);
 
       if (error) {
-        console.error('Error fetching chat messages:', error);
+        console.error('❌ Error fetching chat messages:', error);
         return;
       }
 
-      setMessages(data as ChatMessage[]);
+      console.log(`✅ Loaded ${data?.length || 0} recent messages`);
+      
+      if (isMountedRef.current) {
+        setMessages(data as ChatMessage[]);
+      }
     } catch (error) {
-      console.error('Error in fetchRecentMessages:', error);
+      console.error('❌ Error in fetchRecentMessages:', error);
     }
   }, [streamId]);
 
   const subscribeToChat = useCallback(() => {
-    // Use broadcast for real-time chat (more scalable than postgres_changes)
+    if (!streamId || !isMountedRef.current) {
+      console.warn('⚠️ Cannot subscribe to chat: missing streamId or component unmounted');
+      return;
+    }
+
+    console.log('🔌 Subscribing to chat channel:', `stream:${streamId}:chat`);
+
+    // Use broadcast channel for real-time chat (more scalable and reliable)
     const channel = supabase
       .channel(`stream:${streamId}:chat`)
-      .on('broadcast', { event: 'message' }, async (payload) => {
-        console.log('New chat message:', payload);
+      .on('broadcast', { event: 'new_message' }, (payload) => {
+        console.log('💬 New chat message received via broadcast:', payload);
+        
+        if (!isMountedRef.current) return;
         
         const newMessage = payload.payload as ChatMessage;
         
-        setMessages((prev) => [...prev, newMessage]);
-        
-        // Fade in animation for new messages
-        Animated.sequence([
-          Animated.timing(fadeAnim, {
-            toValue: 0.5,
-            duration: 100,
-            useNativeDriver: true,
-          }),
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 200,
-            useNativeDriver: true,
-          }),
-        ]).start();
+        // Apply stream delay for non-broadcasters
+        if (!isBroadcaster && streamDelay > 0) {
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              setMessages((prev) => [...prev, newMessage]);
+              
+              // Fade animation for new messages
+              Animated.sequence([
+                Animated.timing(fadeAnim, {
+                  toValue: 0.5,
+                  duration: 100,
+                  useNativeDriver: true,
+                }),
+                Animated.timing(fadeAnim, {
+                  toValue: 1,
+                  duration: 200,
+                  useNativeDriver: true,
+                }),
+              ]).start();
+            }
+          }, streamDelay * 1000);
+        } else {
+          setMessages((prev) => [...prev, newMessage]);
+          
+          // Fade animation for new messages
+          Animated.sequence([
+            Animated.timing(fadeAnim, {
+              toValue: 0.5,
+              duration: 100,
+              useNativeDriver: true,
+            }),
+            Animated.timing(fadeAnim, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Chat channel subscription status:', status);
+        if (status === 'SUBSCRIBED' && isMountedRef.current) {
+          setIsSubscribed(true);
+          console.log('✅ Successfully subscribed to chat channel');
+        }
+      });
 
     channelRef.current = channel;
-  }, [streamId, fadeAnim]);
+  }, [streamId, isBroadcaster, streamDelay, fadeAnim]);
 
   useEffect(() => {
+    // Always fetch recent messages and subscribe when component mounts
     fetchRecentMessages();
     subscribeToChat();
 
     return () => {
+      console.log('🔌 Unsubscribing from chat channel');
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      if (isMountedRef.current) {
+        setIsSubscribed(false);
       }
     };
   }, [fetchRecentMessages, subscribeToChat]);
@@ -106,37 +185,46 @@ export default function ChatOverlay({ streamId, isBroadcaster = false }: ChatOve
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!messageText.trim() || !user) return;
+    if (!messageText.trim() || !user || !isMountedRef.current) return;
 
+    const trimmedMessage = messageText.trim();
+    
     try {
+      console.log('📤 Sending message:', trimmedMessage);
+      
       // Insert message into database
       const { data: newMessage, error } = await supabase
         .from('chat_messages')
         .insert({
           stream_id: streamId,
           user_id: user.id,
-          message: messageText.trim(),
+          message: trimmedMessage,
         })
         .select('*, users(*)')
         .single();
 
       if (error) {
-        console.error('Error sending message:', error);
+        console.error('❌ Error sending message:', error);
         return;
       }
 
+      console.log('✅ Message saved to database');
+
       // Broadcast the message to all viewers
-      if (channelRef.current && newMessage) {
+      if (channelRef.current && newMessage && isMountedRef.current) {
         await channelRef.current.send({
           type: 'broadcast',
-          event: 'message',
+          event: 'new_message',
           payload: newMessage,
         });
+        console.log('📡 Message broadcasted to all viewers');
       }
 
-      setMessageText('');
+      if (isMountedRef.current) {
+        setMessageText('');
+      }
     } catch (error) {
-      console.error('Error in handleSendMessage:', error);
+      console.error('❌ Error in handleSendMessage:', error);
     }
   };
 
@@ -156,12 +244,22 @@ export default function ChatOverlay({ streamId, isBroadcaster = false }: ChatOve
   if (isBroadcaster) {
     // Broadcaster view - compact chat on the left side
     return (
-      <View style={styles.broadcasterChatContainer}>
+      <View style={styles.broadcasterChatContainer} pointerEvents="box-none">
+        {/* Debug indicator */}
+        {debugVisible && (
+          <View style={styles.debugIndicator}>
+            <Text style={styles.debugText}>
+              💬 Chat {isSubscribed ? '✅' : '⏳'}
+            </Text>
+          </View>
+        )}
+        
         <ScrollView
           ref={scrollViewRef}
           style={styles.broadcasterChatMessages}
           contentContainerStyle={styles.chatMessagesContent}
           showsVerticalScrollIndicator={false}
+          pointerEvents="box-none"
         >
           {messages.slice(-10).map(renderMessage)}
         </ScrollView>
@@ -174,10 +272,21 @@ export default function ChatOverlay({ streamId, isBroadcaster = false }: ChatOve
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.viewerChatContainer, isExpanded && styles.viewerChatExpanded]}
+      pointerEvents="box-none"
     >
+      {/* Debug indicator */}
+      {debugVisible && (
+        <View style={styles.debugIndicator}>
+          <Text style={styles.debugText}>
+            💬 Chat {isSubscribed ? '✅' : '⏳'}
+          </Text>
+        </View>
+      )}
+      
       <TouchableOpacity
         style={styles.chatToggle}
         onPress={() => setIsExpanded(!isExpanded)}
+        activeOpacity={0.7}
       >
         <IconSymbol
           ios_icon_name="bubble.left.fill"
@@ -197,11 +306,12 @@ export default function ChatOverlay({ streamId, isBroadcaster = false }: ChatOve
             style={styles.viewerChatMessages}
             contentContainerStyle={styles.chatMessagesContent}
             showsVerticalScrollIndicator={false}
+            pointerEvents="box-none"
           >
             {messages.map(renderMessage)}
           </ScrollView>
 
-          <View style={styles.chatInputContainer}>
+          <View style={styles.chatInputContainer} pointerEvents="box-none">
             <TextInput
               style={styles.chatInput}
               placeholder="Send a message..."
@@ -210,8 +320,13 @@ export default function ChatOverlay({ streamId, isBroadcaster = false }: ChatOve
               onChangeText={setMessageText}
               onSubmitEditing={handleSendMessage}
               returnKeyType="send"
+              editable={!!user}
             />
-            <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
+            <TouchableOpacity 
+              style={styles.sendButton} 
+              onPress={handleSendMessage}
+              disabled={!user || !messageText.trim()}
+            >
               <IconSymbol
                 ios_icon_name="paperplane.fill"
                 android_material_icon_name="send"
@@ -233,6 +348,7 @@ const styles = StyleSheet.create({
     bottom: 140,
     width: '55%',
     maxHeight: 250,
+    zIndex: 100,
   },
   broadcasterChatMessages: {
     maxHeight: 250,
@@ -264,6 +380,7 @@ const styles = StyleSheet.create({
     bottom: 120,
     width: '60%',
     maxHeight: 60,
+    zIndex: 100,
   },
   viewerChatExpanded: {
     maxHeight: 350,
@@ -302,5 +419,20 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     marginLeft: 8,
+  },
+  debugIndicator: {
+    position: 'absolute',
+    top: -30,
+    left: 0,
+    backgroundColor: 'rgba(164, 0, 40, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    zIndex: 1000,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

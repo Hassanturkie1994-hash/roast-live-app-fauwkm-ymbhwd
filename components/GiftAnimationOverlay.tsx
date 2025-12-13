@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Audio } from 'expo-av';
@@ -30,6 +30,7 @@ export default function GiftAnimationOverlay({
   const slideAnim = useRef(new Animated.Value(100)).current;
   const emojiScaleAnim = useRef(new Animated.Value(0.5)).current;
   const soundRef = useRef<Audio.Sound | null>(null);
+  const isMountedRef = useRef(true);
   
   // Particle animations for tier B and C
   const particles = useRef(
@@ -49,6 +50,26 @@ export default function GiftAnimationOverlay({
 
   const duration = getAnimationDuration(tier);
 
+  // Debug indicator
+  const [debugVisible, setDebugVisible] = useState(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎁 Gift animation started:', { giftName, senderUsername, tier });
+    
+    // Hide debug indicator after 2 seconds
+    const debugTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDebugVisible(false);
+      }
+    }, 2000);
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(debugTimer);
+    };
+  }, []);
+
   // Play sound effect based on gift emoji
   const playSoundEffect = async () => {
     try {
@@ -59,41 +80,7 @@ export default function GiftAnimationOverlay({
         shouldDuckAndroid: true,
       });
 
-      // Map gift emojis to sound frequencies/types
-      const soundMap: { [key: string]: { frequency: number; type: 'success' | 'notification' | 'celebration' } } = {
-        '🔥': { frequency: 800, type: 'celebration' },
-        '🤡': { frequency: 400, type: 'notification' },
-        '🎤': { frequency: 600, type: 'success' },
-        '💨': { frequency: 300, type: 'notification' },
-        '😂': { frequency: 500, type: 'success' },
-        '🥵': { frequency: 700, type: 'celebration' },
-        '🌶️': { frequency: 750, type: 'celebration' },
-        '💣': { frequency: 200, type: 'celebration' },
-        '🧯': { frequency: 450, type: 'notification' },
-        '🧱': { frequency: 250, type: 'notification' },
-        '🧀': { frequency: 550, type: 'success' },
-        '🚮': { frequency: 350, type: 'notification' },
-        '🤬': { frequency: 650, type: 'celebration' },
-        '⚡': { frequency: 900, type: 'celebration' },
-        '🪞': { frequency: 600, type: 'success' },
-        '📢': { frequency: 700, type: 'celebration' },
-        '💎': { frequency: 1000, type: 'celebration' },
-        '🥇': { frequency: 950, type: 'celebration' },
-        '🍿': { frequency: 500, type: 'success' },
-        '🎯': { frequency: 800, type: 'celebration' },
-        '🚀': { frequency: 1100, type: 'celebration' },
-        '🥊': { frequency: 600, type: 'celebration' },
-        '🔊': { frequency: 850, type: 'celebration' },
-        '🎭': { frequency: 750, type: 'celebration' },
-        '👑': { frequency: 1000, type: 'celebration' },
-        '🐐': { frequency: 950, type: 'celebration' },
-        '🧨': { frequency: 1200, type: 'celebration' },
-        '🕶️': { frequency: 900, type: 'celebration' },
-      };
-
-      const soundConfig = soundMap[giftEmoji] || { frequency: 600, type: 'success' };
-      
-      // Use system sounds based on tier and type
+      // Use system sounds based on tier
       let soundUri: string;
       
       if (tier === 'C') {
@@ -122,7 +109,7 @@ export default function GiftAnimationOverlay({
         }
       }, duration + 500);
     } catch (error) {
-      console.error('Error playing sound effect:', error);
+      console.error('❌ Error playing sound effect:', error);
     }
   };
 
@@ -271,7 +258,8 @@ export default function GiftAnimationOverlay({
 
     // Start all animations
     Animated.parallel(animations).start(({ finished }) => {
-      if (finished) {
+      if (finished && isMountedRef.current) {
+        console.log('✅ Gift animation completed');
         onAnimationComplete();
       }
     });
@@ -367,6 +355,13 @@ export default function GiftAnimationOverlay({
 
   return (
     <View style={styles.container} pointerEvents="none">
+      {/* Debug indicator */}
+      {debugVisible && (
+        <View style={styles.debugIndicator}>
+          <Text style={styles.debugText}>🎁 Gift Overlay Active</Text>
+        </View>
+      )}
+      
       {renderFullScreenEffect()}
       {renderParticles()}
       
@@ -632,5 +627,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -50,
     borderRadius: 2,
+  },
+  debugIndicator: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    backgroundColor: 'rgba(164, 0, 40, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    zIndex: 2000,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

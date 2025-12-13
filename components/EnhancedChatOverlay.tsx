@@ -15,7 +15,6 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
-import { commentService } from '@/app/services/commentService';
 import { streamGuestService, GuestEvent } from '@/app/services/streamGuestService';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -46,22 +45,42 @@ export default function EnhancedChatOverlay({
   const [inputText, setInputText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const channelRef = useRef<any>(null);
   const guestChannelRef = useRef<any>(null);
   const expandAnim = useRef(new Animated.Value(0)).current;
+  const isMountedRef = useRef(true);
+
+  // Debug indicator
+  const [debugVisible, setDebugVisible] = useState(true);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎨 EnhancedChatOverlay mounted for stream:', streamId);
+    
+    // Hide debug indicator after 3 seconds
+    const debugTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDebugVisible(false);
+      }
+    }, 3000);
+
     loadRecentMessages();
     subscribeToMessages();
     subscribeToGuestEvents();
 
     return () => {
+      isMountedRef.current = false;
+      clearTimeout(debugTimer);
+      
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
       if (guestChannelRef.current) {
         supabase.removeChannel(guestChannelRef.current);
+        guestChannelRef.current = null;
       }
     };
   }, [streamId]);
@@ -76,86 +95,100 @@ export default function EnhancedChatOverlay({
   }, [isExpanded]);
 
   const loadRecentMessages = async () => {
+    if (!streamId || !isMountedRef.current) return;
+
     try {
+      console.log('📥 Loading recent messages from chat_messages table');
+      
       const { data, error } = await supabase
-        .from('stream_comments')
-        .select('*, users(username)')
+        .from('chat_messages')
+        .select('*, users(id, display_name)')
         .eq('stream_id', streamId)
         .order('created_at', { ascending: false })
         .limit(50);
 
       if (error) {
-        console.error('Error loading messages:', error);
+        console.error('❌ Error loading messages:', error);
         return;
       }
 
       const formattedMessages: ChatMessage[] = (data || []).map((msg: any) => ({
         id: msg.id,
         user_id: msg.user_id,
-        username: msg.users?.username || 'Anonymous',
-        message: msg.comment_text,
+        username: msg.users?.display_name || 'Anonymous',
+        message: msg.message,
         timestamp: msg.created_at,
-        is_moderator: msg.is_moderator || false,
-        is_pinned: msg.is_pinned || false,
+        is_moderator: false,
+        is_pinned: false,
         type: 'chat',
       })).reverse();
 
-      setMessages(formattedMessages);
+      console.log(`✅ Loaded ${formattedMessages.length} messages`);
+      
+      if (isMountedRef.current) {
+        setMessages(formattedMessages);
+      }
     } catch (error) {
-      console.error('Error in loadRecentMessages:', error);
+      console.error('❌ Error in loadRecentMessages:', error);
     }
   };
 
   const subscribeToMessages = () => {
+    if (!streamId || !isMountedRef.current) return;
+
+    console.log('🔌 Subscribing to enhanced chat channel:', `stream:${streamId}:chat_enhanced`);
+
     const channel = supabase
-      .channel(`stream:${streamId}:comments`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'stream_comments',
-          filter: `stream_id=eq.${streamId}`,
-        },
-        async (payload) => {
-          console.log('💬 New message received:', payload);
-          
-          // Fetch user info
-          const { data: userData } = await supabase
-            .from('users')
-            .select('username')
-            .eq('id', payload.new.user_id)
-            .single();
+      .channel(`stream:${streamId}:chat_enhanced`)
+      .on('broadcast', { event: 'new_message' }, async (payload) => {
+        console.log('💬 New message received:', payload);
+        
+        if (!isMountedRef.current) return;
+        
+        const messageData = payload.payload;
+        
+        const newMessage: ChatMessage = {
+          id: messageData.id,
+          user_id: messageData.user_id,
+          username: messageData.username || 'Anonymous',
+          message: messageData.message,
+          timestamp: messageData.created_at || new Date().toISOString(),
+          is_moderator: messageData.is_moderator || false,
+          is_pinned: messageData.is_pinned || false,
+          type: 'chat',
+        };
 
-          const newMessage: ChatMessage = {
-            id: payload.new.id,
-            user_id: payload.new.user_id,
-            username: userData?.username || 'Anonymous',
-            message: payload.new.comment_text,
-            timestamp: payload.new.created_at,
-            is_moderator: payload.new.is_moderator || false,
-            is_pinned: payload.new.is_pinned || false,
-            type: 'chat',
-          };
-
-          // Apply stream delay for non-broadcasters
-          if (!isBroadcaster && streamDelay > 0) {
-            setTimeout(() => {
+        // Apply stream delay for non-broadcasters
+        if (!isBroadcaster && streamDelay > 0) {
+          setTimeout(() => {
+            if (isMountedRef.current) {
               setMessages((prev) => [...prev, newMessage]);
-            }, streamDelay * 1000);
-          } else {
-            setMessages((prev) => [...prev, newMessage]);
-          }
+            }
+          }, streamDelay * 1000);
+        } else {
+          setMessages((prev) => [...prev, newMessage]);
         }
-      )
-      .subscribe();
+      })
+      .subscribe((status) => {
+        console.log('📡 Enhanced chat channel subscription status:', status);
+        if (status === 'SUBSCRIBED' && isMountedRef.current) {
+          setIsSubscribed(true);
+          console.log('✅ Successfully subscribed to enhanced chat channel');
+        }
+      });
 
     channelRef.current = channel;
   };
 
   const subscribeToGuestEvents = () => {
+    if (!streamId || !isMountedRef.current) return;
+
+    console.log('🔌 Subscribing to guest events channel');
+
     const channel = streamGuestService.subscribeToGuestEvents(streamId, (payload) => {
       console.log('👥 Guest event received:', payload);
+      
+      if (!isMountedRef.current) return;
       
       let systemMessage: ChatMessage | null = null;
       const timestamp = new Date().toISOString();
@@ -170,7 +203,7 @@ export default function EnhancedChatOverlay({
         systemMessage = createSystemMessageFromBroadcast(payload.event, eventData, timestamp);
       }
 
-      if (systemMessage) {
+      if (systemMessage && isMountedRef.current) {
         setMessages((prev) => [...prev, systemMessage!]);
       }
     });
@@ -274,25 +307,63 @@ export default function EnhancedChatOverlay({
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !user) {
+    if (!inputText.trim() || !user || !isMountedRef.current) {
       return;
     }
 
     setIsSending(true);
 
     try {
-      const result = await commentService.addComment(streamId, user.id, inputText.trim());
+      const trimmedMessage = inputText.trim();
+      console.log('📤 Sending enhanced chat message:', trimmedMessage);
 
-      if (result.success) {
+      // Insert message into database
+      const { data: newMessage, error } = await supabase
+        .from('chat_messages')
+        .insert({
+          stream_id: streamId,
+          user_id: user.id,
+          message: trimmedMessage,
+        })
+        .select('*, users(id, display_name)')
+        .single();
+
+      if (error) {
+        console.error('❌ Error sending message:', error);
+        Alert.alert('Error', 'Failed to send message');
+        return;
+      }
+
+      console.log('✅ Message saved to database');
+
+      // Broadcast the message to all viewers
+      if (channelRef.current && newMessage && isMountedRef.current) {
+        await channelRef.current.send({
+          type: 'broadcast',
+          event: 'new_message',
+          payload: {
+            id: newMessage.id,
+            user_id: newMessage.user_id,
+            username: newMessage.users?.display_name || 'Anonymous',
+            message: newMessage.message,
+            created_at: newMessage.created_at,
+            is_moderator: false,
+            is_pinned: false,
+          },
+        });
+        console.log('📡 Message broadcasted to all viewers');
+      }
+
+      if (isMountedRef.current) {
         setInputText('');
-      } else {
-        Alert.alert('Error', result.error || 'Failed to send message');
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error in handleSendMessage:', error);
       Alert.alert('Error', 'Failed to send message');
     } finally {
-      setIsSending(false);
+      if (isMountedRef.current) {
+        setIsSending(false);
+      }
     }
   };
 
@@ -358,8 +429,18 @@ export default function EnhancedChatOverlay({
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
       keyboardVerticalOffset={100}
+      pointerEvents="box-none"
     >
       <Animated.View style={[styles.chatContainer, { height: chatHeight }]}>
+        {/* Debug indicator */}
+        {debugVisible && (
+          <View style={styles.debugIndicator}>
+            <Text style={styles.debugText}>
+              💬 Enhanced Chat {isSubscribed ? '✅' : '⏳'}
+            </Text>
+          </View>
+        )}
+        
         <View style={styles.chatHeader}>
           <Text style={styles.chatTitle}>Live Chat</Text>
           <TouchableOpacity
@@ -401,7 +482,7 @@ export default function EnhancedChatOverlay({
               maxLength={500}
             />
             <TouchableOpacity
-              style={[styles.sendButton, isSending && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (isSending || !inputText.trim()) && styles.sendButtonDisabled]}
               onPress={handleSendMessage}
               disabled={isSending || !inputText.trim()}
             >
@@ -425,7 +506,7 @@ const styles = StyleSheet.create({
     bottom: 120,
     left: 0,
     right: 0,
-    zIndex: 5,
+    zIndex: 100,
   },
   chatContainer: {
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -564,5 +645,20 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
+  },
+  debugIndicator: {
+    position: 'absolute',
+    top: -30,
+    left: 16,
+    backgroundColor: 'rgba(164, 0, 40, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    zIndex: 1000,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

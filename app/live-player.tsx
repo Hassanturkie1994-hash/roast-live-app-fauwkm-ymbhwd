@@ -17,6 +17,7 @@ import LiveBadge from '@/components/LiveBadge';
 import FollowButton from '@/components/FollowButton';
 import RoastLiveLogo from '@/components/RoastLiveLogo';
 import ChatOverlay from '@/components/ChatOverlay';
+import GiftAnimationOverlay from '@/components/GiftAnimationOverlay';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Tables } from '@/app/integrations/supabase/types';
@@ -24,6 +25,15 @@ import { Tables } from '@/app/integrations/supabase/types';
 type Stream = Tables<'streams'> & {
   users: Tables<'users'>;
 };
+
+interface GiftAnimation {
+  id: string;
+  giftName: string;
+  giftEmoji: string;
+  senderUsername: string;
+  amount: number;
+  tier: 'A' | 'B' | 'C';
+}
 
 export default function LivePlayerScreen() {
   const { streamId } = useLocalSearchParams<{ streamId: string }>();
@@ -36,9 +46,33 @@ export default function LivePlayerScreen() {
   const [hasJoinedChannel, setHasJoinedChannel] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isStreamOffline, setIsStreamOffline] = useState(false);
+  const [giftAnimations, setGiftAnimations] = useState<GiftAnimation[]>([]);
+  const [isViewerChannelSubscribed, setIsViewerChannelSubscribed] = useState(false);
+  const [isGiftChannelSubscribed, setIsGiftChannelSubscribed] = useState(false);
   const channelRef = useRef<any>(null);
+  const giftChannelRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
   const isMountedRef = useRef(true);
+
+  // Debug indicator
+  const [debugVisible, setDebugVisible] = useState(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎬 LivePlayerScreen mounted for stream:', streamId);
+    
+    // Hide debug indicator after 5 seconds
+    const debugTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDebugVisible(false);
+      }
+    }, 5000);
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(debugTimer);
+    };
+  }, [streamId]);
 
   // Validate playback URL before creating player
   const isValidPlaybackUrl = (url: string | null | undefined): boolean => {
@@ -199,7 +233,12 @@ export default function LivePlayerScreen() {
   }, [streamId, user, checkFollowStatus]);
 
   const joinViewerChannel = useCallback(() => {
-    if (!streamId || !isMountedRef.current) return;
+    if (!streamId || !isMountedRef.current) {
+      console.warn('⚠️ Cannot join viewer channel: missing streamId or component unmounted');
+      return;
+    }
+
+    console.log('🔌 Joining viewer channel:', `stream:${streamId}:viewers`);
 
     const channel = supabase
       .channel(`stream:${streamId}:viewers`)
@@ -207,6 +246,8 @@ export default function LivePlayerScreen() {
         if (!isMountedRef.current) return;
         const state = channel.presenceState();
         const count = Object.keys(state).length;
+        
+        console.log('👥 Viewer count synced:', count);
         setViewerCount(count);
 
         channel.send({
@@ -229,7 +270,12 @@ export default function LivePlayerScreen() {
         }
       })
       .subscribe(async (status) => {
+        console.log('📡 Viewer channel subscription status:', status);
+        
         if (status === 'SUBSCRIBED' && isMountedRef.current) {
+          setIsViewerChannelSubscribed(true);
+          console.log('✅ Successfully subscribed to viewer channel');
+          
           await channel.track({
             user_id: user?.id || 'anonymous',
             online_at: new Date().toISOString(),
@@ -240,9 +286,47 @@ export default function LivePlayerScreen() {
     channelRef.current = channel;
   }, [streamId, user]);
 
-  useEffect(() => {
-    isMountedRef.current = true;
+  const subscribeToGifts = useCallback(() => {
+    if (!streamId || !isMountedRef.current) {
+      console.warn('⚠️ Cannot subscribe to gifts: missing streamId or component unmounted');
+      return;
+    }
 
+    console.log('🔌 Subscribing to gift channel:', `stream:${streamId}:gifts`);
+
+    const channel = supabase
+      .channel(`stream:${streamId}:gifts`)
+      .on('broadcast', { event: 'gift_sent' }, (payload) => {
+        console.log('🎁 Gift received:', payload);
+        
+        if (!isMountedRef.current) return;
+        
+        const giftData = payload.payload;
+        
+        const newAnimation: GiftAnimation = {
+          id: `${Date.now()}-${Math.random()}`,
+          giftName: giftData.gift_name,
+          giftEmoji: giftData.gift_emoji || '🎁',
+          senderUsername: giftData.sender_username,
+          amount: giftData.amount,
+          tier: giftData.tier || 'A',
+        };
+        
+        setGiftAnimations((prev) => [...prev, newAnimation]);
+      })
+      .subscribe((status) => {
+        console.log('📡 Gift channel subscription status:', status);
+        
+        if (status === 'SUBSCRIBED' && isMountedRef.current) {
+          setIsGiftChannelSubscribed(true);
+          console.log('✅ Successfully subscribed to gift channel');
+        }
+      });
+
+    giftChannelRef.current = channel;
+  }, [streamId]);
+
+  useEffect(() => {
     if (streamId) {
       fetchStream();
     }
@@ -262,26 +346,56 @@ export default function LivePlayerScreen() {
       }
       
       leaveViewerChannel();
+      leaveGiftChannel();
     };
   }, [streamId, fetchStream]);
 
   useEffect(() => {
+    // ALWAYS subscribe to channels when stream is available, regardless of backend state
     if (stream && !hasJoinedChannel && isMountedRef.current) {
+      console.log('🚀 Initializing Realtime channels for stream:', stream.id);
       joinViewerChannel();
+      subscribeToGifts();
       setHasJoinedChannel(true);
     }
-  }, [stream, hasJoinedChannel, joinViewerChannel]);
+  }, [stream, hasJoinedChannel, joinViewerChannel, subscribeToGifts]);
 
   const leaveViewerChannel = () => {
     if (channelRef.current) {
       try {
+        console.log('🔌 Leaving viewer channel');
         channelRef.current.untrack();
         supabase.removeChannel(channelRef.current);
       } catch (error) {
         console.log('⚠️ Error leaving channel:', error);
       } finally {
         channelRef.current = null;
+        if (isMountedRef.current) {
+          setIsViewerChannelSubscribed(false);
+        }
       }
+    }
+  };
+
+  const leaveGiftChannel = () => {
+    if (giftChannelRef.current) {
+      try {
+        console.log('🔌 Leaving gift channel');
+        supabase.removeChannel(giftChannelRef.current);
+      } catch (error) {
+        console.log('⚠️ Error leaving gift channel:', error);
+      } finally {
+        giftChannelRef.current = null;
+        if (isMountedRef.current) {
+          setIsGiftChannelSubscribed(false);
+        }
+      }
+    }
+  };
+
+  const handleAnimationComplete = (animationId: string) => {
+    if (isMountedRef.current) {
+      setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
     }
   };
 
@@ -415,13 +529,7 @@ export default function LivePlayerScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {isLoading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.brandPrimary || '#A40028'} />
-          <Text style={[styles.loadingText, { color: colors.text }]}>Loading video...</Text>
-        </View>
-      )}
-
+      {/* Video Layer - Background */}
       <VideoView
         style={styles.video}
         player={player}
@@ -431,7 +539,27 @@ export default function LivePlayerScreen() {
         nativeControls={false}
       />
 
-      <View style={styles.overlay}>
+      {/* Loading Overlay */}
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={colors.brandPrimary || '#A40028'} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>Loading video...</Text>
+        </View>
+      )}
+
+      {/* Overlay Layer - Above Video */}
+      <View style={styles.overlay} pointerEvents="box-none">
+        {/* Debug indicator */}
+        {debugVisible && (
+          <View style={styles.debugIndicator}>
+            <Text style={styles.debugText}>
+              📺 Overlay Active{'\n'}
+              👥 Viewers: {isViewerChannelSubscribed ? '✅' : '⏳'}{'\n'}
+              🎁 Gifts: {isGiftChannelSubscribed ? '✅' : '⏳'}
+            </Text>
+          </View>
+        )}
+        
         <View style={styles.topBar}>
           <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
             <IconSymbol
@@ -484,7 +612,8 @@ export default function LivePlayerScreen() {
           </TouchableOpacity>
         </View>
 
-        <ChatOverlay streamId={streamId} isBroadcaster={false} />
+        {/* Chat Overlay - ALWAYS RENDERED */}
+        <ChatOverlay streamId={streamId} isBroadcaster={false} streamDelay={0} />
 
         <View style={styles.bottomBar}>
           <View style={styles.broadcasterInfo}>
@@ -498,6 +627,19 @@ export default function LivePlayerScreen() {
           )}
         </View>
       </View>
+
+      {/* Gift Animations - Highest Layer */}
+      {giftAnimations.map((animation) => (
+        <GiftAnimationOverlay
+          key={animation.id}
+          giftName={animation.giftName}
+          giftEmoji={animation.giftEmoji}
+          senderUsername={animation.senderUsername}
+          amount={animation.amount}
+          tier={animation.tier}
+          onAnimationComplete={() => handleAnimationComplete(animation.id)}
+        />
+      ))}
     </View>
   );
 }
@@ -572,6 +714,7 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
+    zIndex: 50,
   },
   topBar: {
     flexDirection: 'row',
@@ -579,6 +722,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 60,
     paddingHorizontal: 20,
+    zIndex: 60,
   },
   closeButton: {
     width: 40,
@@ -614,12 +758,14 @@ const styles = StyleSheet.create({
     bottom: 200,
     right: 20,
     pointerEvents: 'none',
+    zIndex: 60,
   },
   rightActions: {
     position: 'absolute',
     right: 16,
     bottom: 200,
     gap: 24,
+    zIndex: 60,
   },
   actionButton: {
     alignItems: 'center',
@@ -636,6 +782,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingBottom: 40,
+    zIndex: 60,
   },
   broadcasterInfo: {
     flex: 1,
@@ -651,5 +798,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '400',
     color: '#FFFFFF',
+  },
+  debugIndicator: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    backgroundColor: 'rgba(164, 0, 40, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    zIndex: 2000,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 14,
   },
 });

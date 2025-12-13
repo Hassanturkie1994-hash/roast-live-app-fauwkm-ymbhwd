@@ -16,7 +16,7 @@ import GiftAnimationOverlay from '@/components/GiftAnimationOverlay';
 import LiveStreamControlPanel from '@/components/LiveStreamControlPanel';
 import ViewerListModal from '@/components/ViewerListModal';
 import CameraFilterSelector, { CameraFilter } from '@/components/CameraFilterSelector';
-import EnhancedChatOverlay from '@/components/EnhancedChatOverlay';
+import ChatOverlay from '@/components/ChatOverlay';
 import ModeratorChatOverlay from '@/components/ModeratorChatOverlay';
 import ModeratorControlPanel from '@/components/ModeratorControlPanel';
 import StreamHealthDashboard from '@/components/StreamHealthDashboard';
@@ -97,12 +97,20 @@ export default function BroadcasterScreen() {
   // Host Control Dashboard state
   const [showHostControlDashboard, setShowHostControlDashboard] = useState(false);
   
+  // Realtime subscription state
+  const [isViewerChannelSubscribed, setIsViewerChannelSubscribed] = useState(false);
+  const [isGiftChannelSubscribed, setIsGiftChannelSubscribed] = useState(false);
+  const [isChatChannelSubscribed, setIsChatChannelSubscribed] = useState(false);
+  
   const realtimeChannelRef = useRef<any>(null);
   const giftChannelRef = useRef<any>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const streamStartTime = useRef<string | null>(null);
   const isMountedRef = useRef(true);
+
+  // Debug indicator
+  const [debugVisible, setDebugVisible] = useState(true);
 
   // Connection monitoring
   const {
@@ -125,6 +133,14 @@ export default function BroadcasterScreen() {
   // Check safety acknowledgement and forced review lock on mount
   useEffect(() => {
     isMountedRef.current = true;
+    console.log('🎬 BroadcasterScreen mounted');
+    
+    // Hide debug indicator after 5 seconds
+    const debugTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDebugVisible(false);
+      }
+    }, 5000);
     
     if (user) {
       checkSafetyStatus();
@@ -132,6 +148,7 @@ export default function BroadcasterScreen() {
 
     return () => {
       isMountedRef.current = false;
+      clearTimeout(debugTimer);
     };
   }, [user]);
 
@@ -270,33 +287,54 @@ export default function BroadcasterScreen() {
   }, [isLive]);
 
   const subscribeToViewerUpdates = useCallback(() => {
-    if (!currentStream?.id || !isMountedRef.current) return;
+    if (!currentStream?.id || !isMountedRef.current) {
+      console.warn('⚠️ Cannot subscribe to viewer updates: missing stream or component unmounted');
+      return;
+    }
+
+    console.log('🔌 Subscribing to viewer updates:', `stream:${currentStream.id}:broadcaster`);
 
     const channel = supabase
       .channel(`stream:${currentStream.id}:broadcaster`)
       .on('broadcast', { event: 'viewer_count' }, (payload) => {
         console.log('👥 Viewer count update:', payload);
+        
+        if (!isMountedRef.current) return;
+        
         const count = payload.payload.count || 0;
         
-        if (isMountedRef.current) {
-          setViewerCount(count);
-          
-          // Track peak viewers
-          setPeakViewers(prev => count > prev ? count : prev);
-        }
+        setViewerCount(count);
+        
+        // Track peak viewers
+        setPeakViewers(prev => count > prev ? count : prev);
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Viewer channel subscription status:', status);
+        
+        if (status === 'SUBSCRIBED' && isMountedRef.current) {
+          setIsViewerChannelSubscribed(true);
+          console.log('✅ Successfully subscribed to viewer updates');
+        }
+      });
 
     realtimeChannelRef.current = channel;
   }, [currentStream?.id]);
 
   const subscribeToGifts = useCallback(() => {
-    if (!currentStream?.id || !isMountedRef.current) return;
+    if (!currentStream?.id || !isMountedRef.current) {
+      console.warn('⚠️ Cannot subscribe to gifts: missing stream or component unmounted');
+      return;
+    }
+
+    console.log('🔌 Subscribing to gifts:', `stream:${currentStream.id}:gifts`);
 
     const channel = supabase
       .channel(`stream:${currentStream.id}:gifts`)
       .on('broadcast', { event: 'gift_sent' }, (payload) => {
         console.log('🎁 Gift received:', payload);
+        
+        if (!isMountedRef.current) return;
+        
         const giftData = payload.payload;
         
         const newAnimation: GiftAnimation = {
@@ -308,30 +346,45 @@ export default function BroadcasterScreen() {
           tier: giftData.tier || 'A',
         };
         
-        if (isMountedRef.current) {
-          setGiftAnimations((prev) => [...prev, newAnimation]);
-          setTotalGifts((prev) => prev + 1);
-        }
+        setGiftAnimations((prev) => [...prev, newAnimation]);
+        setTotalGifts((prev) => prev + 1);
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Gift channel subscription status:', status);
+        
+        if (status === 'SUBSCRIBED' && isMountedRef.current) {
+          setIsGiftChannelSubscribed(true);
+          console.log('✅ Successfully subscribed to gifts');
+        }
+      });
 
     giftChannelRef.current = channel;
   }, [currentStream?.id]);
 
   useEffect(() => {
-    if (isLive && currentStream?.id) {
+    // ALWAYS subscribe to channels when stream is live, regardless of backend state
+    if (isLive && currentStream?.id && isMountedRef.current) {
+      console.log('🚀 Initializing Realtime channels for stream:', currentStream.id);
       subscribeToViewerUpdates();
       subscribeToGifts();
     }
     
     return () => {
       if (realtimeChannelRef.current) {
+        console.log('🔌 Unsubscribing from viewer channel');
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
+        if (isMountedRef.current) {
+          setIsViewerChannelSubscribed(false);
+        }
       }
       if (giftChannelRef.current) {
+        console.log('🔌 Unsubscribing from gift channel');
         supabase.removeChannel(giftChannelRef.current);
         giftChannelRef.current = null;
+        if (isMountedRef.current) {
+          setIsGiftChannelSubscribed(false);
+        }
       }
     };
   }, [isLive, currentStream?.id, subscribeToViewerUpdates, subscribeToGifts]);
@@ -678,6 +731,9 @@ export default function BroadcasterScreen() {
         setArchiveId(null);
         setContentLabel(null);
         streamStartTime.current = null;
+        setIsViewerChannelSubscribed(false);
+        setIsGiftChannelSubscribed(false);
+        setIsChatChannelSubscribed(false);
       }
 
       Alert.alert(
@@ -751,7 +807,7 @@ export default function BroadcasterScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Camera View */}
+      {/* Camera View - Background Layer */}
       {isCameraOn ? (
         <CameraView 
           style={getCameraStyle()} 
@@ -812,9 +868,21 @@ export default function BroadcasterScreen() {
         </TouchableOpacity>
       )}
 
-      <View style={styles.overlay}>
+      {/* Overlay Layer - Above Camera */}
+      <View style={styles.overlay} pointerEvents="box-none">
         {isLive && !isMinimized && (
           <>
+            {/* Debug indicator */}
+            {debugVisible && (
+              <View style={styles.debugIndicator}>
+                <Text style={styles.debugText}>
+                  📺 Overlay Active{'\n'}
+                  👥 Viewers: {isViewerChannelSubscribed ? '✅' : '⏳'}{'\n'}
+                  🎁 Gifts: {isGiftChannelSubscribed ? '✅' : '⏳'}
+                </Text>
+              </View>
+            )}
+            
             {/* Connection Status Indicator */}
             <ConnectionStatusIndicator
               status={connectionStatus}
@@ -934,14 +1002,12 @@ export default function BroadcasterScreen() {
               visible={showFilters}
             />
 
-            {/* Moderator Chat Overlay */}
+            {/* Chat Overlay - ALWAYS RENDERED when live */}
             {currentStream && user && (
-              <ModeratorChatOverlay
+              <ChatOverlay
                 streamId={currentStream.id}
-                streamerId={user.id}
-                currentUserId={user.id}
-                isStreamer={true}
-                isModerator={false}
+                isBroadcaster={true}
+                streamDelay={0}
               />
             )}
           </>
@@ -961,7 +1027,7 @@ export default function BroadcasterScreen() {
         )}
       </View>
 
-      {/* Gift Animations */}
+      {/* Gift Animations - Highest Layer */}
       {giftAnimations.map((animation) => (
         <GiftAnimationOverlay
           key={animation.id}
@@ -1183,6 +1249,7 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
+    zIndex: 50,
   },
   permissionContainer: {
     justifyContent: 'center',
@@ -1201,6 +1268,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 60,
     paddingHorizontal: 20,
+    zIndex: 60,
   },
   topLeft: {
     flexDirection: 'row',
@@ -1238,6 +1306,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     borderRadius: 8,
     gap: 8,
+    zIndex: 60,
   },
   warningText: {
     fontSize: 12,
@@ -1256,6 +1325,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+    zIndex: 60,
   },
   moderatorPanelToggle: {
     position: 'absolute',
@@ -1269,6 +1339,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#A40028',
+    zIndex: 60,
   },
   moderationHistoryToggle: {
     position: 'absolute',
@@ -1282,6 +1353,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+    zIndex: 60,
   },
   floatingThumbnail: {
     position: 'absolute',
@@ -1449,5 +1521,21 @@ const styles = StyleSheet.create({
   },
   confirmationEndButton: {
     flex: 1,
+  },
+  debugIndicator: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    backgroundColor: 'rgba(164, 0, 40, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    zIndex: 2000,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    lineHeight: 14,
   },
 });
