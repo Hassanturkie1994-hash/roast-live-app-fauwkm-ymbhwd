@@ -1,9 +1,9 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { deviceBanService } from '@/app/services/deviceBanService';
+import { deviceBanService } from '@/services/deviceBanService';
 import { useRouter } from 'expo-router';
 
 interface Profile {
@@ -94,6 +94,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!data) {
         console.log('Profile not found, creating new profile for user:', userId);
         
+        // CRITICAL FIX: Verify user is authenticated before creating profile
+        const { data: { user: authenticatedUser }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError || !authenticatedUser) {
+          console.warn('⚠️ User not authenticated, cannot create profile');
+          console.warn('Profile will be created on next login after email confirmation');
+          setProfileFetched(true);
+          return null;
+        }
+
+        // Ensure the authenticated user matches the requested user
+        if (authenticatedUser.id !== userId) {
+          console.error('❌ User ID mismatch - security violation prevented');
+          setProfileFetched(true);
+          return null;
+        }
+        
         const username = userEmail ? userEmail.split('@')[0] : `user_${userId.substring(0, 8)}`;
         
         const { data: newProfile, error: createError } = await supabase
@@ -112,11 +129,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (createError) {
           console.error('Error creating profile:', createError);
+          console.error('RLS Error Details:', createError.message);
           setProfileFetched(true);
           return null;
         }
 
-        console.log('Profile created successfully:', newProfile);
+        console.log('✅ Profile created successfully:', newProfile);
         
         await ensureWalletExists(userId);
         await deviceBanService.storeDeviceFingerprint(userId);
@@ -295,26 +313,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { error };
     }
 
-    if (data.user) {
-      const username = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || email.split('@')[0];
-      
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        username: username,
-        display_name: displayName,
-        avatar_url: null,
-        unique_profile_link: `roastlive.com/@${username}`,
-        followers_count: 0,
-        following_count: 0,
-      });
-
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-        return { error: profileError };
-      }
-
-      await deviceBanService.storeDeviceFingerprint(data.user.id);
-    }
+    // CRITICAL FIX: Do NOT create profile during signup
+    // Profile will be created automatically when user confirms email and signs in
+    // This prevents RLS violations since user is not yet authenticated
+    
+    console.log('✅ Signup successful - profile will be created after email confirmation');
+    console.log('📧 Please check your email to confirm your account');
 
     return { error: null };
   }, [checkDeviceBan]);

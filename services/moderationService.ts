@@ -1,5 +1,5 @@
 
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface Moderator {
   id: string;
@@ -88,6 +88,27 @@ class ModerationService {
     durationSec?: number
   ): Promise<void> {
     try {
+      // Validate moderator_user_id is not null or empty
+      if (!moderatorUserId || moderatorUserId.trim() === '') {
+        console.warn('⚠️ Cannot log moderation action: moderator_user_id is null or empty');
+        console.warn(`Action type: ${actionType}, Target: ${targetUserId}, Streamer: ${streamerId}`);
+        return;
+      }
+
+      // Validate target_user_id is not null or empty
+      if (!targetUserId || targetUserId.trim() === '') {
+        console.warn('⚠️ Cannot log moderation action: target_user_id is null or empty');
+        console.warn(`Action type: ${actionType}, Moderator: ${moderatorUserId}, Streamer: ${streamerId}`);
+        return;
+      }
+
+      // Validate streamer_id is not null or empty
+      if (!streamerId || streamerId.trim() === '') {
+        console.warn('⚠️ Cannot log moderation action: streamer_id is null or empty');
+        console.warn(`Action type: ${actionType}, Moderator: ${moderatorUserId}, Target: ${targetUserId}`);
+        return;
+      }
+
       const { error } = await supabase
         .from('moderation_history')
         .insert({
@@ -100,12 +121,13 @@ class ModerationService {
         });
 
       if (error) {
-        console.error('Error logging moderation action:', error);
+        console.error('❌ Error logging moderation action:', error);
+        console.error(`Failed to log: ${actionType} by ${moderatorUserId} on ${targetUserId}`);
       } else {
         console.log(`📝 Logged moderation action: ${actionType}`);
       }
     } catch (error) {
-      console.error('Error in logModerationAction:', error);
+      console.error('❌ Error in logModerationAction:', error);
     }
   }
 
@@ -251,6 +273,12 @@ class ModerationService {
   // Add a moderator
   async addModerator(streamerId: string, userId: string, addedBy: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate addedBy is not null
+      if (!addedBy || addedBy.trim() === '') {
+        console.warn('⚠️ Cannot add moderator: addedBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       const { error } = await supabase
         .from('moderators')
         .insert({
@@ -263,7 +291,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action
+      // Log the action (only if addedBy is valid)
       await this.logModerationAction(addedBy, userId, streamerId, 'add_moderator');
 
       console.log('✅ Moderator added successfully');
@@ -277,6 +305,12 @@ class ModerationService {
   // Remove a moderator
   async removeModerator(streamerId: string, userId: string, removedBy: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate removedBy is not null
+      if (!removedBy || removedBy.trim() === '') {
+        console.warn('⚠️ Cannot remove moderator: removedBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       const { error } = await supabase
         .from('moderators')
         .delete()
@@ -288,7 +322,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action
+      // Log the action (only if removedBy is valid)
       await this.logModerationAction(removedBy, userId, streamerId, 'remove_moderator');
 
       console.log('✅ Moderator removed successfully');
@@ -351,6 +385,12 @@ class ModerationService {
   // Ban a user (persistent across all future streams)
   async banUser(streamerId: string, userId: string, bannedBy: string, reason?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate bannedBy is not null
+      if (!bannedBy || bannedBy.trim() === '') {
+        console.warn('⚠️ Cannot ban user: bannedBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       const { error } = await supabase
         .from('banned_users')
         .insert({
@@ -364,7 +404,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action
+      // Log the action (only if bannedBy is valid)
       await this.logModerationAction(bannedBy, userId, streamerId, 'ban', reason);
 
       console.log('✅ User banned successfully');
@@ -386,6 +426,12 @@ class ModerationService {
   // Unban a user
   async unbanUser(streamerId: string, userId: string, unbannedBy: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate unbannedBy is not null
+      if (!unbannedBy || unbannedBy.trim() === '') {
+        console.warn('⚠️ Cannot unban user: unbannedBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       const { error } = await supabase
         .from('banned_users')
         .delete()
@@ -397,7 +443,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action
+      // Log the action (only if unbannedBy is valid)
       await this.logModerationAction(unbannedBy, userId, streamerId, 'unban');
 
       console.log('✅ User unbanned successfully');
@@ -460,6 +506,12 @@ class ModerationService {
   // Timeout a user (persistent, expires automatically)
   async timeoutUser(streamId: string, userId: string, streamerId: string, timedOutBy: string, durationMinutes: number): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate timedOutBy is not null
+      if (!timedOutBy || timedOutBy.trim() === '') {
+        console.warn('⚠️ Cannot timeout user: timedOutBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       if (durationMinutes < 1 || durationMinutes > 60) {
         return { success: false, error: 'Timeout duration must be between 1 and 60 minutes' };
       }
@@ -488,7 +540,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action
+      // Log the action (only if timedOutBy is valid)
       await this.logModerationAction(timedOutBy, userId, streamerId, 'timeout', undefined, durationMinutes * 60);
 
       console.log(`✅ User timed out for ${durationMinutes} minutes`);
@@ -510,6 +562,12 @@ class ModerationService {
   // Remove a comment
   async removeComment(messageId: string, removedBy: string, streamerId: string, targetUserId: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate removedBy is not null
+      if (!removedBy || removedBy.trim() === '') {
+        console.warn('⚠️ Cannot remove comment: removedBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       const { error } = await supabase
         .from('chat_messages')
         .delete()
@@ -520,7 +578,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action
+      // Log the action (only if removedBy is valid)
       await this.logModerationAction(removedBy, targetUserId, streamerId, 'remove_comment');
 
       console.log('✅ Comment removed successfully');
@@ -534,6 +592,12 @@ class ModerationService {
   // Pin a comment - Fixed: Use pinned_until instead of expires_at
   async pinComment(streamId: string, messageId: string, pinnedBy: string, streamerId: string, targetUserId: string, durationMinutes: number): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate pinnedBy is not null
+      if (!pinnedBy || pinnedBy.trim() === '') {
+        console.warn('⚠️ Cannot pin comment: pinnedBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       if (durationMinutes < 1 || durationMinutes > 5) {
         return { success: false, error: 'Pin duration must be between 1 and 5 minutes' };
       }
@@ -562,7 +626,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action
+      // Log the action (only if pinnedBy is valid)
       await this.logModerationAction(pinnedBy, targetUserId, streamerId, 'pin_comment', undefined, durationMinutes * 60);
 
       console.log(`✅ Comment pinned for ${durationMinutes} minutes`);
@@ -576,6 +640,12 @@ class ModerationService {
   // Unpin a comment
   async unpinComment(streamId: string, unpinnedBy: string, streamerId: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate unpinnedBy is not null
+      if (!unpinnedBy || unpinnedBy.trim() === '') {
+        console.warn('⚠️ Cannot unpin comment: unpinnedBy user ID is null or empty');
+        return { success: false, error: 'Invalid moderator ID' };
+      }
+
       const { error } = await supabase
         .from('pinned_comments')
         .delete()
@@ -586,7 +656,7 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      // Log the action (use streamer as target for unpin)
+      // Log the action (use streamer as target for unpin, only if unpinnedBy is valid)
       await this.logModerationAction(unpinnedBy, streamerId, streamerId, 'unpin_comment');
 
       console.log('✅ Comment unpinned successfully');

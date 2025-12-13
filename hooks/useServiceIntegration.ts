@@ -1,6 +1,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import React from 'react';
 
 /**
  * Custom hook to ensure services are properly integrated with component lifecycle
