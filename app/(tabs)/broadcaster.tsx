@@ -431,12 +431,13 @@ export default function BroadcasterScreen() {
       return;
     }
 
-    // Close the creator rules modal immediately
+    // Set loading state BEFORE closing modal
+    setLoading(true);
+
+    // Close the creator rules modal
     if (isMountedRef.current) {
       setShowCreatorRulesModal(false);
     }
-
-    setLoading(true);
 
     try {
       // Log creator rules acceptance
@@ -453,6 +454,11 @@ export default function BroadcasterScreen() {
       await startLiveWithLabel(contentLabel);
     } catch (error) {
       console.error('❌ Error in handleCreatorRulesConfirm:', error);
+      
+      // CRITICAL: Always reset loading state on error
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
       
       // Show error to user
       const errorMessage = error instanceof Error 
@@ -483,10 +489,6 @@ export default function BroadcasterScreen() {
           }
         ]
       );
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
     }
   };
 
@@ -553,6 +555,7 @@ export default function BroadcasterScreen() {
         setLiveSeconds(0);
         setShowSetup(false);
         setStreamTitle('');
+        setLoading(false); // CRITICAL: Reset loading state on success
       }
 
       startStreamTimer();
@@ -570,6 +573,11 @@ export default function BroadcasterScreen() {
       );
     } catch (error) {
       console.error('❌ Error starting stream:', error);
+      
+      // CRITICAL: Always reset loading state on error
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
       
       const errorMessage = error instanceof Error 
         ? error.message 
@@ -973,6 +981,7 @@ export default function BroadcasterScreen() {
           if (isMountedRef.current) {
             setShowCreatorRulesModal(false);
             setShowSetup(false);
+            setLoading(false); // Reset loading state on cancel
           }
         }}
         isLoading={loading}

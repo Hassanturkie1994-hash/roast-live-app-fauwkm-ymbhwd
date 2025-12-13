@@ -174,11 +174,11 @@ export default function CreatorRulesModal({
             {/* Buttons */}
             <View style={styles.buttonsContainer}>
               <TouchableOpacity
-                style={styles.cancelButton}
+                style={[styles.cancelButton, isLoading && styles.buttonDisabled]}
                 onPress={handleCancel}
                 disabled={isLoading}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, isLoading && styles.textDisabled]}>Cancel</Text>
               </TouchableOpacity>
 
               <View style={styles.confirmButtonContainer}>
@@ -317,6 +317,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  textDisabled: {
+    opacity: 0.5,
   },
   confirmButtonContainer: {
     flex: 1,
