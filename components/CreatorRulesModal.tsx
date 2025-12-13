@@ -12,6 +12,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import GradientButton from './GradientButton';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface CreatorRulesModalProps {
   visible: boolean;
@@ -29,6 +30,7 @@ export default function CreatorRulesModal({
   const [rule1Checked, setRule1Checked] = useState(false);
   const [rule2Checked, setRule2Checked] = useState(false);
   const [rule3Checked, setRule3Checked] = useState(false);
+  const t = useTranslation();
 
   const allRulesChecked = rule1Checked && rule2Checked && rule3Checked;
 
@@ -43,16 +45,16 @@ export default function CreatorRulesModal({
 
   const handleConfirm = () => {
     if (allRulesChecked && !isLoading) {
-      console.log('✅ All rules checked, confirming...');
+      console.log('✅ Alla regler markerade, bekräftar...');
       onConfirm();
     } else {
-      console.log('⚠️ Cannot confirm: allRulesChecked =', allRulesChecked, 'isLoading =', isLoading);
+      console.log('⚠️ Kan inte bekräfta: allRulesChecked =', allRulesChecked, 'isLoading =', isLoading);
     }
   };
 
   const handleCancel = () => {
     if (!isLoading) {
-      console.log('❌ Cancelling creator rules...');
+      console.log('❌ Avbryter skaparregler...');
       // Reset checkboxes
       setRule1Checked(false);
       setRule2Checked(false);
@@ -83,8 +85,8 @@ export default function CreatorRulesModal({
                 size={48}
                 color={colors.gradientEnd}
               />
-              <Text style={styles.title}>You&apos;re About to Go Live</Text>
-              <Text style={styles.subtitle}>Follow the rules</Text>
+              <Text style={styles.title}>{t.creatorRules.title}</Text>
+              <Text style={styles.subtitle}>{t.creatorRules.subtitle}</Text>
             </View>
 
             {/* Rules Checkboxes */}
@@ -105,7 +107,7 @@ export default function CreatorRulesModal({
                     />
                   )}
                 </View>
-                <Text style={styles.ruleText}>I will not reveal private info</Text>
+                <Text style={styles.ruleText}>{t.creatorRules.rule1}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -124,7 +126,7 @@ export default function CreatorRulesModal({
                     />
                   )}
                 </View>
-                <Text style={styles.ruleText}>I will not harass minors</Text>
+                <Text style={styles.ruleText}>{t.creatorRules.rule2}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -143,7 +145,7 @@ export default function CreatorRulesModal({
                     />
                   )}
                 </View>
-                <Text style={styles.ruleText}>Roast interactions remain entertainment</Text>
+                <Text style={styles.ruleText}>{t.creatorRules.rule3}</Text>
               </TouchableOpacity>
             </View>
 
@@ -152,21 +154,21 @@ export default function CreatorRulesModal({
               <View style={styles.explanationRow}>
                 <Text style={styles.explanationIcon}>🔴</Text>
                 <Text style={styles.explanationText}>
-                  If your stream receives multiple serious violations → stream may be paused
+                  {t.creatorRules.explanation1}
                 </Text>
               </View>
 
               <View style={styles.explanationRow}>
                 <Text style={styles.explanationIcon}>⚠️</Text>
                 <Text style={styles.explanationText}>
-                  Repeated violations → loss of hosting privileges
+                  {t.creatorRules.explanation2}
                 </Text>
               </View>
 
               <View style={styles.explanationRow}>
                 <Text style={styles.explanationIcon}>💬</Text>
                 <Text style={styles.explanationText}>
-                  Your moderators can enforce safety
+                  {t.creatorRules.explanation3}
                 </Text>
               </View>
             </View>
@@ -178,12 +180,12 @@ export default function CreatorRulesModal({
                 onPress={handleCancel}
                 disabled={isLoading}
               >
-                <Text style={[styles.cancelButtonText, isLoading && styles.textDisabled]}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, isLoading && styles.textDisabled]}>{t.creatorRules.cancel}</Text>
               </TouchableOpacity>
 
               <View style={styles.confirmButtonContainer}>
                 <GradientButton
-                  title={isLoading ? 'STARTING...' : 'CONFIRM & GO LIVE'}
+                  title={isLoading ? t.creatorRules.starting : t.creatorRules.confirmAndGoLive}
                   onPress={handleConfirm}
                   size="medium"
                   disabled={!allRulesChecked || isLoading}
@@ -194,7 +196,7 @@ export default function CreatorRulesModal({
             {isLoading && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={colors.gradientEnd} />
-                <Text style={styles.loadingText}>Starting your stream...</Text>
+                <Text style={styles.loadingText}>Startar din stream...</Text>
               </View>
             )}
           </ScrollView>

@@ -16,6 +16,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Tables } from '@/app/integrations/supabase/types';
+import { useTranslation } from '@/hooks/useTranslation';
 
 type ChatMessage = Tables<'chat_messages'> & {
   users: Tables<'users'>;
@@ -33,6 +34,7 @@ export default function ChatOverlay({
   streamDelay = 0 
 }: ChatOverlayProps) {
   const { user } = useAuth();
+  const t = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -47,7 +49,7 @@ export default function ChatOverlay({
 
   useEffect(() => {
     isMountedRef.current = true;
-    console.log('🎨 ChatOverlay mounted for stream:', streamId);
+    console.log('🎨 ChatOverlay monterad för stream:', streamId);
     
     // Hide debug indicator after 3 seconds
     const debugTimer = setTimeout(() => {
@@ -66,7 +68,7 @@ export default function ChatOverlay({
     if (!streamId || !isMountedRef.current) return;
 
     try {
-      console.log('📥 Fetching recent messages for stream:', streamId);
+      console.log('📥 Hämtar senaste meddelanden för stream:', streamId);
       
       const { data, error } = await supabase
         .from('chat_messages')
@@ -76,33 +78,33 @@ export default function ChatOverlay({
         .limit(50);
 
       if (error) {
-        console.error('❌ Error fetching chat messages:', error);
+        console.error('❌ Fel vid hämtning av chattmeddelanden:', error);
         return;
       }
 
-      console.log(`✅ Loaded ${data?.length || 0} recent messages`);
+      console.log(`✅ Laddade ${data?.length || 0} senaste meddelanden`);
       
       if (isMountedRef.current) {
         setMessages(data as ChatMessage[]);
       }
     } catch (error) {
-      console.error('❌ Error in fetchRecentMessages:', error);
+      console.error('❌ Fel i fetchRecentMessages:', error);
     }
   }, [streamId]);
 
   const subscribeToChat = useCallback(() => {
     if (!streamId || !isMountedRef.current) {
-      console.warn('⚠️ Cannot subscribe to chat: missing streamId or component unmounted');
+      console.warn('⚠️ Kan inte prenumerera på chatt: saknar streamId eller komponent avmonterad');
       return;
     }
 
-    console.log('🔌 Subscribing to chat channel:', `stream:${streamId}:chat`);
+    console.log('🔌 Prenumererar på chattkanal:', `stream:${streamId}:chat`);
 
     // Use broadcast channel for real-time chat (more scalable and reliable)
     const channel = supabase
       .channel(`stream:${streamId}:chat`)
       .on('broadcast', { event: 'new_message' }, (payload) => {
-        console.log('💬 New chat message received via broadcast:', payload);
+        console.log('💬 Nytt chattmeddelande mottaget via broadcast:', payload);
         
         if (!isMountedRef.current) return;
         
@@ -148,10 +150,10 @@ export default function ChatOverlay({
         }
       })
       .subscribe((status) => {
-        console.log('📡 Chat channel subscription status:', status);
+        console.log('📡 Chattkanal prenumerationsstatus:', status);
         if (status === 'SUBSCRIBED' && isMountedRef.current) {
           setIsSubscribed(true);
-          console.log('✅ Successfully subscribed to chat channel');
+          console.log('✅ Framgångsrikt prenumererad på chattkanal');
         }
       });
 
@@ -164,7 +166,7 @@ export default function ChatOverlay({
     subscribeToChat();
 
     return () => {
-      console.log('🔌 Unsubscribing from chat channel');
+      console.log('🔌 Avprenumererar från chattkanal');
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -190,7 +192,7 @@ export default function ChatOverlay({
     const trimmedMessage = messageText.trim();
     
     try {
-      console.log('📤 Sending message:', trimmedMessage);
+      console.log('📤 Skickar meddelande:', trimmedMessage);
       
       // Insert message into database
       const { data: newMessage, error } = await supabase
@@ -204,11 +206,11 @@ export default function ChatOverlay({
         .single();
 
       if (error) {
-        console.error('❌ Error sending message:', error);
+        console.error('❌ Fel vid skickande av meddelande:', error);
         return;
       }
 
-      console.log('✅ Message saved to database');
+      console.log('✅ Meddelande sparat i databas');
 
       // Broadcast the message to all viewers
       if (channelRef.current && newMessage && isMountedRef.current) {
@@ -217,14 +219,14 @@ export default function ChatOverlay({
           event: 'new_message',
           payload: newMessage,
         });
-        console.log('📡 Message broadcasted to all viewers');
+        console.log('📡 Meddelande sänt till alla tittare');
       }
 
       if (isMountedRef.current) {
         setMessageText('');
       }
     } catch (error) {
-      console.error('❌ Error in handleSendMessage:', error);
+      console.error('❌ Fel i handleSendMessage:', error);
     }
   };
 
@@ -249,7 +251,7 @@ export default function ChatOverlay({
         {debugVisible && (
           <View style={styles.debugIndicator}>
             <Text style={styles.debugText}>
-              💬 Chat {isSubscribed ? '✅' : '⏳'}
+              💬 Chatt {isSubscribed ? t.chat.connected : t.chat.connecting}
             </Text>
           </View>
         )}
@@ -278,7 +280,7 @@ export default function ChatOverlay({
       {debugVisible && (
         <View style={styles.debugIndicator}>
           <Text style={styles.debugText}>
-            💬 Chat {isSubscribed ? '✅' : '⏳'}
+            💬 Chatt {isSubscribed ? t.chat.connected : t.chat.connecting}
           </Text>
         </View>
       )}
@@ -295,7 +297,7 @@ export default function ChatOverlay({
           color={colors.text}
         />
         <Text style={styles.chatToggleText}>
-          {isExpanded ? 'Hide Chat' : 'Show Chat'}
+          {isExpanded ? t.chat.hideChat : t.chat.showChat}
         </Text>
       </TouchableOpacity>
 
@@ -314,7 +316,7 @@ export default function ChatOverlay({
           <View style={styles.chatInputContainer} pointerEvents="box-none">
             <TextInput
               style={styles.chatInput}
-              placeholder="Send a message..."
+              placeholder={t.chat.sendMessage}
               placeholderTextColor={colors.placeholder}
               value={messageText}
               onChangeText={setMessageText}

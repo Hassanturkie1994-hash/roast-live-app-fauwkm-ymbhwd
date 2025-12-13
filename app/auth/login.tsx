@@ -16,6 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import GradientButton from '@/components/GradientButton';
 import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -23,10 +24,11 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const { colors } = useTheme();
+  const t = useTranslation();
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert(t.common.error, t.auth.login.error);
       return;
     }
 
@@ -35,7 +37,7 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Login Failed', error.message || 'An error occurred during login');
+      Alert.alert(t.auth.login.loginFailed, error.message || t.errors.generic);
     } else {
       router.replace('/(tabs)/(home)');
     }
@@ -53,16 +55,16 @@ export default function LoginScreen() {
         <View style={styles.header}>
           <AppLogo size="xlarge" alignment="center" />
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Welcome back to the live experience
+            {t.auth.login.subtitle}
           </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
+            <Text style={[styles.label, { color: colors.text }]}>{t.auth.login.email}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              placeholder="Enter your email"
+              placeholder={t.auth.login.emailPlaceholder}
               placeholderTextColor={colors.placeholder}
               value={email}
               onChangeText={setEmail}
@@ -73,10 +75,10 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>{t.auth.login.password}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              placeholder="Enter your password"
+              placeholder={t.auth.login.passwordPlaceholder}
               placeholderTextColor={colors.placeholder}
               value={password}
               onChangeText={setPassword}
@@ -87,24 +89,24 @@ export default function LoginScreen() {
 
           <TouchableOpacity style={styles.forgotPassword}>
             <Text style={[styles.forgotPasswordText, { color: colors.brandPrimary }]}>
-              Forgot password?
+              {t.auth.login.forgotPassword}
             </Text>
           </TouchableOpacity>
 
           <GradientButton
-            title={loading ? 'SIGNING IN...' : 'SIGN IN'}
+            title={loading ? t.auth.login.signingIn : t.auth.login.signIn}
             onPress={handleLogin}
             disabled={loading}
           />
 
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>{t.common.or}</Text>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
           <GradientButton
-            title="Create New Account"
+            title={t.auth.login.createAccount}
             onPress={() => router.push('/auth/register')}
             disabled={loading}
             variant="secondary"

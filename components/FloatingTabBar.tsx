@@ -23,6 +23,7 @@ import AnimatedView from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useTranslation } from '@/hooks/useTranslation';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -52,6 +53,7 @@ export default function FloatingTabBar({
   const router = useRouter();
   const pathname = usePathname();
   const { colors, theme } = useTheme();
+  const t = useTranslation();
   const animatedValue = useSharedValue(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
@@ -95,7 +97,7 @@ export default function FloatingTabBar({
   useEffect(() => {
     // Animate tab bar hiding/showing when streaming status changes
     if (isStreaming) {
-      console.log('🚫 Hiding tab bar - user is streaming (iOS)');
+      console.log('🚫 Döljer flikfält - användaren streamar (iOS)');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 150,
@@ -109,7 +111,7 @@ export default function FloatingTabBar({
         }),
       ]).start();
     } else {
-      console.log('✅ Showing tab bar - user stopped streaming (iOS)');
+      console.log('✅ Visar flikfält - användaren slutade streama (iOS)');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,

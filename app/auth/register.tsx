@@ -16,6 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import GradientButton from '@/components/GradientButton';
 import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTranslation } from '@/hooks/useTranslation';
 
 export default function RegisterScreen() {
   const [displayName, setDisplayName] = useState('');
@@ -25,20 +26,21 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const { signUp } = useAuth();
   const { colors } = useTheme();
+  const t = useTranslation();
 
   const handleRegister = async () => {
     if (!displayName || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Alert.alert(t.common.error, t.auth.register.error);
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+      Alert.alert(t.common.error, t.auth.register.passwordMismatch);
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      Alert.alert(t.common.error, t.auth.register.passwordTooShort);
       return;
     }
 
@@ -47,14 +49,14 @@ export default function RegisterScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
+      Alert.alert(t.auth.register.registrationFailed, error.message || t.errors.generic);
     } else {
       Alert.alert(
-        'Success!',
-        'Your account has been created. Please check your email to verify your account before signing in.',
+        t.auth.register.successTitle,
+        t.auth.register.successMessage,
         [
           {
-            text: 'OK',
+            text: t.common.ok,
             onPress: () => router.replace('/auth/login'),
           },
         ]
@@ -74,16 +76,16 @@ export default function RegisterScreen() {
         <View style={styles.header}>
           <AppLogo size="xlarge" alignment="center" />
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Join the live streaming revolution
+            {t.auth.register.title}
           </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Display Name</Text>
+            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.displayName}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder="Choose your display name"
+              placeholder={t.auth.register.displayNamePlaceholder}
               placeholderTextColor={colors.placeholder}
               value={displayName}
               onChangeText={setDisplayName}
@@ -92,10 +94,10 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
+            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.email}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder="Enter your email"
+              placeholder={t.auth.register.emailPlaceholder}
               placeholderTextColor={colors.placeholder}
               value={email}
               onChangeText={setEmail}
@@ -106,10 +108,10 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.password}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder="Create a password (min 6 characters)"
+              placeholder={t.auth.register.passwordPlaceholder}
               placeholderTextColor={colors.placeholder}
               value={password}
               onChangeText={setPassword}
@@ -119,10 +121,10 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>Confirm Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.confirmPassword}</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder="Confirm your password"
+              placeholder={t.auth.register.confirmPasswordPlaceholder}
               placeholderTextColor={colors.placeholder}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -132,14 +134,14 @@ export default function RegisterScreen() {
           </View>
 
           <GradientButton
-            title={loading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
+            title={loading ? t.auth.register.creatingAccount : t.auth.register.createAccount}
             onPress={handleRegister}
             disabled={loading}
           />
 
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>{t.common.or}</Text>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
@@ -149,7 +151,7 @@ export default function RegisterScreen() {
             disabled={loading}
           >
             <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
-              Already have an account? Sign In
+              {t.auth.register.alreadyHaveAccount}
             </Text>
           </TouchableOpacity>
         </View>
