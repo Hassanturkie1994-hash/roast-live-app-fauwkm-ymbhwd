@@ -127,7 +127,7 @@ class CloudflareService {
 
   /**
    * Stop live stream with validation and retry logic
-   * Gracefully handles errors - will not throw if Edge Function fails
+   * Now returns success even if Cloudflare cleanup fails (database update is what matters)
    */
   async stopLive({ liveInputId, streamId }: StopLiveParams): Promise<StopLiveResponse> {
     console.log('📡 Calling stop-live edge function with:', { liveInputId, streamId });
@@ -195,6 +195,11 @@ class CloudflareService {
             success: false,
             error: 'No response from server',
           };
+        }
+
+        // Check for warnings (e.g., Cloudflare cleanup failed but database updated)
+        if (data.warning) {
+          console.warn('⚠️ Stop-live completed with warning:', data.warning);
         }
 
         if (!data.success) {

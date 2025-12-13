@@ -39,21 +39,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Read Cloudflare credentials from secrets
-    const CF_ACCOUNT_ID = Deno.env.get("CF_ACCOUNT_ID") || Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
-    const CF_API_TOKEN = Deno.env.get("CF_API_TOKEN") || Deno.env.get("CLOUDFLARE_API_TOKEN");
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    console.log('🔑 Cloudflare credentials check:', {
-      hasAccountId: !!CF_ACCOUNT_ID,
-      hasApiToken: !!CF_API_TOKEN,
-    });
-
-    if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
-      console.error('❌ Missing Cloudflare credentials');
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase credentials');
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Missing Cloudflare credentials. Please configure CF_ACCOUNT_ID (or CLOUDFLARE_ACCOUNT_ID) and CF_API_TOKEN in Supabase Edge Function secrets.",
+          error: "Missing Supabase credentials",
         }),
         { 
           status: 500, 
@@ -65,14 +60,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     console.log('📊 Updating stream record in database...');
 
-    // Update stream record in database
+    // Update stream record in database - THIS IS THE CRITICAL PART
     const { error: updateError } = await supabase
       .from('streams')
       .update({
@@ -83,101 +75,161 @@ Deno.serve(async (req) => {
 
     if (updateError) {
       console.error('⚠️ Error updating stream record:', updateError);
-      // Continue anyway - we still want to stop the Cloudflare stream
-    } else {
-      console.log('✅ Stream record updated successfully');
+      // Return error if database update fails
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Failed to update stream in database: ${updateError.message}`,
+        }),
+        { 
+          status: 500, 
+          headers: { 
+            "Content-Type": "application/json",
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
+      );
     }
 
-    console.log('☁️ Stopping Cloudflare live input...');
+    console.log('✅ Stream record updated successfully in database');
 
-    // Stop the Cloudflare live input by disabling it
-    // Note: We're using PATCH to update the live input to disabled state
-    // instead of DELETE which may cause issues
-    const stopInput = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs/${live_input_id}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${CF_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          recording: {
-            mode: "off"
-          }
-        }),
-      }
-    );
+    // Read Cloudflare credentials from secrets
+    const CF_ACCOUNT_ID = Deno.env.get("CF_ACCOUNT_ID") || Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
+    const CF_API_TOKEN = Deno.env.get("CF_API_TOKEN") || Deno.env.get("CLOUDFLARE_API_TOKEN");
 
-    const cloudflareResponse = await stopInput.json();
-
-    console.log('☁️ Cloudflare response:', {
-      status: stopInput.status,
-      success: cloudflareResponse.success,
-      errors: cloudflareResponse.errors,
+    console.log('🔑 Cloudflare credentials check:', {
+      hasAccountId: !!CF_ACCOUNT_ID,
+      hasApiToken: !!CF_API_TOKEN,
     });
 
-    // If PATCH fails, try DELETE as fallback
-    if (!cloudflareResponse.success) {
-      console.log('⚠️ PATCH failed, trying DELETE as fallback...');
-      
-      const deleteInput = await fetch(
+    // If Cloudflare credentials are missing, return success anyway
+    // The database update is what matters most
+    if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
+      console.warn('⚠️ Missing Cloudflare credentials - skipping Cloudflare cleanup');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          warning: 'Stream ended in database but Cloudflare cleanup was skipped (missing credentials)',
+        }),
+        { 
+          status: 200, 
+          headers: { 
+            "Content-Type": "application/json",
+            'Access-Control-Allow-Origin': '*',
+          } 
+        }
+      );
+    }
+
+    console.log('☁️ Attempting to stop Cloudflare live input...');
+
+    // Try to stop the Cloudflare live input
+    // We use try-catch here because Cloudflare API failures should not break the function
+    try {
+      // First try PATCH to disable recording
+      const stopInput = await fetch(
         `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs/${live_input_id}`,
         {
-          method: "DELETE",
+          method: "PATCH",
           headers: {
             Authorization: `Bearer ${CF_API_TOKEN}`,
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            recording: {
+              mode: "off"
+            }
+          }),
         }
       );
 
-      const deleteResponse = await deleteInput.json();
+      const cloudflareResponse = await stopInput.json();
 
-      console.log('☁️ Cloudflare DELETE response:', {
-        status: deleteInput.status,
-        success: deleteResponse.success,
-        errors: deleteResponse.errors,
+      console.log('☁️ Cloudflare PATCH response:', {
+        status: stopInput.status,
+        success: cloudflareResponse.success,
+        errors: cloudflareResponse.errors,
       });
 
-      if (!deleteResponse.success) {
-        console.error('❌ Both PATCH and DELETE failed');
+      // If PATCH fails, try DELETE as fallback
+      if (!cloudflareResponse.success) {
+        console.log('⚠️ PATCH failed, trying DELETE as fallback...');
         
-        // Even if Cloudflare fails, we've updated the database
-        // So we return success to prevent client-side errors
-        return new Response(
-          JSON.stringify({
-            success: true,
-            warning: 'Stream ended in database but Cloudflare cleanup may have failed',
-          }),
+        const deleteInput = await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs/${live_input_id}`,
           {
-            status: 200,
-            headers: { 
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${CF_API_TOKEN}`,
               "Content-Type": "application/json",
-              'Access-Control-Allow-Origin': '*',
             },
           }
         );
+
+        const deleteResponse = await deleteInput.json();
+
+        console.log('☁️ Cloudflare DELETE response:', {
+          status: deleteInput.status,
+          success: deleteResponse.success,
+          errors: deleteResponse.errors,
+        });
+
+        if (!deleteResponse.success) {
+          console.warn('⚠️ Both PATCH and DELETE failed - but database was updated successfully');
+          
+          // Return success anyway - database update is what matters
+          return new Response(
+            JSON.stringify({
+              success: true,
+              warning: 'Stream ended in database but Cloudflare cleanup may have failed',
+            }),
+            {
+              status: 200,
+              headers: { 
+                "Content-Type": "application/json",
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
+        }
       }
+
+      console.log('✅ Stream stopped successfully (database + Cloudflare)');
+
+      // Return success response
+      return new Response(
+        JSON.stringify({
+          success: true,
+        }),
+        {
+          status: 200,
+          headers: { 
+            "Content-Type": "application/json",
+            'Access-Control-Allow-Origin': '*',
+          },
+        }
+      );
+    } catch (cloudflareError) {
+      // Cloudflare API error - but database was updated successfully
+      console.error('❌ Cloudflare API error:', cloudflareError);
+      console.log('✅ Database was updated successfully despite Cloudflare error');
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          warning: 'Stream ended in database but Cloudflare cleanup failed',
+        }),
+        {
+          status: 200,
+          headers: { 
+            "Content-Type": "application/json",
+            'Access-Control-Allow-Origin': '*',
+          },
+        }
+      );
     }
-
-    console.log('✅ Stream stopped successfully');
-
-    // Return success response
-    return new Response(
-      JSON.stringify({
-        success: true,
-      }),
-      {
-        status: 200,
-        headers: { 
-          "Content-Type": "application/json",
-          'Access-Control-Allow-Origin': '*',
-        },
-      }
-    );
   } catch (e) {
-    console.error('❌ Error in stop-live:', e);
+    console.error('❌ Critical error in stop-live:', e);
     
     return new Response(
       JSON.stringify({ 
