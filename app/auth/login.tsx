@@ -33,13 +33,44 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    const { error } = await signIn(email, password);
-    setLoading(false);
-
-    if (error) {
-      Alert.alert(t.auth.login.loginFailed, error.message || t.errors.generic);
-    } else {
-      router.replace('/(tabs)/(home)');
+    
+    try {
+      const { error } = await signIn(email, password);
+      
+      if (error) {
+        // Display user-friendly error message - NO AUTOMATIC RETRIES
+        console.warn('⚠️ Login failed:', error.message);
+        
+        // Show specific error messages based on error code
+        let errorTitle = t.auth.login.loginFailed;
+        let errorMessage = error.message || t.errors.generic;
+        
+        if (error.code === 'invalid_credentials') {
+          errorTitle = 'Invalid Credentials';
+          errorMessage = 'The email or password you entered is incorrect. Please check your credentials and try again.';
+        } else if (error.code === 'email_not_confirmed') {
+          errorTitle = 'Email Not Confirmed';
+          errorMessage = 'Please verify your email address before logging in. Check your inbox for the confirmation link.';
+        }
+        
+        Alert.alert(
+          errorTitle,
+          errorMessage,
+          [{ text: t.common.ok }]
+        );
+      } else {
+        console.log('✅ Login successful');
+        router.replace('/(tabs)/(home)');
+      }
+    } catch (error) {
+      console.warn('⚠️ Unexpected login error:', error instanceof Error ? error.message : error);
+      Alert.alert(
+        t.auth.login.loginFailed,
+        t.errors.generic,
+        [{ text: t.common.ok }]
+      );
+    } finally {
+      setLoading(false);
     }
   };
 

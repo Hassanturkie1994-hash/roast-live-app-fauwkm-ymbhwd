@@ -45,22 +45,53 @@ export default function RegisterScreen() {
     }
 
     setLoading(true);
-    const { error } = await signUp(email, password, displayName);
-    setLoading(false);
-
-    if (error) {
-      Alert.alert(t.auth.register.registrationFailed, error.message || t.errors.generic);
-    } else {
+    
+    try {
+      const { error } = await signUp(email, password, displayName);
+      
+      if (error) {
+        // Display user-friendly error message - NO AUTOMATIC RETRIES
+        console.warn('⚠️ Registration failed:', error.message);
+        
+        // Show specific error messages based on error code
+        let errorTitle = t.auth.register.registrationFailed;
+        let errorMessage = error.message || t.errors.generic;
+        
+        if (error.code === 'user_already_exists') {
+          errorTitle = 'Account Already Exists';
+          errorMessage = 'An account with this email already exists. Please sign in instead or use a different email address.';
+        } else if (error.code === 'weak_password') {
+          errorTitle = 'Weak Password';
+          errorMessage = 'Your password must be at least 6 characters long. Please choose a stronger password.';
+        }
+        
+        Alert.alert(
+          errorTitle,
+          errorMessage,
+          [{ text: t.common.ok }]
+        );
+      } else {
+        console.log('✅ Registration successful');
+        Alert.alert(
+          t.auth.register.successTitle,
+          t.auth.register.successMessage,
+          [
+            {
+              text: t.common.ok,
+              onPress: () => router.replace('/auth/login'),
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.warn('⚠️ Unexpected registration error:', error instanceof Error ? error.message : error);
       Alert.alert(
-        t.auth.register.successTitle,
-        t.auth.register.successMessage,
-        [
-          {
-            text: t.common.ok,
-            onPress: () => router.replace('/auth/login'),
-          },
-        ]
+        t.auth.register.registrationFailed,
+        t.errors.generic,
+        [{ text: t.common.ok }]
       );
+    } finally {
+      setLoading(false);
     }
   };
 
