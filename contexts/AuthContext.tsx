@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { supabase } from '@/integrations/supabase/client';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { deviceBanService } from '@/services/deviceBanService';
+import { deviceBanService } from '@/app/services/deviceBanService';
 import { useRouter } from 'expo-router';
 
 interface Profile {

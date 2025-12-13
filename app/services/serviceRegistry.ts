@@ -36,7 +36,7 @@ import { likeService } from './likeService';
 import { liveStreamArchiveService } from './liveStreamArchiveService';
 import { mediaService } from './mediaService';
 import { messagingService } from './messagingService';
-import { moderationService } from './moderationService';
+import { moderationService } from '@/services/moderationService';
 import { networkStabilityService } from './networkStabilityService';
 import { notificationService } from './notificationService';
 import { payoutService } from './payoutService';
