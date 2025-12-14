@@ -20,7 +20,21 @@ function TabLayoutContent() {
       >
         <Stack.Screen key="home" name="(home)" />
         <Stack.Screen key="explore" name="explore" />
-        <Stack.Screen key="go-live-modal" name="go-live-modal" options={{ presentation: 'transparentModal' }} />
+        <Stack.Screen 
+          key="pre-live-setup" 
+          name="pre-live-setup" 
+          options={{ 
+            presentation: 'fullScreenModal',
+            animation: 'slide_from_bottom',
+          }} 
+        />
+        <Stack.Screen 
+          key="go-live-modal" 
+          name="go-live-modal" 
+          options={{ 
+            presentation: 'transparentModal',
+          }} 
+        />
         <Stack.Screen key="broadcast" name="broadcast" />
         <Stack.Screen key="inbox" name="inbox" />
         <Stack.Screen key="profile" name="profile" />

@@ -105,8 +105,8 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
   };
 
   const handleGoLive = () => {
-    console.log('🎬 Go Live button pressed - opening setup modal');
-    router.push('/(tabs)/go-live-modal');
+    console.log('🎬 Go Live button pressed - opening pre-live setup');
+    router.push('/(tabs)/pre-live-setup');
   };
 
   return (

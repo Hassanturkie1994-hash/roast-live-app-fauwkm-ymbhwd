@@ -52,6 +52,9 @@ export default function BroadcastScreen() {
   const params = useLocalSearchParams<{
     streamTitle?: string;
     contentLabel?: ContentLabel;
+    aboutLive?: string;
+    practiceMode?: string;
+    whoCanWatch?: string;
   }>();
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -129,13 +132,9 @@ export default function BroadcastScreen() {
         'Required stream information is missing. Please try again.',
         [
           {
-            text: 'Cancel',
+            text: 'Go Back',
             style: 'cancel',
             onPress: () => router.back(),
-          },
-          {
-            text: 'Retry',
-            onPress: () => router.replace('/(tabs)/go-live-modal'),
           },
         ]
       );
@@ -608,7 +607,7 @@ export default function BroadcastScreen() {
         <View style={styles.loadingOverlay}>
           <AppLogo size="large" alignment="center" />
           <ActivityIndicator size="large" color={colors.gradientEnd} style={styles.loadingSpinner} />
-          <Text style={styles.loadingTitle}>You are going live...</Text>
+          <Text style={styles.loadingTitle}>Connecting to LIVE...</Text>
           <Text style={styles.loadingSubtitle}>Setting up your stream</Text>
           <View style={styles.loadingSteps}>
             <Text style={styles.loadingStep}>✓ Camera ready</Text>
@@ -645,7 +644,7 @@ export default function BroadcastScreen() {
               style={styles.errorCancelButton}
               onPress={handleCancel}
             >
-              <Text style={styles.errorCancelText}>Cancel</Text>
+              <Text style={styles.errorCancelText}>Exit</Text>
             </TouchableOpacity>
             <View style={styles.errorRetryButton}>
               <GradientButton
