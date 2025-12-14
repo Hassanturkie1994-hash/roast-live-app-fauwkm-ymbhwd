@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, BackHandler, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, FlashMode } from 'expo-camera';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { router, useLocalSearchParams, Stack } from 'expo-router';
+import { router, useLocalSearchParams, Stack, useNavigation } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { colors, commonStyles } from '@/styles/commonStyles';
 import GradientButton from '@/components/GradientButton';
@@ -51,6 +52,7 @@ interface GiftAnimation {
 
 export default function BroadcastScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const { setIsStreaming, startStreamTimer, stopStreamTimer } = useStreaming();
   const liveStreamState = useLiveStreamState();
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
@@ -129,6 +131,32 @@ export default function BroadcastScreen() {
       endLive();
     },
   });
+
+  // CRITICAL: Hide bottom tab bar when this screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🎬 [BROADCAST] Screen focused - hiding bottom tab bar');
+      
+      // Hide the tab bar
+      const parent = navigation.getParent();
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+
+      // Cleanup: Restore tab bar when screen loses focus
+      return () => {
+        console.log('🎬 [BROADCAST] Screen blurred - restoring bottom tab bar');
+        const parent = navigation.getParent();
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: undefined,
+          });
+        }
+      };
+    }, [navigation])
+  );
 
   /* ───────────────── PRACTICE MODE SETUP ───────────────── */
   const startPracticeMode = useCallback(async () => {
@@ -366,14 +394,14 @@ export default function BroadcastScreen() {
         console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake on unmount:', error);
       }
     };
-  }, [user, params, isPracticeMode, createStreamOnMount, startPracticeMode]);
+  }, [user, params, isPracticeMode, createStreamOnMount, startPracticeMode, liveStreamState, activeFilter, activeEffect]);
 
   /* ───────────────── PERMISSIONS ───────────────── */
   useEffect(() => {
     if (!permission?.granted) {
       requestPermission();
     }
-  }, [permission]);
+  }, [permission, requestPermission]);
 
   /* ───────────────── BACK BUTTON HANDLER ───────────────── */
   useEffect(() => {
@@ -742,7 +770,7 @@ export default function BroadcastScreen() {
   if (!permission?.granted) {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false, tabBarStyle: { display: 'none' } }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={commonStyles.container}>
           <View style={styles.permissionContainer}>
             <IconSymbol
@@ -763,7 +791,7 @@ export default function BroadcastScreen() {
   if (isCreatingStream && !isPracticeMode) {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false, tabBarStyle: { display: 'none' } }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={commonStyles.container}>
           {/* Camera preview in background */}
           <CameraView 
@@ -795,7 +823,7 @@ export default function BroadcastScreen() {
   if (streamCreationError) {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false, tabBarStyle: { display: 'none' } }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={commonStyles.container}>
           {/* Camera preview in background */}
           <CameraView 
@@ -839,8 +867,7 @@ export default function BroadcastScreen() {
 
   return (
     <>
-      {/* HIDE TAB BAR */}
-      <Stack.Screen options={{ headerShown: false, tabBarStyle: { display: 'none' } }} />
+      <Stack.Screen options={{ headerShown: false }} />
       
       <View style={commonStyles.container}>
         {/* CAMERA LAYER */}

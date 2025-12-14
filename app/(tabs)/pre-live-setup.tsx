@@ -10,7 +10,8 @@ import {
   Alert,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useNavigation } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
@@ -29,6 +30,7 @@ import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOver
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const liveStreamState = useLiveStreamState();
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   const [permission, requestPermission] = useCameraPermissions();
@@ -56,6 +58,32 @@ export default function PreLiveSetupScreen() {
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+
+  // CRITICAL: Hide bottom tab bar when this screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🎬 [PRE-LIVE] Screen focused - hiding bottom tab bar');
+      
+      // Hide the tab bar
+      const parent = navigation.getParent();
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+
+      // Cleanup: Restore tab bar when screen loses focus
+      return () => {
+        console.log('🎬 [PRE-LIVE] Screen blurred - restoring bottom tab bar');
+        const parent = navigation.getParent();
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: undefined,
+          });
+        }
+      };
+    }, [navigation])
+  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -86,7 +114,7 @@ export default function PreLiveSetupScreen() {
       liveStreamState.selectContentLabel();
       console.log('🏷️ [PRE-LIVE] Content label selected, state updated');
     }
-  }, [contentLabel]);
+  }, [contentLabel, liveStreamState]);
 
   // Update state machine when practice mode changes
   useEffect(() => {
@@ -97,7 +125,7 @@ export default function PreLiveSetupScreen() {
       liveStreamState.disablePracticeMode();
       console.log('🎯 [PRE-LIVE] Practice mode disabled');
     }
-  }, [practiceMode]);
+  }, [practiceMode, liveStreamState]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
@@ -194,7 +222,7 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, hasActiveFilter, hasActiveEffect]);
+  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, hasActiveFilter, hasActiveEffect, activeFilter, activeEffect]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -205,7 +233,7 @@ export default function PreLiveSetupScreen() {
   if (!permission?.granted) {
     return (
       <>
-        <Stack.Screen options={{ headerShown: false, tabBarStyle: { display: 'none' } }} />
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.container}>
           <View style={styles.permissionContainer}>
             <IconSymbol
@@ -224,8 +252,7 @@ export default function PreLiveSetupScreen() {
 
   return (
     <>
-      {/* HIDE TAB BAR */}
-      <Stack.Screen options={{ headerShown: false, tabBarStyle: { display: 'none' } }} />
+      <Stack.Screen options={{ headerShown: false }} />
       
       <View style={styles.container}>
         {/* CAMERA PREVIEW BACKGROUND */}
