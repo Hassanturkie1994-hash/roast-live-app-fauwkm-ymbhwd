@@ -61,6 +61,7 @@ export default function PreLiveSetupScreen() {
 
   // CRITICAL: Hide bottom tab bar when this screen is focused
   // This uses useFocusEffect to ensure cleanup runs on blur
+  // ALSO: Reset streaming state when returning to this screen
   useFocusEffect(
     useCallback(() => {
       console.log('🎬 [PRE-LIVE] Screen focused - hiding bottom tab bar');
@@ -73,6 +74,13 @@ export default function PreLiveSetupScreen() {
         });
       }
 
+      // CRITICAL FIX: Reset state machine to PRE_LIVE_SETUP when screen gains focus
+      // This ensures buttons are enabled after returning from a stream
+      if (liveStreamState.currentState === 'IDLE' || liveStreamState.currentState === 'STREAM_ENDED') {
+        console.log('🔄 [PRE-LIVE] Resetting state machine to PRE_LIVE_SETUP on focus');
+        liveStreamState.enterPreLiveSetup();
+      }
+
       // Cleanup: Restore tab bar when screen loses focus
       return () => {
         console.log('🎬 [PRE-LIVE] Screen blurred - restoring bottom tab bar');
@@ -83,7 +91,7 @@ export default function PreLiveSetupScreen() {
           });
         }
       };
-    }, [navigation])
+    }, [navigation, liveStreamState])
   );
 
   useEffect(() => {
@@ -140,7 +148,10 @@ export default function PreLiveSetupScreen() {
       });
     }
     
+    // Reset state machine to IDLE
     liveStreamState.resetToIdle();
+    
+    // Navigate back
     router.back();
   };
 

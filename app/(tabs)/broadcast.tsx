@@ -564,6 +564,20 @@ export default function BroadcastScreen() {
     console.log('🛑 [BROADCAST] Ending stream (Practice Mode:', isPracticeMode, ')');
 
     try {
+      // CRITICAL FIX: Reset ALL streaming state BEFORE any other operations
+      console.log('🔄 [BROADCAST] Resetting streaming state...');
+      if (isMountedRef.current) {
+        setIsLive(false);
+        setIsStreaming(false);
+        setViewerCount(0);
+        setPeakViewers(0);
+        setTotalViewers(0);
+        setTotalGifts(0);
+        setTotalLikes(0);
+        setLiveSeconds(0);
+        setGiftAnimations([]);
+      }
+
       // Update state machine
       liveStreamState.endStream();
       
@@ -581,13 +595,17 @@ export default function BroadcastScreen() {
       // PRACTICE MODE: Just clean up and exit
       if (isPracticeMode) {
         console.log('🎯 [PRACTICE] Ending practice mode - no Cloudflare cleanup needed');
-        
-        if (isMountedRef.current) {
-          setIsLive(false);
-          setIsStreaming(false);
+
+        // CRITICAL: Explicitly restore tab bar BEFORE navigation
+        const parent = navigation.getParent();
+        if (parent) {
+          console.log('🔄 [PRACTICE] Explicitly restoring tab bar before navigation');
+          parent.setOptions({
+            tabBarStyle: undefined,
+          });
         }
 
-        // Reset state machine
+        // Reset state machine to IDLE
         liveStreamState.resetToIdle();
 
         Alert.alert(
@@ -661,21 +679,21 @@ export default function BroadcastScreen() {
       cleanupRealtime();
 
       if (isMountedRef.current) {
-        setIsLive(false);
-        setIsStreaming(false);
-        setViewerCount(0);
-        setPeakViewers(0);
-        setTotalViewers(0);
-        setTotalGifts(0);
-        setTotalLikes(0);
-        setLiveSeconds(0);
         setCurrentStream(null);
-        setGiftAnimations([]);
         setArchiveId(null);
         streamStartTime.current = null;
       }
 
-      // Reset state machine
+      // CRITICAL: Explicitly restore tab bar BEFORE navigation
+      const parent = navigation.getParent();
+      if (parent) {
+        console.log('🔄 [BROADCAST] Explicitly restoring tab bar before navigation');
+        parent.setOptions({
+          tabBarStyle: undefined,
+        });
+      }
+
+      // Reset state machine to IDLE
       liveStreamState.resetToIdle();
 
       Alert.alert(
@@ -755,8 +773,28 @@ export default function BroadcastScreen() {
 
   const handleCancel = () => {
     console.log('❌ [BROADCAST] Cancelling stream creation...');
-    setIsStreaming(false);
+    
+    // Reset streaming state
+    if (isMountedRef.current) {
+      setIsStreaming(false);
+      setIsLive(false);
+      setIsCreatingStream(false);
+      setStreamCreationError(null);
+    }
+    
+    // CRITICAL: Explicitly restore tab bar BEFORE navigation
+    const parent = navigation.getParent();
+    if (parent) {
+      console.log('🔄 [BROADCAST] Explicitly restoring tab bar before navigation');
+      parent.setOptions({
+        tabBarStyle: undefined,
+      });
+    }
+    
+    // Reset state machine to IDLE
     liveStreamState.resetToIdle();
+    
+    // Navigate back
     router.back();
   };
 
