@@ -333,20 +333,26 @@ export default function BroadcasterScreen() {
 
   /* ───────────────── START STREAM FLOW ───────────────── */
   const handleGoLivePress = async () => {
+    console.log('🎬 [STEP 1] GO LIVE button pressed');
+    
     if (!user) {
+      console.error('❌ [STEP 1] No user found');
       Alert.alert('Error', 'You must be logged in to start streaming');
       return;
     }
 
     if (isLive) {
+      console.log('🛑 [STEP 1] Already live, showing exit confirmation');
       setShowExitConfirmation(true);
       return;
     }
 
     try {
+      console.log('🔒 [STEP 2] Checking forced review lock...');
       // Check if user is under forced review lock
       const isLocked = await enhancedContentSafetyService.isUserLockedForReview(user.id);
       if (isLocked) {
+        console.warn('⚠️ [STEP 2] User is locked for review');
         const lock = await enhancedContentSafetyService.getForcedReviewLock(user.id);
         if (lock && isMountedRef.current) {
           setForcedReviewReportCount(lock.report_count);
@@ -354,42 +360,53 @@ export default function BroadcasterScreen() {
         }
         return;
       }
+      console.log('✅ [STEP 2] No forced review lock');
 
+      console.log('🛡️ [STEP 3] Checking safety guidelines...');
       // Check if user has accepted safety guidelines
       const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
       if (!canStream.canStream) {
+        console.warn('⚠️ [STEP 3] User cannot stream:', canStream.reason);
         Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
         if (isMountedRef.current) {
           setShowSafetyAcknowledgement(true);
         }
         return;
       }
+      console.log('✅ [STEP 3] Safety guidelines accepted');
 
       // Show setup modal
+      console.log('📝 [STEP 4] Opening stream setup modal');
       if (isMountedRef.current) {
         setShowSetup(true);
       }
     } catch (error) {
-      console.error('Error in handleGoLivePress:', error);
+      console.error('❌ [ERROR] Error in handleGoLivePress:', error);
       Alert.alert('Error', 'Failed to start live setup. Please try again.');
     }
   };
 
   const startStreamSetup = async () => {
+    console.log('📝 [STEP 5] Stream setup - validating title...');
+    
     if (!streamTitle.trim()) {
+      console.error('❌ [STEP 5] No stream title provided');
       Alert.alert('Missing title', 'Please enter a stream title');
       return;
     }
 
     if (!user) {
+      console.error('❌ [STEP 5] No user found');
       Alert.alert('Error', 'You must be logged in to start streaming');
       return;
     }
 
     try {
+      console.log('🔍 [STEP 6] Validating stream start permissions...');
       // Validate stream start (check for suspensions and strikes)
       const validation = await contentSafetyService.validateStreamStart(user.id);
       if (!validation.canStream) {
+        console.warn('⚠️ [STEP 6] User cannot stream:', validation.reason);
         Alert.alert(
           'Cannot Start Stream',
           validation.reason || 'You are not allowed to stream at this time.',
@@ -400,38 +417,47 @@ export default function BroadcasterScreen() {
         }
         return;
       }
+      console.log('✅ [STEP 6] Stream start validated');
 
       // Close setup modal and show content label selection modal
+      console.log('🏷️ [STEP 7] Opening content label modal');
       if (isMountedRef.current) {
         setShowSetup(false);
         setShowContentLabelModal(true);
       }
     } catch (error) {
-      console.error('Error in startStreamSetup:', error);
+      console.error('❌ [ERROR] Error in startStreamSetup:', error);
       Alert.alert('Error', 'Failed to validate stream start. Please try again.');
     }
   };
 
   const handleContentLabelSelected = (label: ContentLabel) => {
-    console.log('📝 Content label selected:', label);
+    console.log('🏷️ [STEP 8] Content label selected:', label);
     if (isMountedRef.current) {
       setContentLabel(label);
       setShowContentLabelModal(false);
       // Show creator rules modal
+      console.log('📜 [STEP 9] Opening creator rules modal');
       setShowCreatorRulesModal(true);
     }
   };
 
   const handleCreatorRulesConfirm = async () => {
-    console.log('✅ Creator rules confirmed, starting stream with label:', contentLabel);
+    console.log('✅ [STEP 10] Creator rules confirmed - STARTING STREAM CREATION');
+    console.log('📊 [STEP 10] Current state:', {
+      user: !!user,
+      contentLabel,
+      streamTitle,
+      isMounted: isMountedRef.current,
+    });
     
     if (!user || !isMountedRef.current) {
-      console.error('❌ Cannot start stream: user or component unmounted');
+      console.error('❌ [STEP 10] Cannot start stream: user or component unmounted');
       return;
     }
 
     if (!contentLabel) {
-      console.error('❌ Cannot start stream: no content label selected');
+      console.error('❌ [STEP 10] Cannot start stream: no content label selected');
       Alert.alert('Error', 'Please select a content label');
       if (isMountedRef.current) {
         setShowCreatorRulesModal(false);
@@ -441,7 +467,7 @@ export default function BroadcasterScreen() {
     }
 
     if (!streamTitle.trim()) {
-      console.error('❌ Cannot start stream: no stream title');
+      console.error('❌ [STEP 10] Cannot start stream: no stream title');
       Alert.alert('Error', 'Please enter a stream title');
       if (isMountedRef.current) {
         setShowCreatorRulesModal(false);
@@ -450,43 +476,60 @@ export default function BroadcasterScreen() {
       return;
     }
 
-    // Close the creator rules modal immediately
-    if (isMountedRef.current) {
-      setShowCreatorRulesModal(false);
-    }
-
+    // CRITICAL: Keep modal open and show loading state
+    console.log('⏳ [STEP 11] Setting loading state to TRUE');
     setLoading(true);
 
     try {
-      // CRITICAL FIX: Wrap keep awake in try/catch to prevent blocking stream creation
-      console.log('💤 Attempting to activate keep awake...');
+      // STEP 11: Activate keep awake (non-blocking)
+      console.log('💤 [STEP 11] Attempting to activate keep awake...');
       try {
         await activateKeepAwakeAsync();
-        console.log('✅ Keep awake activated successfully');
+        console.log('✅ [STEP 11] Keep awake activated successfully');
       } catch (keepAwakeError) {
         // Log the error but DO NOT block stream creation
-        console.warn('⚠️ KeepAwake failed, continuing stream start:', keepAwakeError);
+        console.warn('⚠️ [STEP 11] KeepAwake failed (continuing anyway):', keepAwakeError);
       }
 
-      // Log creator rules acceptance
-      console.log('📝 Logging creator rules acceptance...');
-      const result = await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
-      
-      if (!result.success) {
-        console.warn('⚠️ Failed to log creator rules acceptance:', result.error);
-        // Continue anyway - don't block streaming
+      // STEP 12: Log creator rules acceptance (non-blocking)
+      console.log('📝 [STEP 12] Logging creator rules acceptance...');
+      try {
+        const result = await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
+        if (!result.success) {
+          console.warn('⚠️ [STEP 12] Failed to log creator rules (continuing anyway):', result.error);
+        } else {
+          console.log('✅ [STEP 12] Creator rules acceptance logged');
+        }
+      } catch (rulesError) {
+        console.warn('⚠️ [STEP 12] Error logging creator rules (continuing anyway):', rulesError);
       }
       
-      // Now start the stream
-      console.log('🎬 Starting live stream...');
+      // STEP 13: Start the stream (CRITICAL - this is where it hangs)
+      console.log('🎬 [STEP 13] Calling startLiveWithLabel...');
+      console.log('📊 [STEP 13] Parameters:', {
+        contentLabel,
+        streamTitle,
+        userId: user.id,
+      });
+      
       await startLiveWithLabel(contentLabel);
+      
+      console.log('✅ [STEP 13] startLiveWithLabel completed successfully');
+      
+      // STEP 14: Close modal on success
+      console.log('🎉 [STEP 14] Stream started successfully, closing modal');
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+      }
     } catch (error) {
-      console.error('❌ Error in handleCreatorRulesConfirm:', error);
+      console.error('❌ [ERROR] Error in handleCreatorRulesConfirm:', error);
       
       // Show error to user
       const errorMessage = error instanceof Error 
         ? error.message 
         : 'Failed to start stream. Please try again.';
+      
+      console.error('📝 [ERROR] Showing error alert:', errorMessage);
       
       Alert.alert(
         'Cannot Start Stream',
@@ -495,8 +538,10 @@ export default function BroadcasterScreen() {
           { 
             text: 'Retry', 
             onPress: () => {
+              console.log('🔄 [RETRY] User chose to retry');
               if (isMountedRef.current) {
-                setShowCreatorRulesModal(true);
+                // Keep modal open for retry
+                setLoading(false);
               }
             }
           },
@@ -504,16 +549,21 @@ export default function BroadcasterScreen() {
             text: 'Cancel', 
             style: 'cancel',
             onPress: () => {
+              console.log('❌ [CANCEL] User cancelled after error');
               if (isMountedRef.current) {
+                setShowCreatorRulesModal(false);
                 setShowSetup(false);
                 setContentLabel(null);
                 setStreamTitle('');
+                setLoading(false);
               }
             }
           }
         ]
       );
     } finally {
+      // ALWAYS reset loading state
+      console.log('🏁 [FINALLY] Resetting loading state');
       if (isMountedRef.current) {
         setLoading(false);
       }
@@ -521,63 +571,74 @@ export default function BroadcasterScreen() {
   };
 
   const startLiveWithLabel = async (label: ContentLabel) => {
-    console.log('🎬 Starting live stream with label:', label);
-    console.log('📝 Stream title:', streamTitle);
-    console.log('👤 User ID:', user?.id);
+    console.log('🎬 [STREAM-1] Starting live stream with label:', label);
+    console.log('📝 [STREAM-1] Stream title:', streamTitle);
+    console.log('👤 [STREAM-1] User ID:', user?.id);
     
     if (!user || !isMountedRef.current) {
-      console.error('❌ Cannot start stream: user or component unmounted');
+      console.error('❌ [STREAM-1] Cannot start stream: user or component unmounted');
       throw new Error('User not authenticated or component unmounted');
     }
 
     if (!label) {
-      console.error('❌ Cannot start stream: no label provided');
+      console.error('❌ [STREAM-1] Cannot start stream: no label provided');
       throw new Error('Content label is required');
     }
 
     if (!streamTitle.trim()) {
-      console.error('❌ Cannot start stream: no stream title');
+      console.error('❌ [STREAM-1] Cannot start stream: no stream title');
       throw new Error('Stream title is required');
     }
 
     try {
-      console.log('📡 Calling cloudflareService.startLive...');
-      console.log('📡 Parameters:', { title: streamTitle, userId: user.id });
-      
-      const result = await cloudflareService.startLive({ 
+      console.log('📡 [STREAM-2] Calling cloudflareService.startLive...');
+      console.log('📡 [STREAM-2] Parameters:', { 
         title: streamTitle, 
         userId: user.id 
       });
+      
+      // Add timeout protection
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Stream creation timed out after 30 seconds')), 30000);
+      });
+      
+      const streamPromise = cloudflareService.startLive({ 
+        title: streamTitle, 
+        userId: user.id 
+      });
+      
+      const result = await Promise.race([streamPromise, timeoutPromise]) as any;
 
-      console.log('✅ cloudflareService.startLive response:', JSON.stringify(result, null, 2));
+      console.log('✅ [STREAM-2] cloudflareService.startLive response received');
+      console.log('📊 [STREAM-2] Response:', JSON.stringify(result, null, 2));
 
       if (!result.success) {
         const errorMsg = result.error || 'Failed to start stream';
-        console.error('❌ Stream creation failed:', errorMsg);
+        console.error('❌ [STREAM-2] Stream creation failed:', errorMsg);
         throw new Error(errorMsg);
       }
 
       if (!result.stream) {
-        console.error('❌ No stream data returned from server');
+        console.error('❌ [STREAM-2] No stream data returned from server');
         throw new Error('No stream data returned from server');
       }
 
       if (!result.stream.id) {
-        console.error('❌ No stream ID in response');
+        console.error('❌ [STREAM-2] No stream ID in response');
         throw new Error('Invalid stream data: missing stream ID');
       }
 
-      console.log('📝 Setting content label on stream...');
+      console.log('📝 [STREAM-3] Setting content label on stream...');
       // Set content label on stream
       try {
         await contentSafetyService.setStreamContentLabel(result.stream.id, label);
-        console.log('✅ Content label set successfully');
+        console.log('✅ [STREAM-3] Content label set successfully');
       } catch (labelError) {
-        console.error('⚠️ Failed to set content label:', labelError);
+        console.error('⚠️ [STREAM-3] Failed to set content label (continuing anyway):', labelError);
         // Continue anyway - don't block streaming
       }
 
-      console.log('📦 Creating archive record...');
+      console.log('📦 [STREAM-4] Creating archive record...');
       // Create archive record
       const startTime = new Date().toISOString();
       streamStartTime.current = startTime;
@@ -591,17 +652,17 @@ export default function BroadcasterScreen() {
 
         if (archiveResult.success && archiveResult.data && isMountedRef.current) {
           setArchiveId(archiveResult.data.id);
-          console.log('📦 Stream archive created:', archiveResult.data.id);
+          console.log('✅ [STREAM-4] Stream archive created:', archiveResult.data.id);
         } else {
-          console.warn('⚠️ Failed to create archive:', archiveResult.error);
+          console.warn('⚠️ [STREAM-4] Failed to create archive (continuing anyway):', archiveResult.error);
         }
       } catch (archiveError) {
-        console.error('⚠️ Error creating archive:', archiveError);
+        console.error('⚠️ [STREAM-4] Error creating archive (continuing anyway):', archiveError);
         // Continue anyway - don't block streaming
       }
 
+      console.log('🎉 [STREAM-5] Setting stream state in UI...');
       if (isMountedRef.current) {
-        console.log('✅ Setting stream state...');
         setCurrentStream(result.stream);
         setIsLive(true);
         setIsStreaming(true);
@@ -611,23 +672,25 @@ export default function BroadcasterScreen() {
         setTotalGifts(0);
         setLiveSeconds(0);
         setStreamTitle('');
+        console.log('✅ [STREAM-5] Stream state updated successfully');
       }
 
       startStreamTimer();
 
-      console.log('📺 Stream details:', {
+      console.log('📺 [STREAM-6] Stream details:', {
         id: result.stream.id,
         live_input_id: result.stream.live_input_id,
         playback_url: result.stream.playback_url,
       });
 
+      console.log('🎊 [STREAM-7] Stream creation complete! Showing success alert...');
       Alert.alert(
         '🔴 You are LIVE!',
         `Your stream is now broadcasting!\n\nStream ID: ${result.stream.id}\n\nViewers can watch you live!`,
         [{ text: 'OK' }]
       );
     } catch (error) {
-      console.error('❌ Error starting stream:', error);
+      console.error('❌ [STREAM-ERROR] Error starting stream:', error);
       
       let errorMessage = 'Failed to start stream. Please try again.';
       
@@ -635,7 +698,9 @@ export default function BroadcasterScreen() {
         errorMessage = error.message;
         
         // Provide more specific error messages
-        if (errorMessage.includes('Missing Cloudflare credentials')) {
+        if (errorMessage.includes('timed out')) {
+          errorMessage = 'Stream creation timed out. Please check your internet connection and try again.';
+        } else if (errorMessage.includes('Missing Cloudflare credentials')) {
           errorMessage = 'Server configuration error. Please contact support.';
         } else if (errorMessage.includes('Cloudflare API error')) {
           errorMessage = 'Failed to create stream on Cloudflare. Please try again.';
@@ -644,7 +709,7 @@ export default function BroadcasterScreen() {
         }
       }
       
-      console.error('📝 Final error message:', errorMessage);
+      console.error('📝 [STREAM-ERROR] Final error message:', errorMessage);
       
       // Re-throw the error so it can be caught by handleCreatorRulesConfirm
       throw new Error(errorMessage);
@@ -1044,7 +1109,7 @@ export default function BroadcasterScreen() {
         }}
       />
 
-      {/* CREATOR RULES MODAL */}
+      {/* CREATOR RULES MODAL - STAYS OPEN DURING LOADING */}
       <CreatorRulesModal
         visible={showCreatorRulesModal}
         onConfirm={handleCreatorRulesConfirm}
