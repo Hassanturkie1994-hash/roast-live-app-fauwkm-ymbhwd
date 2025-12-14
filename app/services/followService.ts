@@ -38,7 +38,7 @@ export const followService = {
         'social'
       );
 
-      // PROMPT 3: Send push notification for new follower (with batching)
+      // Send push notification for new follower (with batching)
       const { data: followerProfile } = await supabase
         .from('profiles')
         .select('display_name, username')
@@ -110,40 +110,103 @@ export const followService = {
     }
   },
 
+  /**
+   * Get followers - FIXED: Use correct foreign key relationship
+   * The followers table has follower_id and following_id both pointing to users/profiles
+   * To get followers of a user, we need following_id = userId and join on follower_id
+   */
   async getFollowers(userId: string) {
     try {
-      const { data, error } = await supabase
+      console.log('📥 [FollowService] Fetching followers for user:', userId);
+
+      // First fetch the follower relationships
+      const { data: followerRelations, error: relationError } = await supabase
         .from('followers')
-        .select('follower_id, profiles!followers_follower_id_fkey(*)')
+        .select('follower_id, created_at')
         .eq('following_id', userId);
 
-      if (error) {
-        console.error('Error fetching followers:', error);
-        return { success: false, data: [], error };
+      if (relationError) {
+        console.error('❌ [FollowService] Error fetching follower relations:', relationError);
+        return { success: false, data: [], error: relationError };
       }
 
-      return { success: true, data: data || [] };
+      if (!followerRelations || followerRelations.length === 0) {
+        console.log('✅ [FollowService] No followers found');
+        return { success: true, data: [] };
+      }
+
+      // Fetch profile data separately
+      const followerIds = followerRelations.map(f => f.follower_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', followerIds);
+
+      if (profilesError) {
+        console.error('❌ [FollowService] Error fetching profiles:', profilesError);
+        return { success: false, data: [], error: profilesError };
+      }
+
+      // Merge the data
+      const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+      const result = followerRelations.map(rel => ({
+        follower_id: rel.follower_id,
+        created_at: rel.created_at,
+        ...profileMap.get(rel.follower_id),
+      }));
+
+      console.log('✅ [FollowService] Found', result.length, 'followers');
+      return { success: true, data: result };
     } catch (error) {
-      console.error('Error in getFollowers:', error);
+      console.error('❌ [FollowService] Error in getFollowers:', error);
       return { success: false, data: [], error };
     }
   },
 
   async getFollowing(userId: string) {
     try {
-      const { data, error } = await supabase
+      console.log('📥 [FollowService] Fetching following for user:', userId);
+
+      // First fetch the following relationships
+      const { data: followingRelations, error: relationError } = await supabase
         .from('followers')
-        .select('following_id, profiles!followers_following_id_fkey(*)')
+        .select('following_id, created_at')
         .eq('follower_id', userId);
 
-      if (error) {
-        console.error('Error fetching following:', error);
-        return { success: false, data: [], error };
+      if (relationError) {
+        console.error('❌ [FollowService] Error fetching following relations:', relationError);
+        return { success: false, data: [], error: relationError };
       }
 
-      return { success: true, data: data || [] };
+      if (!followingRelations || followingRelations.length === 0) {
+        console.log('✅ [FollowService] Not following anyone');
+        return { success: true, data: [] };
+      }
+
+      // Fetch profile data separately
+      const followingIds = followingRelations.map(f => f.following_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', followingIds);
+
+      if (profilesError) {
+        console.error('❌ [FollowService] Error fetching profiles:', profilesError);
+        return { success: false, data: [], error: profilesError };
+      }
+
+      // Merge the data
+      const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+      const result = followingRelations.map(rel => ({
+        following_id: rel.following_id,
+        created_at: rel.created_at,
+        ...profileMap.get(rel.following_id),
+      }));
+
+      console.log('✅ [FollowService] Following', result.length, 'users');
+      return { success: true, data: result };
     } catch (error) {
-      console.error('Error in getFollowing:', error);
+      console.error('❌ [FollowService] Error in getFollowing:', error);
       return { success: false, data: [], error };
     }
   },

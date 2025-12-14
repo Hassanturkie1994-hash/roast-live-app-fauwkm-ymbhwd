@@ -60,17 +60,22 @@ export default function BroadcastScreen() {
     aboutLive?: string;
     practiceMode?: string;
     whoCanWatch?: string;
+    selectedModerators?: string;
     selectedEffect?: string;
     selectedFilter?: string;
     filterIntensity?: string;
+    selectedVIPClub?: string;
   }>();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
 
+  // Parse practice mode
+  const isPracticeMode = params.practiceMode === 'true';
+
   // Stream creation states
-  const [isCreatingStream, setIsCreatingStream] = useState(true);
+  const [isCreatingStream, setIsCreatingStream] = useState(!isPracticeMode);
   const [streamCreationError, setStreamCreationError] = useState<string | null>(null);
   const [currentStream, setCurrentStream] = useState<StreamData | null>(null);
 
@@ -110,7 +115,7 @@ export default function BroadcastScreen() {
   const likesChannelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
 
-  // Connection monitoring
+  // Connection monitoring (only for real streams)
   const {
     connectionStatus,
     reconnectAttempt,
@@ -118,7 +123,7 @@ export default function BroadcastScreen() {
     startReconnect,
     stopReconnect,
   } = useStreamConnection({
-    isStreaming: isLive,
+    isStreaming: isLive && !isPracticeMode,
     onReconnectSuccess: () => {
       console.log('✅ Stream reconnected successfully');
     },
@@ -133,6 +138,7 @@ export default function BroadcastScreen() {
     isMountedRef.current = true;
     console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
     console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
+    console.log('🎯 [BROADCAST] Practice Mode:', isPracticeMode);
 
     if (!user) {
       router.replace('/auth/login');
@@ -166,8 +172,14 @@ export default function BroadcastScreen() {
       return;
     }
 
-    // Start stream creation immediately on mount
-    createStreamOnMount();
+    // PRACTICE MODE: Skip stream creation entirely
+    if (isPracticeMode) {
+      console.log('🎯 [BROADCAST] Practice Mode enabled - skipping Cloudflare stream creation');
+      startPracticeMode();
+    } else {
+      // REAL LIVE: Create stream on mount
+      createStreamOnMount();
+    }
 
     return () => {
       isMountedRef.current = false;
@@ -181,6 +193,47 @@ export default function BroadcastScreen() {
       }
     };
   }, [user]);
+
+  /* ───────────────── PRACTICE MODE SETUP ───────────────── */
+  const startPracticeMode = async () => {
+    try {
+      console.log('🎯 [PRACTICE] Starting Practice Mode');
+
+      // Activate keep awake
+      try {
+        await activateKeepAwakeAsync();
+        console.log('✅ [PRACTICE] Keep awake activated');
+      } catch (keepAwakeError) {
+        console.warn('⚠️ [PRACTICE] Failed to activate keep awake:', keepAwakeError);
+      }
+
+      // Update state machine
+      liveStreamState.startBroadcasting();
+
+      // Set UI to "live" state (but it's practice)
+      if (isMountedRef.current) {
+        setIsLive(true);
+        setIsStreaming(true);
+        setIsCreatingStream(false);
+        setStreamCreationError(null);
+        setViewerCount(0);
+        setPeakViewers(0);
+        setTotalViewers(0);
+        setTotalGifts(0);
+        setTotalLikes(0);
+        setLiveSeconds(0);
+      }
+
+      console.log('✅ [PRACTICE] Practice Mode started successfully');
+    } catch (error) {
+      console.error('❌ [PRACTICE] Error starting practice mode:', error);
+      liveStreamState.setError('Failed to start practice mode');
+      if (isMountedRef.current) {
+        setStreamCreationError('Failed to start practice mode');
+        setIsCreatingStream(false);
+      }
+    }
+  };
 
   /* ───────────────── STREAM CREATION ON MOUNT ───────────────── */
   const createStreamOnMount = async () => {
@@ -349,9 +402,9 @@ export default function BroadcastScreen() {
     };
   }, [isLive]);
 
-  /* ───────────────── VIEWER COUNT SUBSCRIPTION ───────────────── */
+  /* ───────────────── VIEWER COUNT SUBSCRIPTION (ONLY FOR REAL STREAMS) ───────────────── */
   const subscribeViewers = useCallback((streamId: string) => {
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current || isPracticeMode) return;
 
     console.log('🔌 [BROADCAST] Subscribing to viewer updates:', `stream:${streamId}:broadcaster`);
 
@@ -371,11 +424,11 @@ export default function BroadcastScreen() {
       });
 
     realtimeRef.current = channel;
-  }, []);
+  }, [isPracticeMode]);
 
-  /* ───────────────── GIFT SUBSCRIPTION ───────────────── */
+  /* ───────────────── GIFT SUBSCRIPTION (ONLY FOR REAL STREAMS) ───────────────── */
   const subscribeToGifts = useCallback((streamId: string) => {
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current || isPracticeMode) return;
 
     console.log('🔌 [BROADCAST] Subscribing to gifts:', `stream:${streamId}:gifts`);
 
@@ -405,11 +458,11 @@ export default function BroadcastScreen() {
       });
 
     giftChannelRef.current = channel;
-  }, []);
+  }, [isPracticeMode]);
 
-  /* ───────────────── LIKES SUBSCRIPTION ───────────────── */
+  /* ───────────────── LIKES SUBSCRIPTION (ONLY FOR REAL STREAMS) ───────────────── */
   const subscribeToLikes = useCallback((streamId: string) => {
-    if (!isMountedRef.current) return;
+    if (!isMountedRef.current || isPracticeMode) return;
 
     console.log('🔌 [BROADCAST] Subscribing to likes:', `stream:${streamId}:likes`);
 
@@ -427,10 +480,10 @@ export default function BroadcastScreen() {
       });
 
     likesChannelRef.current = channel;
-  }, []);
+  }, [isPracticeMode]);
 
   useEffect(() => {
-    if (isLive && currentStream?.id && isMountedRef.current) {
+    if (isLive && currentStream?.id && !isPracticeMode && isMountedRef.current) {
       console.log('🚀 [BROADCAST] Initializing Realtime channels for stream:', currentStream.id);
       subscribeViewers(currentStream.id);
       subscribeToGifts(currentStream.id);
@@ -454,7 +507,7 @@ export default function BroadcastScreen() {
         likesChannelRef.current = null;
       }
     };
-  }, [isLive, currentStream?.id, subscribeViewers, subscribeToGifts, subscribeToLikes]);
+  }, [isLive, currentStream?.id, subscribeViewers, subscribeToGifts, subscribeToLikes, isPracticeMode]);
 
   const handleAnimationComplete = (animationId: string) => {
     if (isMountedRef.current) {
@@ -479,17 +532,9 @@ export default function BroadcastScreen() {
 
   /* ───────────────── END STREAM ───────────────── */
   const endLive = async () => {
-    if (!currentStream) {
-      Alert.alert('Error', 'No active stream to end');
-      return;
-    }
+    console.log('🛑 [BROADCAST] Ending stream (Practice Mode:', isPracticeMode, ')');
 
     try {
-      console.log('🛑 [BROADCAST] Ending stream:', {
-        liveInputId: currentStream.live_input_id,
-        streamId: currentStream.id,
-      });
-      
       // Update state machine
       liveStreamState.endStream();
       
@@ -503,6 +548,42 @@ export default function BroadcastScreen() {
       } catch (keepAwakeError) {
         console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake:', keepAwakeError);
       }
+
+      // PRACTICE MODE: Just clean up and exit
+      if (isPracticeMode) {
+        console.log('🎯 [PRACTICE] Ending practice mode - no Cloudflare cleanup needed');
+        
+        if (isMountedRef.current) {
+          setIsLive(false);
+          setIsStreaming(false);
+        }
+
+        // Reset state machine
+        liveStreamState.resetToIdle();
+
+        Alert.alert(
+          'Practice Ended',
+          `Your practice session has ended.\n\n📊 Stats:\n• Duration: ${formatTime(liveSeconds)}\n\nAll your settings (filters, effects, VIP Club, moderators) have been saved and will be used when you go live for real.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back(),
+            }
+          ]
+        );
+        return;
+      }
+
+      // REAL STREAM: Full cleanup
+      if (!currentStream) {
+        Alert.alert('Error', 'No active stream to end');
+        return;
+      }
+
+      console.log('🛑 [BROADCAST] Ending real stream:', {
+        liveInputId: currentStream.live_input_id,
+        streamId: currentStream.id,
+      });
 
       // Get total unique viewers
       const totalViewerCount = await viewerTrackingService.getTotalViewerCount(currentStream.id);
@@ -674,8 +755,8 @@ export default function BroadcastScreen() {
     );
   }
 
-  // Show loading state while creating stream
-  if (isCreatingStream) {
+  // Show loading state while creating stream (NOT for practice mode)
+  if (isCreatingStream && !isPracticeMode) {
     return (
       <View style={commonStyles.container}>
         {/* Camera preview in background */}
@@ -775,14 +856,16 @@ export default function BroadcastScreen() {
 
       {/* OVERLAY LAYER */}
       <View style={styles.overlay} pointerEvents="box-none">
-        {isLive && currentStream && (
+        {isLive && (
           <>
-            {/* Connection Status */}
-            <ConnectionStatusIndicator
-              status={connectionStatus}
-              attemptNumber={reconnectAttempt}
-              maxAttempts={6}
-            />
+            {/* Connection Status (only for real streams) */}
+            {!isPracticeMode && (
+              <ConnectionStatusIndicator
+                status={connectionStatus}
+                attemptNumber={reconnectAttempt}
+                maxAttempts={6}
+              />
+            )}
 
             {/* TOP BAR - TikTok Style */}
             <View style={styles.topBar}>
@@ -800,14 +883,21 @@ export default function BroadcastScreen() {
                   <Text style={styles.hostName}>{user?.display_name || 'Host'}</Text>
                 </View>
 
-                {/* Live Badge */}
-                <LiveBadge size="small" />
+                {/* Live Badge or Practice Badge */}
+                {isPracticeMode ? (
+                  <View style={styles.practiceBadge}>
+                    <Text style={styles.practiceBadgeText}>PRACTICE</Text>
+                  </View>
+                ) : (
+                  <LiveBadge size="small" />
+                )}
 
-                {/* Viewer Count */}
+                {/* Viewer Count (0 for practice mode) */}
                 <TouchableOpacity 
                   style={styles.viewerCountButton}
-                  onPress={() => setShowViewerList(true)}
+                  onPress={() => !isPracticeMode && setShowViewerList(true)}
                   activeOpacity={0.7}
+                  disabled={isPracticeMode}
                 >
                   <IconSymbol
                     ios_icon_name="eye.fill"
@@ -815,7 +905,7 @@ export default function BroadcastScreen() {
                     size={14}
                     color="#FFFFFF"
                   />
-                  <Text style={styles.viewerCountText}>{viewerCount}</Text>
+                  <Text style={styles.viewerCountText}>{isPracticeMode ? 0 : viewerCount}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -895,28 +985,39 @@ export default function BroadcastScreen() {
                 <Text style={styles.rightSideButtonText}>Filters</Text>
               </TouchableOpacity>
 
-              {/* Share */}
-              <TouchableOpacity 
-                style={styles.rightSideButton} 
-                onPress={handleShare}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="square.and.arrow.up.fill"
-                  android_material_icon_name="share"
-                  size={32}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.rightSideButtonText}>Share</Text>
-              </TouchableOpacity>
+              {/* Share (disabled in practice mode) */}
+              {!isPracticeMode && (
+                <TouchableOpacity 
+                  style={styles.rightSideButton} 
+                  onPress={handleShare}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="square.and.arrow.up.fill"
+                    android_material_icon_name="share"
+                    size={32}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.rightSideButtonText}>Share</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
-            {/* BOTTOM LEFT - Chat Overlay */}
-            <ChatOverlay
-              streamId={currentStream.id}
-              isBroadcaster={true}
-              streamDelay={0}
-            />
+            {/* BOTTOM LEFT - Chat Overlay (simulated for practice mode) */}
+            {isPracticeMode ? (
+              <View style={styles.practiceChatOverlay}>
+                <Text style={styles.practiceChatText}>💬 Chat Preview</Text>
+                <Text style={styles.practiceChatSubtext}>
+                  This is how chat will appear during your live stream
+                </Text>
+              </View>
+            ) : currentStream ? (
+              <ChatOverlay
+                streamId={currentStream.id}
+                isBroadcaster={true}
+                streamDelay={0}
+              />
+            ) : null}
 
             {/* BOTTOM CENTER - Controls */}
             <View style={styles.bottomCenterControls}>
@@ -967,6 +1068,7 @@ export default function BroadcastScreen() {
             {__DEV__ && (
               <View style={styles.debugContainer}>
                 <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+                <Text style={styles.debugText}>Mode: {isPracticeMode ? 'PRACTICE' : 'LIVE'}</Text>
               </View>
             )}
           </>
@@ -986,8 +1088,8 @@ export default function BroadcastScreen() {
         />
       ))}
 
-      {/* VIEWER LIST MODAL */}
-      {currentStream && user && (
+      {/* VIEWER LIST MODAL (disabled in practice mode) */}
+      {currentStream && user && !isPracticeMode && (
         <ViewerListModal
           visible={showViewerList}
           onClose={() => setShowViewerList(false)}
@@ -1028,14 +1130,17 @@ export default function BroadcastScreen() {
         peakViewers={peakViewers}
         totalGifts={totalGifts}
         totalLikes={totalLikes}
+        isPracticeMode={isPracticeMode}
       />
 
-      {/* SHARE MODAL */}
-      <ShareModal
-        visible={showShareModal}
-        onClose={() => setShowShareModal(false)}
-        streamTitle={params.streamTitle || ''}
-      />
+      {/* SHARE MODAL (disabled in practice mode) */}
+      {!isPracticeMode && (
+        <ShareModal
+          visible={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          streamTitle={params.streamTitle || ''}
+        />
+      )}
 
       {/* EXIT CONFIRMATION MODAL */}
       {showExitConfirmation && (
@@ -1047,9 +1152,13 @@ export default function BroadcastScreen() {
               size={48}
               color={colors.gradientEnd}
             />
-            <Text style={styles.confirmationTitle}>End Livestream?</Text>
+            <Text style={styles.confirmationTitle}>
+              {isPracticeMode ? 'End Practice?' : 'End Livestream?'}
+            </Text>
             <Text style={styles.confirmationText}>
-              Are you sure you want to end the stream?{'\n\n'}Your viewers will be disconnected.
+              {isPracticeMode 
+                ? 'Are you sure you want to end the practice session?\n\nYour settings will be saved for when you go live.'
+                : 'Are you sure you want to end the stream?\n\nYour viewers will be disconnected.'}
             </Text>
             <View style={styles.confirmationButtons}>
               <TouchableOpacity
@@ -1060,7 +1169,7 @@ export default function BroadcastScreen() {
               </TouchableOpacity>
               <View style={styles.confirmationEndButton}>
                 <GradientButton
-                  title="End Stream"
+                  title={isPracticeMode ? 'End Practice' : 'End Stream'}
                   onPress={() => {
                     setShowExitConfirmation(false);
                     endLive();
@@ -1087,6 +1196,7 @@ interface LiveSettingsModalProps {
   peakViewers: number;
   totalGifts: number;
   totalLikes: number;
+  isPracticeMode: boolean;
 }
 
 function LiveSettingsModal({
@@ -1098,6 +1208,7 @@ function LiveSettingsModal({
   peakViewers,
   totalGifts,
   totalLikes,
+  isPracticeMode,
 }: LiveSettingsModalProps) {
   const formatTime = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -1107,7 +1218,9 @@ function LiveSettingsModal({
       <View style={styles.settingsOverlay}>
         <View style={styles.settingsPanel}>
           <View style={styles.settingsHeader}>
-            <Text style={styles.settingsTitle}>Live Settings</Text>
+            <Text style={styles.settingsTitle}>
+              {isPracticeMode ? 'Practice Settings' : 'Live Settings'}
+            </Text>
             <TouchableOpacity onPress={onClose}>
               <IconSymbol
                 ios_icon_name="xmark"
@@ -1127,12 +1240,27 @@ function LiveSettingsModal({
                 <View style={styles.infoRow}>
                   <Text style={styles.infoText}>Duration: {formatTime(liveSeconds)}</Text>
                 </View>
+                {isPracticeMode && (
+                  <View style={styles.practiceInfoBox}>
+                    <IconSymbol
+                      ios_icon_name="eye.slash.fill"
+                      android_material_icon_name="visibility_off"
+                      size={16}
+                      color={colors.brandPrimary}
+                    />
+                    <Text style={styles.practiceInfoText}>
+                      Practice Mode - No viewers can join
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
             {/* Live Stats */}
             <View style={styles.settingSection}>
-              <Text style={styles.settingLabel}>Live Statistics</Text>
+              <Text style={styles.settingLabel}>
+                {isPracticeMode ? 'Practice Statistics' : 'Live Statistics'}
+              </Text>
               <View style={styles.statsGrid}>
                 <View style={styles.statCard}>
                   <IconSymbol
@@ -1431,6 +1559,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  practiceBadge: {
+    backgroundColor: 'rgba(255, 165, 0, 0.9)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  practiceBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
   viewerCountButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1478,6 +1618,27 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  practiceChatOverlay: {
+    position: 'absolute',
+    bottom: 200,
+    left: 16,
+    right: 80,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 12,
+    padding: 16,
+    gap: 6,
+    zIndex: 100,
+  },
+  practiceChatText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  practiceChatSubtext: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   bottomCenterControls: {
     position: 'absolute',
@@ -1625,6 +1786,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: colors.textSecondary,
+  },
+  practiceInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 165, 0, 0.1)',
+    borderColor: 'rgba(255, 165, 0, 0.5)',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+    gap: 8,
+  },
+  practiceInfoText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text,
   },
   statsGrid: {
     flexDirection: 'row',

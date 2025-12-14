@@ -49,7 +49,6 @@ export default function PreLiveSetupScreen() {
   const [practiceMode, setPracticeMode] = useState(false);
   const [whoCanWatch, setWhoCanWatch] = useState<'public' | 'followers' | 'vip_club'>('public');
   const [selectedModerators, setSelectedModerators] = useState<string[]>([]);
-  const [pinnedViewers, setPinnedViewers] = useState<string[]>([]);
 
   // Effects and filters states
   const [selectedEffect, setSelectedEffect] = useState<string | null>(null);
@@ -114,6 +113,7 @@ export default function PreLiveSetupScreen() {
   const handleGoLive = async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
     console.log('📊 [PRE-LIVE] Current state:', liveStreamState.currentState);
+    console.log('🎯 [PRE-LIVE] Practice Mode:', practiceMode);
 
     if (!streamTitle.trim()) {
       Alert.alert('Error', 'Please enter a stream title');
@@ -141,15 +141,17 @@ export default function PreLiveSetupScreen() {
     try {
       setIsLoading(true);
 
-      // Check if user can stream
-      const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
-      if (!canStream.canStream) {
-        Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
-        return;
-      }
+      // Only check streaming permissions for real streams
+      if (!practiceMode) {
+        const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
+        if (!canStream.canStream) {
+          Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+          return;
+        }
 
-      // Log creator rules acceptance
-      await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
+        // Log creator rules acceptance
+        await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
+      }
 
       console.log('✅ [PRE-LIVE] Validation passed');
       console.log('🎬 [PRE-LIVE] Transitioning to STREAM_CREATING state');
@@ -170,7 +172,6 @@ export default function PreLiveSetupScreen() {
           practiceMode: practiceMode.toString(),
           whoCanWatch,
           selectedModerators: JSON.stringify(selectedModerators),
-          pinnedViewers: JSON.stringify(pinnedViewers),
           selectedEffect: selectedEffect || '',
           selectedFilter: selectedFilter || '',
           filterIntensity: filterIntensity.toString(),
@@ -179,6 +180,13 @@ export default function PreLiveSetupScreen() {
       });
 
       console.log('✅ [PRE-LIVE] Navigation initiated successfully');
+      console.log('📦 [PRE-LIVE] Settings passed:', {
+        practiceMode,
+        selectedModerators: selectedModerators.length,
+        selectedVIPClub,
+        selectedEffect,
+        selectedFilter,
+      });
     } catch (error) {
       console.error('❌ [PRE-LIVE] Error in handleGoLive:', error);
       liveStreamState.setError('Failed to start stream setup. Please try again.');
@@ -349,6 +357,7 @@ export default function PreLiveSetupScreen() {
             color="#FFFFFF"
           />
           <Text style={styles.actionButtonText}>Settings</Text>
+          {(selectedModerators.length > 0 || practiceMode) && <View style={styles.activeDot} />}
         </TouchableOpacity>
       </View>
 
@@ -381,10 +390,26 @@ export default function PreLiveSetupScreen() {
         )}
       </View>
 
+      {/* PRACTICE MODE INDICATOR */}
+      {practiceMode && (
+        <View style={styles.practiceModeIndicator}>
+          <IconSymbol
+            ios_icon_name="eye.slash.fill"
+            android_material_icon_name="visibility_off"
+            size={16}
+            color="#FFA500"
+          />
+          <Text style={styles.practiceModeText}>Practice Mode Enabled</Text>
+        </View>
+      )}
+
       {/* STATE MACHINE DEBUG (Remove in production) */}
       {__DEV__ && (
         <View style={styles.debugContainer}>
           <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+          <Text style={styles.debugText}>Practice: {practiceMode ? 'YES' : 'NO'}</Text>
+          <Text style={styles.debugText}>Moderators: {selectedModerators.length}</Text>
+          <Text style={styles.debugText}>VIP Club: {selectedVIPClub ? 'SET' : 'NONE'}</Text>
         </View>
       )}
 
@@ -433,8 +458,6 @@ export default function PreLiveSetupScreen() {
         setWhoCanWatch={setWhoCanWatch}
         selectedModerators={selectedModerators}
         setSelectedModerators={setSelectedModerators}
-        pinnedViewers={pinnedViewers}
-        setPinnedViewers={setPinnedViewers}
       />
     </View>
   );
@@ -615,6 +638,26 @@ const styles = StyleSheet.create({
   },
   selectLabelText: {
     fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  practiceModeIndicator: {
+    position: 'absolute',
+    bottom: 60,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 165, 0, 0.9)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 8,
+    zIndex: 10,
+  },
+  practiceModeText: {
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },

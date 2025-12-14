@@ -160,6 +160,33 @@ class CreatorClubService {
   }
 
   /**
+   * Get all creator clubs for a creator (NEW METHOD - fixes undefined error)
+   * Returns array of clubs (typically just one per creator)
+   */
+  async getCreatorClubs(creatorId: string): Promise<{ success: boolean; error?: string; data?: CreatorClub[] }> {
+    try {
+      console.log('📥 [CreatorClubService] Fetching clubs for creator:', creatorId);
+
+      const { data, error } = await supabase
+        .from('creator_clubs')
+        .select('*')
+        .eq('creator_id', creatorId)
+        .eq('is_active', true);
+
+      if (error) {
+        console.error('❌ [CreatorClubService] Error fetching creator clubs:', error);
+        return { success: false, error: error.message, data: [] };
+      }
+
+      console.log('✅ [CreatorClubService] Found', data?.length || 0, 'clubs');
+      return { success: true, data: (data || []) as CreatorClub[] };
+    } catch (error) {
+      console.error('❌ [CreatorClubService] Error in getCreatorClubs:', error);
+      return { success: false, error: 'Failed to fetch creator clubs', data: [] };
+    }
+  }
+
+  /**
    * Get creator club by ID
    */
   async getClubById(clubId: string): Promise<CreatorClub | null> {

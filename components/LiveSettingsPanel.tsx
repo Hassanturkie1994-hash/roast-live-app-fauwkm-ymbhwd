@@ -15,7 +15,9 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import { useAuth } from '@/contexts/AuthContext';
+import { useModerators } from '@/contexts/ModeratorsContext';
 import { followService } from '@/app/services/followService';
+import { moderationService } from '@/app/services/moderationService';
 
 interface LiveSettingsPanelProps {
   visible: boolean;
@@ -28,14 +30,13 @@ interface LiveSettingsPanelProps {
   setWhoCanWatch: (value: 'public' | 'followers' | 'vip_club') => void;
   selectedModerators: string[];
   setSelectedModerators: (moderators: string[]) => void;
-  pinnedViewers: string[];
-  setPinnedViewers: (viewers: string[]) => void;
 }
 
 interface Follower {
   id: string;
   display_name: string;
   username: string;
+  avatar_url?: string | null;
 }
 
 export default function LiveSettingsPanel({
@@ -49,61 +50,130 @@ export default function LiveSettingsPanel({
   setWhoCanWatch,
   selectedModerators,
   setSelectedModerators,
-  pinnedViewers,
-  setPinnedViewers,
 }: LiveSettingsPanelProps) {
   const { user } = useAuth();
+  const { refreshModerators, addModerator, removeModerator } = useModerators();
   const [followers, setFollowers] = useState<Follower[]>([]);
   const [isLoadingFollowers, setIsLoadingFollowers] = useState(false);
   const [showModeratorSelector, setShowModeratorSelector] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Follower[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
-    if (visible && user && showModeratorSelector) {
+    if (visible && user) {
       loadFollowers();
+      loadExistingModerators();
     }
-  }, [visible, user, showModeratorSelector]);
+  }, [visible, user]);
 
   const loadFollowers = async () => {
     if (!user) return;
 
     try {
       setIsLoadingFollowers(true);
-      console.log('📥 Loading followers for moderator selection');
+      console.log('📥 [LiveSettings] Loading followers for moderator selection');
 
       const result = await followService.getFollowers(user.id);
 
       if (result.success && result.data) {
-        setFollowers(result.data as Follower[]);
-        console.log('✅ Loaded', result.data.length, 'followers');
+        const followersList = result.data.map((f: any) => ({
+          id: f.id || f.follower_id,
+          display_name: f.display_name || 'Unknown',
+          username: f.username || 'unknown',
+          avatar_url: f.avatar_url,
+        }));
+        setFollowers(followersList);
+        console.log('✅ [LiveSettings] Loaded', followersList.length, 'followers');
       } else {
-        console.warn('⚠️ No followers found or error:', result.error);
+        console.warn('⚠️ [LiveSettings] No followers found or error:', result.error);
         setFollowers([]);
       }
     } catch (error) {
-      console.error('❌ Error loading followers:', error);
+      console.error('❌ [LiveSettings] Error loading followers:', error);
       setFollowers([]);
     } finally {
       setIsLoadingFollowers(false);
     }
   };
 
-  const toggleModerator = (userId: string) => {
-    if (selectedModerators.includes(userId)) {
-      setSelectedModerators(selectedModerators.filter((id) => id !== userId));
-      console.log('➖ Removed moderator:', userId);
+  const loadExistingModerators = async () => {
+    if (!user) return;
+
+    try {
+      console.log('📥 [LiveSettings] Loading existing moderators from context');
+      await refreshModerators();
+    } catch (error) {
+      console.error('❌ [LiveSettings] Error loading moderators:', error);
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+      console.log('🔍 [LiveSettings] Searching for users:', query);
+
+      const results = await moderationService.searchUsersByUsername(query);
+      
+      const formattedResults = results.map((r: any) => ({
+        id: r.id,
+        display_name: r.display_name || 'Unknown',
+        username: r.username || 'unknown',
+        avatar_url: r.avatar_url,
+      }));
+
+      setSearchResults(formattedResults);
+      console.log('✅ [LiveSettings] Found', formattedResults.length, 'users');
+    } catch (error) {
+      console.error('❌ [LiveSettings] Error searching users:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const toggleModerator = async (userId: string) => {
+    if (!user) return;
+
+    const isCurrentlyModerator = selectedModerators.includes(userId);
+
+    if (isCurrentlyModerator) {
+      // Remove moderator
+      const success = await removeModerator(userId);
+      if (success) {
+        setSelectedModerators(selectedModerators.filter((id) => id !== userId));
+        console.log('➖ [LiveSettings] Removed moderator:', userId);
+      } else {
+        Alert.alert('Error', 'Failed to remove moderator');
+      }
     } else {
-      setSelectedModerators([...selectedModerators, userId]);
-      console.log('➕ Added moderator:', userId);
+      // Add moderator
+      const success = await addModerator(userId);
+      if (success) {
+        setSelectedModerators([...selectedModerators, userId]);
+        console.log('➕ [LiveSettings] Added moderator:', userId);
+      } else {
+        Alert.alert('Error', 'Failed to add moderator');
+      }
     }
   };
 
   const handlePracticeModeInfo = () => {
     Alert.alert(
       'Practice Mode',
-      'Practice mode allows you to test your stream setup privately. Only you can see the stream, and it won\'t be visible to any viewers. This is perfect for testing your camera, audio, and layout before going live for real.',
+      'Practice mode allows you to test your stream setup privately without creating a Cloudflare stream. Only you can see the stream, and it won\'t be visible to any viewers. This is perfect for testing your camera, audio, filters, and effects before going live for real.',
       [{ text: 'Got it' }]
     );
   };
+
+  const displayList = searchQuery.trim() ? searchResults : followers;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -157,7 +227,7 @@ export default function LiveSettingsPanel({
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.sectionDescription}>
-                    Stream privately to test your setup
+                    Test your setup without going live
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -176,7 +246,7 @@ export default function LiveSettingsPanel({
                     color={colors.brandPrimary}
                   />
                   <Text style={styles.infoText}>
-                    Only you can see this stream. Perfect for testing!
+                    Practice mode simulates a live stream locally. No Cloudflare stream will be created.
                   </Text>
                 </View>
               )}
@@ -260,7 +330,7 @@ export default function LiveSettingsPanel({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Moderators</Text>
               <Text style={styles.sectionDescription}>
-                Select followers to help moderate your stream
+                Select users to help moderate your stream
               </Text>
               <TouchableOpacity 
                 style={styles.manageButton}
@@ -281,45 +351,83 @@ export default function LiveSettingsPanel({
 
               {showModeratorSelector && (
                 <View style={styles.moderatorList}>
-                  {isLoadingFollowers ? (
+                  {/* Search Input */}
+                  <View style={styles.searchContainer}>
+                    <IconSymbol
+                      ios_icon_name="magnifyingglass"
+                      android_material_icon_name="search"
+                      size={18}
+                      color={colors.textSecondary}
+                    />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Search by username..."
+                      placeholderTextColor={colors.placeholder}
+                      value={searchQuery}
+                      onChangeText={handleSearch}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => handleSearch('')}>
+                        <IconSymbol
+                          ios_icon_name="xmark.circle.fill"
+                          android_material_icon_name="cancel"
+                          size={18}
+                          color={colors.textSecondary}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* User List */}
+                  {isLoadingFollowers || isSearching ? (
                     <View style={styles.loadingContainer}>
                       <ActivityIndicator size="small" color={colors.brandPrimary} />
-                      <Text style={styles.loadingText}>Loading followers...</Text>
+                      <Text style={styles.loadingText}>
+                        {isSearching ? 'Searching...' : 'Loading followers...'}
+                      </Text>
                     </View>
-                  ) : followers.length === 0 ? (
-                    <Text style={styles.emptyText}>No followers to select as moderators</Text>
+                  ) : displayList.length === 0 ? (
+                    <Text style={styles.emptyText}>
+                      {searchQuery.trim() 
+                        ? 'No users found' 
+                        : 'No followers to select as moderators'}
+                    </Text>
                   ) : (
-                    followers.map((follower) => {
-                      const isSelected = selectedModerators.includes(follower.id);
-                      return (
-                        <TouchableOpacity
-                          key={follower.id}
-                          style={[styles.followerItem, isSelected && styles.followerItemActive]}
-                          onPress={() => toggleModerator(follower.id)}
-                        >
-                          <View style={styles.followerAvatar}>
-                            <IconSymbol
-                              ios_icon_name="person.fill"
-                              android_material_icon_name="person"
-                              size={16}
-                              color={colors.textSecondary}
-                            />
-                          </View>
-                          <View style={styles.followerInfo}>
-                            <Text style={styles.followerName}>{follower.display_name}</Text>
-                            <Text style={styles.followerUsername}>@{follower.username}</Text>
-                          </View>
-                          {isSelected && (
-                            <IconSymbol
-                              ios_icon_name="checkmark.circle.fill"
-                              android_material_icon_name="check_circle"
-                              size={20}
-                              color={colors.brandPrimary}
-                            />
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })
+                    <ScrollView style={styles.userScrollView} showsVerticalScrollIndicator={false}>
+                      {displayList.map((follower) => {
+                        const isSelected = selectedModerators.includes(follower.id);
+                        return (
+                          <TouchableOpacity
+                            key={follower.id}
+                            style={[styles.followerItem, isSelected && styles.followerItemActive]}
+                            onPress={() => toggleModerator(follower.id)}
+                          >
+                            <View style={styles.followerAvatar}>
+                              <IconSymbol
+                                ios_icon_name="person.fill"
+                                android_material_icon_name="person"
+                                size={16}
+                                color={colors.textSecondary}
+                              />
+                            </View>
+                            <View style={styles.followerInfo}>
+                              <Text style={styles.followerName}>{follower.display_name}</Text>
+                              <Text style={styles.followerUsername}>@{follower.username}</Text>
+                            </View>
+                            {isSelected && (
+                              <IconSymbol
+                                ios_icon_name="checkmark.circle.fill"
+                                android_material_icon_name="check_circle"
+                                size={20}
+                                color={colors.brandPrimary}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
                   )}
                 </View>
               )}
@@ -327,33 +435,11 @@ export default function LiveSettingsPanel({
               {selectedModerators.length > 0 && (
                 <View style={styles.moderatorPerks}>
                   <Text style={styles.perksTitle}>Moderator Permissions:</Text>
-                  <Text style={styles.perkItem}>• Mute users in chat</Text>
-                  <Text style={styles.perkItem}>• Ban disruptive viewers</Text>
-                  <Text style={styles.perkItem}>• Pin important messages</Text>
-                  <Text style={styles.perkItem}>• Manage chat settings</Text>
+                  <Text style={styles.perkItem}>• Pin chat messages</Text>
+                  <Text style={styles.perkItem}>• Timeout users</Text>
+                  <Text style={styles.perkItem}>• Ban users</Text>
                 </View>
               )}
-            </View>
-
-            {/* Pinned Viewers */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Pinned Viewers</Text>
-              <Text style={styles.sectionDescription}>
-                Highlight specific viewers during your stream
-              </Text>
-              <TouchableOpacity style={styles.manageButton}>
-                <Text style={styles.manageButtonText}>
-                  {pinnedViewers.length > 0 
-                    ? `${pinnedViewers.length} Viewer${pinnedViewers.length > 1 ? 's' : ''} Pinned`
-                    : 'Select Viewers to Pin'}
-                </Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron_right"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
             </View>
 
             {/* Safety Rules */}
@@ -538,6 +624,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     padding: 12,
+    maxHeight: 300,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
+    paddingVertical: 0,
+  },
+  userScrollView: {
     maxHeight: 200,
   },
   loadingContainer: {

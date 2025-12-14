@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,7 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
-import { useAuth } from '@/contexts/AuthContext';
-import { creatorClubService } from '@/app/services/creatorClubService';
+import { useVIPClub } from '@/contexts/VIPClubContext';
 
 interface VIPClubPanelProps {
   visible: boolean;
@@ -22,57 +21,23 @@ interface VIPClubPanelProps {
   onSelectClub: (clubId: string | null) => void;
 }
 
-interface VIPClub {
-  id: string;
-  name: string;
-  badge_emoji: string;
-  member_count: number;
-  monthly_price: number;
-  perks: string[];
-}
-
 export default function VIPClubPanel({
   visible,
   onClose,
   selectedClub,
   onSelectClub,
 }: VIPClubPanelProps) {
-  const { user } = useAuth();
-  const [clubs, setClubs] = useState<VIPClub[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { clubs, isLoading, refreshClubs } = useVIPClub();
 
   useEffect(() => {
-    if (visible && user) {
-      loadClubs();
+    if (visible) {
+      console.log('📥 [VIPClubPanel] Panel opened, refreshing clubs');
+      refreshClubs();
     }
-  }, [visible, user]);
-
-  const loadClubs = async () => {
-    if (!user) return;
-
-    try {
-      setIsLoading(true);
-      console.log('📥 Loading VIP clubs for creator:', user.id);
-
-      const result = await creatorClubService.getCreatorClubs(user.id);
-
-      if (result.success && result.data) {
-        setClubs(result.data as VIPClub[]);
-        console.log('✅ Loaded', result.data.length, 'VIP clubs');
-      } else {
-        console.warn('⚠️ No clubs found or error:', result.error);
-        setClubs([]);
-      }
-    } catch (error) {
-      console.error('❌ Error loading VIP clubs:', error);
-      setClubs([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [visible]);
 
   const handleSelectClub = (clubId: string) => {
-    console.log('👑 VIP Club selected:', clubId);
+    console.log('👑 [VIPClubPanel] VIP Club selected:', clubId);
     if (clubId === selectedClub) {
       onSelectClub(null);
     } else {
@@ -116,11 +81,8 @@ export default function VIPClubPanel({
                 />
                 <Text style={styles.emptyTitle}>No VIP Clubs Yet</Text>
                 <Text style={styles.emptyText}>
-                  Create a VIP Club to offer exclusive perks to your most dedicated fans!
+                  Create a VIP Club in Settings to offer exclusive perks to your most dedicated fans!
                 </Text>
-                <TouchableOpacity style={styles.createButton}>
-                  <Text style={styles.createButtonText}>Create VIP Club</Text>
-                </TouchableOpacity>
               </View>
             ) : (
               <>
@@ -163,28 +125,22 @@ export default function VIPClubPanel({
                       activeOpacity={0.7}
                     >
                       <View style={styles.clubBadge}>
-                        <Text style={styles.clubBadgeEmoji}>{club.badge_emoji}</Text>
+                        <Text style={styles.clubBadgeEmoji}>👑</Text>
                       </View>
                       <View style={styles.clubInfo}>
                         <Text style={[styles.clubName, isSelected && styles.clubNameActive]}>
                           {club.name}
                         </Text>
-                        <Text style={styles.clubStats}>
-                          {club.member_count} members • ${club.monthly_price}/month
+                        <Text style={styles.clubTag}>
+                          {club.tag}
                         </Text>
-                        {club.perks && club.perks.length > 0 && (
-                          <View style={styles.perksContainer}>
-                            {club.perks.slice(0, 2).map((perk, index) => (
-                              <Text key={index} style={styles.perkItem}>
-                                • {perk}
-                              </Text>
-                            ))}
-                            {club.perks.length > 2 && (
-                              <Text style={styles.perkItem}>
-                                +{club.perks.length - 2} more perks
-                              </Text>
-                            )}
-                          </View>
+                        <Text style={styles.clubStats}>
+                          {(club.monthly_price_cents / 100).toFixed(2)} {club.currency}/month
+                        </Text>
+                        {club.description && (
+                          <Text style={styles.clubDescription} numberOfLines={2}>
+                            {club.description}
+                          </Text>
                         )}
                       </View>
                       {isSelected && (
@@ -276,18 +232,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: 20,
   },
-  createButton: {
-    marginTop: 16,
-    backgroundColor: colors.brandPrimary,
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  createButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
   clubCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -327,24 +271,21 @@ const styles = StyleSheet.create({
   clubNameActive: {
     color: colors.brandPrimary,
   },
+  clubTag: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.brandPrimary,
+    marginBottom: 4,
+  },
   clubDescription: {
     fontSize: 13,
     fontWeight: '400',
     color: colors.textSecondary,
+    marginTop: 4,
   },
   clubStats: {
     fontSize: 12,
     fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 6,
-  },
-  perksContainer: {
-    marginTop: 4,
-    gap: 2,
-  },
-  perkItem: {
-    fontSize: 11,
-    fontWeight: '400',
     color: colors.textSecondary,
   },
   footer: {
