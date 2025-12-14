@@ -60,6 +60,7 @@ export default function PreLiveSetupScreen() {
   const isMountedRef = useRef(true);
 
   // CRITICAL: Hide bottom tab bar when this screen is focused
+  // This uses useFocusEffect to ensure cleanup runs on blur
   useFocusEffect(
     useCallback(() => {
       console.log('🎬 [PRE-LIVE] Screen focused - hiding bottom tab bar');
@@ -129,6 +130,16 @@ export default function PreLiveSetupScreen() {
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
+    
+    // CRITICAL: Explicitly restore tab bar BEFORE navigation
+    const parent = navigation.getParent();
+    if (parent) {
+      console.log('🔄 [PRE-LIVE] Explicitly restoring tab bar before navigation');
+      parent.setOptions({
+        tabBarStyle: undefined,
+      });
+    }
+    
     liveStreamState.resetToIdle();
     router.back();
   };
