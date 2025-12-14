@@ -78,7 +78,7 @@ export interface ModerationHistoryEntry {
 }
 
 class ModerationService {
-  // Log moderation action to history
+  // Log moderation action to history (FIXED: removed metadata field)
   private async logModerationAction(
     moderatorUserId: string,
     targetUserId: string,
@@ -88,6 +88,7 @@ class ModerationService {
     durationSec?: number
   ): Promise<void> {
     try {
+      // Only insert fields that exist in the database schema
       const { error } = await supabase
         .from('moderation_history')
         .insert({
@@ -100,12 +101,14 @@ class ModerationService {
         });
 
       if (error) {
-        console.error('Error logging moderation action:', error);
+        console.error('❌ [ModerationService] Error logging moderation action:', error);
+        // Don't throw - logging should not break the main flow
       } else {
-        console.log(`📝 Logged moderation action: ${actionType}`);
+        console.log(`📝 [ModerationService] Logged moderation action: ${actionType}`);
       }
     } catch (error) {
-      console.error('Error in logModerationAction:', error);
+      console.error('❌ [ModerationService] Exception in logModerationAction:', error);
+      // Gracefully fail - logging is non-critical
     }
   }
 
@@ -248,28 +251,44 @@ class ModerationService {
     }
   }
 
-  // Add a moderator
+  // Add a moderator (FIXED: idempotent with upsert)
   async addModerator(streamerId: string, userId: string, addedBy: string): Promise<{ success: boolean; error?: string }> {
     try {
+      console.log('➕ [ModerationService] Adding moderator:', { streamerId, userId });
+
+      // Use upsert to make this idempotent
       const { error } = await supabase
         .from('moderators')
-        .insert({
-          streamer_id: streamerId,
-          user_id: userId,
-        });
+        .upsert(
+          {
+            streamer_id: streamerId,
+            user_id: userId,
+          },
+          {
+            onConflict: 'streamer_id,user_id',
+            ignoreDuplicates: false,
+          }
+        );
 
       if (error) {
-        console.error('Error adding moderator:', error);
+        // Check if it's a duplicate key error (23505)
+        if (error.code === '23505') {
+          console.log('ℹ️ [ModerationService] Moderator already exists, treating as success');
+          // Return success - moderator already exists
+          return { success: true };
+        }
+        
+        console.error('❌ [ModerationService] Error adding moderator:', error);
         return { success: false, error: error.message };
       }
 
       // Log the action
       await this.logModerationAction(addedBy, userId, streamerId, 'add_moderator');
 
-      console.log('✅ Moderator added successfully');
+      console.log('✅ [ModerationService] Moderator added successfully');
       return { success: true };
     } catch (error) {
-      console.error('Error in addModerator:', error);
+      console.error('❌ [ModerationService] Exception in addModerator:', error);
       return { success: false, error: 'Failed to add moderator' };
     }
   }

@@ -1,125 +1,122 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import { moderationService } from '@/app/services/moderationService';
 import { useAuth } from './AuthContext';
-import { moderationService, Moderator } from '@/app/services/moderationService';
+
+interface Moderator {
+  id: string;
+  user_id: string;
+  display_name?: string;
+  username?: string;
+  avatar_url?: string | null;
+}
 
 interface ModeratorsContextType {
   moderators: Moderator[];
   isLoading: boolean;
-  error: string | null;
-  selectedModeratorIds: string[];
-  setSelectedModeratorIds: (ids: string[]) => void;
   refreshModerators: () => Promise<void>;
   addModerator: (userId: string) => Promise<boolean>;
   removeModerator: (userId: string) => Promise<boolean>;
-  isModerator: (userId: string) => boolean;
 }
 
 const ModeratorsContext = createContext<ModeratorsContextType | undefined>(undefined);
 
-export function ModeratorsProvider({ children }: { children: ReactNode }) {
+export function ModeratorsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [moderators, setModerators] = useState<Moderator[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedModeratorIds, setSelectedModeratorIds] = useState<string[]>([]);
 
-  // Load moderators when user changes
-  useEffect(() => {
-    if (user) {
-      loadModerators();
-    } else {
-      setModerators([]);
-      setSelectedModeratorIds([]);
+  const refreshModerators = useCallback(async () => {
+    if (!user) {
+      console.log('⚠️ [ModeratorsContext] No user, skipping refresh');
+      return;
     }
-  }, [user]);
-
-  const loadModerators = async () => {
-    if (!user) return;
 
     try {
       setIsLoading(true);
-      setError(null);
-      console.log('📥 [ModeratorsContext] Loading moderators for user:', user.id);
+      console.log('📥 [ModeratorsContext] Refreshing moderators for user:', user.id);
 
       const result = await moderationService.getModerators(user.id);
-      setModerators(result);
       
-      const moderatorIds = result.map(m => m.user_id);
-      setSelectedModeratorIds(moderatorIds);
-      
-      console.log('✅ [ModeratorsContext] Loaded', result.length, 'moderators');
-    } catch (err) {
-      console.error('❌ [ModeratorsContext] Error loading moderators:', err);
-      setError('Failed to load moderators');
+      const formattedModerators = result.map((mod: any) => ({
+        id: mod.id,
+        user_id: mod.user_id,
+        display_name: mod.profiles?.display_name || 'Unknown',
+        username: mod.profiles?.username || 'unknown',
+        avatar_url: mod.profiles?.avatar_url,
+      }));
+
+      setModerators(formattedModerators);
+      console.log('✅ [ModeratorsContext] Loaded', formattedModerators.length, 'moderators');
+    } catch (error) {
+      console.error('❌ [ModeratorsContext] Error refreshing moderators:', error);
       setModerators([]);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
-  const refreshModerators = async () => {
-    await loadModerators();
-  };
-
-  const addModerator = async (userId: string): Promise<boolean> => {
-    if (!user) return false;
+  const addModerator = useCallback(async (userId: string): Promise<boolean> => {
+    if (!user) {
+      console.error('❌ [ModeratorsContext] No user, cannot add moderator');
+      return false;
+    }
 
     try {
       console.log('➕ [ModeratorsContext] Adding moderator:', userId);
+      
+      // Use idempotent addModerator service
       const result = await moderationService.addModerator(user.id, userId, user.id);
       
       if (result.success) {
+        // Refresh moderators list to sync with database
         await refreshModerators();
+        console.log('✅ [ModeratorsContext] Moderator added successfully');
         return true;
       } else {
-        setError(result.error || 'Failed to add moderator');
+        console.error('❌ [ModeratorsContext] Failed to add moderator:', result.error);
         return false;
       }
-    } catch (err) {
-      console.error('❌ [ModeratorsContext] Error adding moderator:', err);
-      setError('Failed to add moderator');
+    } catch (error) {
+      console.error('❌ [ModeratorsContext] Exception adding moderator:', error);
       return false;
     }
-  };
+  }, [user, refreshModerators]);
 
-  const removeModerator = async (userId: string): Promise<boolean> => {
-    if (!user) return false;
+  const removeModerator = useCallback(async (userId: string): Promise<boolean> => {
+    if (!user) {
+      console.error('❌ [ModeratorsContext] No user, cannot remove moderator');
+      return false;
+    }
 
     try {
       console.log('➖ [ModeratorsContext] Removing moderator:', userId);
+      
       const result = await moderationService.removeModerator(user.id, userId, user.id);
       
       if (result.success) {
+        // Refresh moderators list to sync with database
         await refreshModerators();
+        console.log('✅ [ModeratorsContext] Moderator removed successfully');
         return true;
       } else {
-        setError(result.error || 'Failed to remove moderator');
+        console.error('❌ [ModeratorsContext] Failed to remove moderator:', result.error);
         return false;
       }
-    } catch (err) {
-      console.error('❌ [ModeratorsContext] Error removing moderator:', err);
-      setError('Failed to remove moderator');
+    } catch (error) {
+      console.error('❌ [ModeratorsContext] Exception removing moderator:', error);
       return false;
     }
-  };
-
-  const isModerator = (userId: string): boolean => {
-    return selectedModeratorIds.includes(userId);
-  };
+  }, [user, refreshModerators]);
 
   return (
     <ModeratorsContext.Provider
       value={{
         moderators,
         isLoading,
-        error,
-        selectedModeratorIds,
-        setSelectedModeratorIds,
         refreshModerators,
         addModerator,
         removeModerator,
-        isModerator,
       }}
     >
       {children}
