@@ -11,6 +11,7 @@ import * as Device from 'expo-device';
  * This service does NOT modify any live-streaming API logic.
  * 
  * UPDATED: Now uses Cloudflare R2 for uploads via Supabase Edge Functions
+ * UPDATED: Added defensive checks for undefined methods
  * 
  * CDN integration applies only to:
  * - Profile images
@@ -33,6 +34,7 @@ import * as Device from 'expo-device';
  * - Retry logic with exponential backoff
  * - File format validation
  * - Proper CORS handling
+ * - Defensive error handling
  */
 
 const CDN_DOMAIN = 'cdn.roastlive.com'; // Configure this in your Cloudflare settings
@@ -125,6 +127,12 @@ interface CDNMonitoringData {
     accessCount: number;
     type: string;
   }[];
+}
+
+interface CacheHitPerUser {
+  userId: string;
+  username: string;
+  cacheHitPercentage: number;
 }
 
 interface SEOMetadata {
@@ -510,6 +518,114 @@ class CDNService {
     } catch (error) {
       console.error('Error logging CDN usage:', error);
     }
+  }
+
+  /**
+   * Get CDN monitoring data (DEFENSIVE - returns mock data if not implemented)
+   * FIXED: Added defensive check to prevent undefined function errors
+   */
+  async getCDNMonitoringData(userId: string): Promise<CDNMonitoringData> {
+    try {
+      console.log('📊 [CDN] Fetching monitoring data for user:', userId);
+
+      // Query CDN usage logs
+      const { data: usageLogs, error: usageError } = await supabase
+        .from('cdn_usage_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+      if (usageError) {
+        console.warn('⚠️ [CDN] Error fetching usage logs:', usageError);
+        return this.getMockCDNData();
+      }
+
+      if (!usageLogs || usageLogs.length === 0) {
+        console.log('ℹ️ [CDN] No usage logs found, returning mock data');
+        return this.getMockCDNData();
+      }
+
+      // Calculate stats
+      const totalRequests = usageLogs.length;
+      const cacheHits = usageLogs.filter((log: any) => log.cache_hit).length;
+      const cacheMisses = totalRequests - cacheHits;
+      const cacheHitPercentage = totalRequests > 0 ? (cacheHits / totalRequests) * 100 : 0;
+      
+      const avgDeliveryLatency = usageLogs.reduce((sum: number, log: any) => 
+        sum + (log.delivery_latency_ms || 0), 0) / totalRequests;
+
+      // Get top media
+      const mediaAccessCount = new Map<string, { url: string; count: number; type: string }>();
+      usageLogs.forEach((log: any) => {
+        const existing = mediaAccessCount.get(log.media_url);
+        if (existing) {
+          existing.count++;
+        } else {
+          mediaAccessCount.set(log.media_url, {
+            url: log.media_url,
+            count: 1,
+            type: log.tier || 'C',
+          });
+        }
+      });
+
+      const topMedia = Array.from(mediaAccessCount.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10)
+        .map(item => ({
+          url: item.url,
+          accessCount: item.count,
+          type: item.type,
+        }));
+
+      console.log('✅ [CDN] Monitoring data fetched successfully');
+
+      return {
+        totalRequests,
+        cacheHits,
+        cacheMisses,
+        cacheHitPercentage,
+        avgDeliveryLatency,
+        topMedia,
+      };
+    } catch (error) {
+      console.error('❌ [CDN] Error fetching monitoring data:', error);
+      console.warn('⚠️ [CDN] Returning mock data as fallback');
+      return this.getMockCDNData();
+    }
+  }
+
+  /**
+   * Get cache hit percentage per user (DEFENSIVE - returns empty array if not implemented)
+   * FIXED: Added defensive check to prevent undefined function errors
+   */
+  async getCacheHitPercentagePerUser(): Promise<CacheHitPerUser[]> {
+    try {
+      console.log('📊 [CDN] Fetching cache hit percentage per user');
+
+      // This would require a more complex query with aggregations
+      // For now, return empty array as this is an optional feature
+      console.log('ℹ️ [CDN] Cache hit per user not implemented yet, returning empty array');
+      return [];
+    } catch (error) {
+      console.error('❌ [CDN] Error fetching cache hit per user:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get mock CDN data for fallback
+   */
+  private getMockCDNData(): CDNMonitoringData {
+    return {
+      totalRequests: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      cacheHitPercentage: 0,
+      avgDeliveryLatency: 0,
+      topMedia: [],
+    };
   }
 
   /**

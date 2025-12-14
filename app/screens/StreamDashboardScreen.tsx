@@ -20,6 +20,7 @@ import { moderationService, Moderator, BannedUser } from '@/app/services/moderat
 import { supabase } from '@/app/integrations/supabase/client';
 import BadgeEditorModal from '@/components/BadgeEditorModal';
 import { cdnService } from '@/app/services/cdnService';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const BADGE_COLORS = [
   '#FF1493', // Deep Pink
@@ -51,7 +52,7 @@ interface CacheHitPerUser {
   cacheHitPercentage: number;
 }
 
-export default function StreamDashboardScreen() {
+function StreamDashboardContent() {
   const { user } = useAuth();
   const [moderators, setModerators] = useState<Moderator[]>([]);
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
@@ -61,6 +62,7 @@ export default function StreamDashboardScreen() {
   const [searchUsername, setSearchUsername] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isAddingModerator, setIsAddingModerator] = useState(false);
   
   // VIP Club state
   const [clubName, setClubName] = useState('VIP');
@@ -81,6 +83,7 @@ export default function StreamDashboardScreen() {
   });
   const [cacheHitPerUser, setCacheHitPerUser] = useState<CacheHitPerUser[]>([]);
   const [showCDNDetails, setShowCDNDetails] = useState(false);
+  const [isFetchingCDN, setIsFetchingCDN] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -97,7 +100,7 @@ export default function StreamDashboardScreen() {
       // Fetch VIP club data
       await fetchVIPClubData();
 
-      // Fetch CDN monitoring data
+      // Fetch CDN monitoring data (with defensive check)
       await fetchCDNMonitoringData();
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -121,16 +124,57 @@ export default function StreamDashboardScreen() {
   const fetchCDNMonitoringData = async () => {
     if (!user) return;
 
+    // DEFENSIVE: Prevent duplicate calls
+    if (isFetchingCDN) {
+      console.log('⏳ [Dashboard] CDN fetch already in progress, skipping');
+      return;
+    }
+
     try {
+      setIsFetchingCDN(true);
+      console.log('📊 [Dashboard] Fetching CDN monitoring data');
+
+      // DEFENSIVE CHECK: Verify method exists before calling
+      if (typeof cdnService?.getCDNMonitoringData !== 'function') {
+        console.warn('⚠️ [Dashboard] getCDNMonitoringData is not available, skipping CDN stats');
+        setCdnStats({
+          totalRequests: 0,
+          cacheHitPercentage: 0,
+          avgDeliveryLatency: 0,
+          topMedia: [],
+        });
+        return;
+      }
+
       // Fetch overall CDN stats
       const data = await cdnService.getCDNMonitoringData(user.id);
       setCdnStats(data);
+      console.log('✅ [Dashboard] CDN stats fetched successfully');
+
+      // DEFENSIVE CHECK: Verify method exists before calling
+      if (typeof cdnService?.getCacheHitPercentagePerUser !== 'function') {
+        console.warn('⚠️ [Dashboard] getCacheHitPercentagePerUser is not available, skipping cache hit data');
+        setCacheHitPerUser([]);
+        return;
+      }
 
       // Fetch cache hit percentage per user
       const cacheHitData = await cdnService.getCacheHitPercentagePerUser();
       setCacheHitPerUser(cacheHitData);
+      console.log('✅ [Dashboard] Cache hit data fetched successfully');
     } catch (error) {
-      console.error('Error fetching CDN monitoring data:', error);
+      console.error('❌ [Dashboard] Error fetching CDN monitoring data:', error);
+      console.warn('⚠️ [Dashboard] CDN monitoring data unavailable, using defaults');
+      // Set default values on error
+      setCdnStats({
+        totalRequests: 0,
+        cacheHitPercentage: 0,
+        avgDeliveryLatency: 0,
+        topMedia: [],
+      });
+      setCacheHitPerUser([]);
+    } finally {
+      setIsFetchingCDN(false);
     }
   };
 
@@ -188,14 +232,32 @@ export default function StreamDashboardScreen() {
       return;
     }
 
+    // DEFENSIVE: Prevent duplicate searches
+    if (isSearching) {
+      console.log('⏳ [Dashboard] Search already in progress');
+      return;
+    }
+
     setIsSearching(true);
-    const results = await moderationService.searchUsersByUsername(searchUsername);
-    setSearchResults(results);
-    setIsSearching(false);
+    try {
+      const results = await moderationService.searchUsersByUsername(searchUsername);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const handleAddModerator = async (userId: string, username: string) => {
     if (!user) return;
+
+    // DEFENSIVE: Prevent double-tap
+    if (isAddingModerator) {
+      console.log('⏳ [Dashboard] Already adding moderator');
+      return;
+    }
 
     // Check if already a moderator
     if (moderators.some((mod) => mod.user_id === userId)) {
@@ -209,14 +271,22 @@ export default function StreamDashboardScreen() {
       return;
     }
 
-    const result = await moderationService.addModerator(user.id, userId);
-    if (result.success) {
-      Alert.alert('Success', `${username} has been added as a moderator.`);
-      setSearchUsername('');
-      setSearchResults([]);
-      fetchData();
-    } else {
-      Alert.alert('Error', result.error || 'Failed to add moderator.');
+    setIsAddingModerator(true);
+    try {
+      const result = await moderationService.addModerator(user.id, userId);
+      if (result.success) {
+        Alert.alert('Success', `${username} has been added as a moderator.`);
+        setSearchUsername('');
+        setSearchResults([]);
+        await fetchData();
+      } else {
+        Alert.alert('Error', result.error || 'Failed to add moderator.');
+      }
+    } catch (error) {
+      console.error('Error adding moderator:', error);
+      Alert.alert('Error', 'Failed to add moderator.');
+    } finally {
+      setIsAddingModerator(false);
     }
   };
 
@@ -235,7 +305,7 @@ export default function StreamDashboardScreen() {
             const result = await moderationService.removeModerator(user.id, userId);
             if (result.success) {
               Alert.alert('Success', `${username} has been removed as a moderator.`);
-              fetchData();
+              await fetchData();
             } else {
               Alert.alert('Error', result.error || 'Failed to remove moderator.');
             }
@@ -259,7 +329,7 @@ export default function StreamDashboardScreen() {
             const result = await moderationService.unbanUser(user.id, userId);
             if (result.success) {
               Alert.alert('Success', `${username} has been unbanned.`);
-              fetchData();
+              await fetchData();
             } else {
               Alert.alert('Error', result.error || 'Failed to unban user.');
             }
@@ -290,7 +360,7 @@ export default function StreamDashboardScreen() {
               Alert.alert('Error', 'Failed to remove member');
             } else {
               Alert.alert('Success', `${username} has been removed from your VIP club`);
-              fetchData();
+              await fetchData();
             }
           },
         },
@@ -303,6 +373,12 @@ export default function StreamDashboardScreen() {
 
     if (!announcementTitle.trim() || !announcementMessage.trim()) {
       Alert.alert('Error', 'Please enter both title and message');
+      return;
+    }
+
+    // DEFENSIVE: Prevent duplicate sends
+    if (isSendingAnnouncement) {
+      console.log('⏳ [Dashboard] Already sending announcement');
       return;
     }
 
@@ -545,7 +621,7 @@ export default function StreamDashboardScreen() {
                     {' '}Top Media Accessed
                   </Text>
                   {cdnStats.topMedia.slice(0, 5).map((media, index) => (
-                    <View key={index} style={styles.topMediaItem}>
+                    <View key={`media-${index}`} style={styles.topMediaItem}>
                       <View style={styles.topMediaRank}>
                         <Text style={styles.topMediaRankText}>#{index + 1}</Text>
                       </View>
@@ -584,7 +660,7 @@ export default function StreamDashboardScreen() {
                     Top users by cache efficiency
                   </Text>
                   {cacheHitPerUser.slice(0, 10).map((user, index) => (
-                    <View key={index} style={styles.cacheHitPerUserItem}>
+                    <View key={`cache-user-${index}`} style={styles.cacheHitPerUserItem}>
                       <View style={styles.cacheHitPerUserRank}>
                         <Text style={styles.cacheHitPerUserRankText}>{index + 1}</Text>
                       </View>
@@ -647,16 +723,23 @@ export default function StreamDashboardScreen() {
           )}
 
           <TouchableOpacity
-            style={styles.refreshButton}
+            style={[styles.refreshButton, isFetchingCDN && styles.refreshButtonDisabled]}
             onPress={fetchCDNMonitoringData}
+            disabled={isFetchingCDN}
           >
-            <IconSymbol
-              ios_icon_name="arrow.clockwise"
-              android_material_icon_name="refresh"
-              size={16}
-              color={colors.text}
-            />
-            <Text style={styles.refreshButtonText}>Refresh CDN Stats</Text>
+            {isFetchingCDN ? (
+              <ActivityIndicator size="small" color={colors.text} />
+            ) : (
+              <>
+                <IconSymbol
+                  ios_icon_name="arrow.clockwise"
+                  android_material_icon_name="refresh"
+                  size={16}
+                  color={colors.text}
+                />
+                <Text style={styles.refreshButtonText}>Refresh CDN Stats</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -746,8 +829,8 @@ export default function StreamDashboardScreen() {
             </View>
           ) : (
             <View style={styles.list}>
-              {activeVIPMembers.map((member) => (
-                <View key={member.id} style={styles.memberItem}>
+              {activeVIPMembers.map((member, index) => (
+                <View key={`vip-${member.id}-${index}`} style={styles.memberItem}>
                   {member.profiles?.avatar_url ? (
                     <Image source={{ uri: member.profiles.avatar_url }} style={styles.avatar} />
                   ) : (
@@ -866,6 +949,7 @@ export default function StreamDashboardScreen() {
               value={announcementTitle}
               onChangeText={setAnnouncementTitle}
               maxLength={100}
+              editable={!isSendingAnnouncement}
             />
             <TextInput
               style={[styles.input, styles.textArea]}
@@ -876,6 +960,7 @@ export default function StreamDashboardScreen() {
               maxLength={500}
               multiline
               numberOfLines={4}
+              editable={!isSendingAnnouncement}
             />
             <TouchableOpacity
               style={[
@@ -926,11 +1011,12 @@ export default function StreamDashboardScreen() {
               onChangeText={setSearchUsername}
               onSubmitEditing={handleSearchUsers}
               autoCapitalize="none"
+              editable={!isSearching && !isAddingModerator}
             />
             <TouchableOpacity
-              style={styles.searchButton}
+              style={[styles.searchButton, (isSearching || isAddingModerator) && styles.searchButtonDisabled]}
               onPress={handleSearchUsers}
-              disabled={isSearching}
+              disabled={isSearching || isAddingModerator}
             >
               {isSearching ? (
                 <ActivityIndicator size="small" color={colors.text} />
@@ -947,11 +1033,12 @@ export default function StreamDashboardScreen() {
 
           {searchResults.length > 0 && (
             <View style={styles.searchResults}>
-              {searchResults.map((result) => (
+              {searchResults.map((result, index) => (
                 <TouchableOpacity
-                  key={result.id}
+                  key={`search-${result.id}-${index}`}
                   style={styles.searchResultItem}
                   onPress={() => handleAddModerator(result.id, result.username)}
+                  disabled={isAddingModerator}
                 >
                   {result.avatar_url ? (
                     <Image source={{ uri: result.avatar_url }} style={styles.avatar} />
@@ -969,12 +1056,16 @@ export default function StreamDashboardScreen() {
                     <Text style={styles.searchResultName}>{result.display_name}</Text>
                     <Text style={styles.searchResultUsername}>@{result.username}</Text>
                   </View>
-                  <IconSymbol
-                    ios_icon_name="plus.circle.fill"
-                    android_material_icon_name="add_circle"
-                    size={24}
-                    color={colors.gradientEnd}
-                  />
+                  {isAddingModerator ? (
+                    <ActivityIndicator size="small" color={colors.gradientEnd} />
+                  ) : (
+                    <IconSymbol
+                      ios_icon_name="plus.circle.fill"
+                      android_material_icon_name="add_circle"
+                      size={24}
+                      color={colors.gradientEnd}
+                    />
+                  )}
                 </TouchableOpacity>
               ))}
             </View>
@@ -1008,8 +1099,8 @@ export default function StreamDashboardScreen() {
             </View>
           ) : (
             <View style={styles.list}>
-              {moderators.map((mod) => (
-                <View key={mod.id} style={styles.listItem}>
+              {moderators.map((mod, index) => (
+                <View key={`mod-${mod.id}-${index}`} style={styles.listItem}>
                   {mod.profiles?.avatar_url ? (
                     <Image source={{ uri: mod.profiles.avatar_url }} style={styles.avatar} />
                   ) : (
@@ -1072,8 +1163,8 @@ export default function StreamDashboardScreen() {
             </View>
           ) : (
             <View style={styles.list}>
-              {bannedUsers.map((banned) => (
-                <View key={banned.id} style={styles.listItem}>
+              {bannedUsers.map((banned, index) => (
+                <View key={`banned-${banned.id}-${index}`} style={styles.listItem}>
                   {banned.profiles?.avatar_url ? (
                     <Image source={{ uri: banned.profiles.avatar_url }} style={styles.avatar} />
                   ) : (
@@ -1120,6 +1211,15 @@ export default function StreamDashboardScreen() {
         />
       )}
     </View>
+  );
+}
+
+// Wrap the entire screen with ErrorBoundary
+export default function StreamDashboardScreen() {
+  return (
+    <ErrorBoundary>
+      <StreamDashboardContent />
+    </ErrorBoundary>
   );
 }
 
@@ -1286,6 +1386,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  searchButtonDisabled: {
+    opacity: 0.5,
   },
   searchResults: {
     backgroundColor: colors.backgroundAlt,
@@ -1756,6 +1859,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  refreshButtonDisabled: {
+    opacity: 0.5,
   },
   refreshButtonText: {
     fontSize: 14,

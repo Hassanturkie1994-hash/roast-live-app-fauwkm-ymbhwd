@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useModerators } from '@/contexts/ModeratorsContext';
 import { followService } from '@/app/services/followService';
 import { moderationService } from '@/app/services/moderationService';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 interface LiveSettingsPanelProps {
   visible: boolean;
@@ -39,7 +40,7 @@ interface Follower {
   avatar_url?: string | null;
 }
 
-export default function LiveSettingsPanel({
+function LiveSettingsPanelContent({
   visible,
   onClose,
   aboutLive,
@@ -150,7 +151,7 @@ export default function LiveSettingsPanel({
   const toggleModerator = async (userId: string) => {
     if (!user) return;
 
-    // Prevent double-tap
+    // DEFENSIVE: Prevent double-tap
     if (addingModerator === userId) {
       console.log('⏳ [LiveSettings] Already processing moderator action for:', userId);
       return;
@@ -482,9 +483,9 @@ export default function LiveSettingsPanel({
               {selectedModerators.length > 0 && (
                 <View style={styles.moderatorPerks}>
                   <Text style={styles.perksTitle}>Moderator Permissions:</Text>
-                  <Text style={styles.perkItem}>• Pin chat messages</Text>
-                  <Text style={styles.perkItem}>• Timeout users</Text>
-                  <Text style={styles.perkItem}>• Ban users</Text>
+                  <Text style={styles.perkItem}>- Pin chat messages</Text>
+                  <Text style={styles.perkItem}>- Timeout users</Text>
+                  <Text style={styles.perkItem}>- Ban users</Text>
                 </View>
               )}
             </View>
@@ -493,11 +494,11 @@ export default function LiveSettingsPanel({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Safety & Community Rules</Text>
               <View style={styles.rulesBox}>
-                <Text style={styles.ruleItem}>• No harassment or hate speech</Text>
-                <Text style={styles.ruleItem}>• No revealing private information</Text>
-                <Text style={styles.ruleItem}>• Keep roasts entertaining, not harmful</Text>
-                <Text style={styles.ruleItem}>• Respect all community members</Text>
-                <Text style={styles.ruleItem}>• Follow content label guidelines</Text>
+                <Text style={styles.ruleItem}>- No harassment or hate speech</Text>
+                <Text style={styles.ruleItem}>- No revealing private information</Text>
+                <Text style={styles.ruleItem}>- Keep roasts entertaining, not harmful</Text>
+                <Text style={styles.ruleItem}>- Respect all community members</Text>
+                <Text style={styles.ruleItem}>- Follow content label guidelines</Text>
               </View>
             </View>
           </ScrollView>
@@ -508,6 +509,15 @@ export default function LiveSettingsPanel({
         </View>
       </View>
     </Modal>
+  );
+}
+
+// Wrap with ErrorBoundary
+export default function LiveSettingsPanel(props: LiveSettingsPanelProps) {
+  return (
+    <ErrorBoundary>
+      <LiveSettingsPanelContent {...props} />
+    </ErrorBoundary>
   );
 }
 
