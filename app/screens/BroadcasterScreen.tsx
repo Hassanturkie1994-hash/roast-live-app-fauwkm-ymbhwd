@@ -501,6 +501,7 @@ export default function BroadcasterScreen() {
   };
 
   const handleContentLabelSelected = (label: ContentLabel) => {
+    console.log('🏷️ Content label selected:', label);
     if (isMountedRef.current) {
       setContentLabel(label);
       setShowContentLabelModal(false);
@@ -510,7 +511,48 @@ export default function BroadcasterScreen() {
   };
 
   const handleCreatorRulesConfirm = async () => {
-    if (!user || !isMountedRef.current) return;
+    console.log('✅ Creator rules confirmed, starting stream...');
+    console.log('📋 Current state:', {
+      hasUser: !!user,
+      userId: user?.id,
+      streamTitle,
+      contentLabel,
+      isMounted: isMountedRef.current,
+    });
+
+    if (!user) {
+      console.error('❌ No user found');
+      Alert.alert('Error', 'You must be logged in to start streaming');
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+        setShowSetup(false);
+      }
+      return;
+    }
+
+    if (!streamTitle || !streamTitle.trim()) {
+      console.error('❌ No stream title');
+      Alert.alert('Error', 'Please enter a stream title');
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+      }
+      return;
+    }
+
+    if (!contentLabel) {
+      console.error('❌ No content label');
+      Alert.alert('Error', 'Please select a content label');
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+        setShowContentLabelModal(true);
+      }
+      return;
+    }
+
+    if (!isMountedRef.current) {
+      console.error('❌ Component unmounted');
+      return;
+    }
 
     setIsLoading(true);
 
@@ -527,14 +569,19 @@ export default function BroadcasterScreen() {
         setShowCreatorRulesModal(false);
       }
       
-      // Now start the stream
-      await startStreamWithLabel(contentLabel!);
+      // Now start the stream with all required data
+      console.log('🚀 Calling startStreamWithLabel with:', {
+        label: contentLabel,
+        title: streamTitle,
+        userId: user.id,
+      });
+      await startStreamWithLabel(contentLabel);
     } catch (error) {
       console.error('Error in handleCreatorRulesConfirm:', error);
       if (isMountedRef.current) {
         setShowCreatorRulesModal(false);
+        Alert.alert('Error', 'Failed to start stream. Please try again.');
       }
-      await startStreamWithLabel(contentLabel!);
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
@@ -543,6 +590,8 @@ export default function BroadcasterScreen() {
   };
 
   const startStream = async () => {
+    console.log('📝 startStream called');
+    
     if (!streamTitle.trim()) {
       Alert.alert('Error', 'Please enter a stream title');
       return;
@@ -569,6 +618,7 @@ export default function BroadcasterScreen() {
       }
 
       // Show content label selection modal
+      console.log('🏷️ Showing content label modal');
       if (isMountedRef.current) {
         setShowContentLabelModal(true);
       }
@@ -579,12 +629,33 @@ export default function BroadcasterScreen() {
   };
 
   const startStreamWithLabel = async (label: ContentLabel) => {
-    if (!user || !isMountedRef.current) return;
+    console.log('🎬 startStreamWithLabel called with:', {
+      label,
+      title: streamTitle,
+      userId: user?.id,
+      hasUser: !!user,
+      isMounted: isMountedRef.current,
+    });
+
+    if (!user || !isMountedRef.current) {
+      console.error('❌ Missing user or component unmounted');
+      return;
+    }
+
+    if (!streamTitle || !streamTitle.trim()) {
+      console.error('❌ Missing stream title');
+      Alert.alert('Error', 'Stream title is required');
+      return;
+    }
 
     setIsLoading(true);
 
     try {
-      console.log('🎬 Starting live stream with title:', streamTitle, 'and label:', label);
+      console.log('🎬 Starting live stream with:', {
+        title: streamTitle,
+        userId: user.id,
+        label,
+      });
       
       const result = await cloudflareService.startLive({ 
         title: streamTitle, 
@@ -592,6 +663,10 @@ export default function BroadcasterScreen() {
       });
 
       console.log('✅ Stream created successfully:', result);
+
+      if (!result.success || !result.stream) {
+        throw new Error(result.error || 'Failed to create stream');
+      }
 
       // Set content label on stream
       await contentSafetyService.setStreamContentLabel(result.stream.id, label);
@@ -627,9 +702,9 @@ export default function BroadcasterScreen() {
         id: result.stream.id,
         live_input_id: result.stream.live_input_id,
         playback_url: result.stream.playback_url,
-        rtmps_url: result.ingest.rtmps_url,
-        stream_key: result.ingest.stream_key ? '***' : null,
-        webRTC_url: result.ingest.webRTC_url,
+        rtmps_url: result.ingest?.rtmps_url,
+        stream_key: result.ingest?.stream_key ? '***' : null,
+        webRTC_url: result.ingest?.webRTC_url,
       });
 
       Alert.alert(
@@ -1109,6 +1184,7 @@ export default function BroadcasterScreen() {
         visible={showContentLabelModal}
         onSelect={handleContentLabelSelected}
         onCancel={() => {
+          console.log('❌ Content label modal cancelled');
           if (isMountedRef.current) {
             setShowContentLabelModal(false);
             setShowSetup(false);
@@ -1121,6 +1197,7 @@ export default function BroadcasterScreen() {
         visible={showCreatorRulesModal}
         onConfirm={handleCreatorRulesConfirm}
         onCancel={() => {
+          console.log('❌ Creator rules modal cancelled');
           if (isMountedRef.current) {
             setShowCreatorRulesModal(false);
             setShowSetup(false);

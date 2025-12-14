@@ -7,6 +7,7 @@ if (__DEV__) {
   console.warn = (...args: any[]) => {
     // Defensive check: ensure args is an array and has elements
     if (!args || !Array.isArray(args) || args.length === 0) {
+      console.log('Warning called with empty args');
       return;
     }
     
@@ -37,6 +38,7 @@ if (__DEV__) {
   console.error = (...args: any[]) => {
     // Defensive check: ensure args is an array and has elements
     if (!args || !Array.isArray(args) || args.length === 0) {
+      console.log('Error called with empty args');
       return;
     }
     
