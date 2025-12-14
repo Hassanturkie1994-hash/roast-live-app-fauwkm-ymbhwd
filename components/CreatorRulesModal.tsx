@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,14 +32,27 @@ export default function CreatorRulesModal({
 
   const allRulesChecked = rule1Checked && rule2Checked && rule3Checked;
 
+  // Reset checkboxes when modal becomes visible
+  useEffect(() => {
+    if (visible) {
+      setRule1Checked(false);
+      setRule2Checked(false);
+      setRule3Checked(false);
+    }
+  }, [visible]);
+
   const handleConfirm = () => {
     if (allRulesChecked && !isLoading) {
+      console.log('✅ All rules checked, confirming...');
       onConfirm();
+    } else {
+      console.log('⚠️ Cannot confirm: allRulesChecked =', allRulesChecked, 'isLoading =', isLoading);
     }
   };
 
   const handleCancel = () => {
     if (!isLoading) {
+      console.log('❌ Cancelling creator rules...');
       // Reset checkboxes
       setRule1Checked(false);
       setRule2Checked(false);
@@ -161,16 +174,16 @@ export default function CreatorRulesModal({
             {/* Buttons */}
             <View style={styles.buttonsContainer}>
               <TouchableOpacity
-                style={styles.cancelButton}
+                style={[styles.cancelButton, isLoading && styles.buttonDisabled]}
                 onPress={handleCancel}
                 disabled={isLoading}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, isLoading && styles.textDisabled]}>Cancel</Text>
               </TouchableOpacity>
 
               <View style={styles.confirmButtonContainer}>
                 <GradientButton
-                  title={isLoading ? 'CONFIRMING...' : 'CONFIRM & GO LIVE'}
+                  title={isLoading ? 'STARTING...' : 'CONFIRM & GO LIVE'}
                   onPress={handleConfirm}
                   size="medium"
                   disabled={!allRulesChecked || isLoading}
@@ -179,8 +192,9 @@ export default function CreatorRulesModal({
             </View>
 
             {isLoading && (
-              <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color={colors.gradientEnd} />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={colors.gradientEnd} />
+                <Text style={styles.loadingText}>Starting your stream...</Text>
               </View>
             )}
           </ScrollView>
@@ -287,6 +301,7 @@ const styles = StyleSheet.create({
   buttonsContainer: {
     flexDirection: 'row',
     gap: 12,
+    marginBottom: 16,
   },
   cancelButton: {
     flex: 1,
@@ -303,13 +318,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  textDisabled: {
+    opacity: 0.5,
+  },
   confirmButtonContainer: {
     flex: 1,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  loadingContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });
