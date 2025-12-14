@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Platform, BackHandler, AppState, AppStateStatus } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, FlashMode } from 'expo-camera';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 
 import { colors, commonStyles } from '@/styles/commonStyles';
@@ -126,6 +127,13 @@ export default function BroadcasterScreen() {
     return () => {
       isMountedRef.current = false;
       console.log('🎬 BroadcasterScreen unmounted');
+      // Deactivate keep awake when component unmounts
+      try {
+        deactivateKeepAwake();
+        console.log('💤 Keep awake deactivated on unmount');
+      } catch (error) {
+        console.warn('⚠️ Failed to deactivate keep awake on unmount:', error);
+      }
     };
   }, [user]);
 
@@ -450,6 +458,16 @@ export default function BroadcasterScreen() {
     setLoading(true);
 
     try {
+      // CRITICAL FIX: Wrap keep awake in try/catch to prevent blocking stream creation
+      console.log('💤 Attempting to activate keep awake...');
+      try {
+        await activateKeepAwakeAsync();
+        console.log('✅ Keep awake activated successfully');
+      } catch (keepAwakeError) {
+        // Log the error but DO NOT block stream creation
+        console.warn('⚠️ KeepAwake failed, continuing stream start:', keepAwakeError);
+      }
+
       // Log creator rules acceptance
       console.log('📝 Logging creator rules acceptance...');
       const result = await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
@@ -650,6 +668,14 @@ export default function BroadcasterScreen() {
       
       // Stop reconnection attempts
       stopReconnect();
+
+      // Deactivate keep awake
+      try {
+        deactivateKeepAwake();
+        console.log('💤 Keep awake deactivated');
+      } catch (keepAwakeError) {
+        console.warn('⚠️ Failed to deactivate keep awake:', keepAwakeError);
+      }
 
       // Get total unique viewers
       const totalViewerCount = await viewerTrackingService.getTotalViewerCount(currentStream.id);
