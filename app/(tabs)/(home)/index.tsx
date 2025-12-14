@@ -396,24 +396,9 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header with Logo */}
+      {/* Header with Logo - Go Live button removed */}
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <AppLogo size="small" alignment="center" withShadow />
-        
-        {/* Go Live Button */}
-        <TouchableOpacity
-          style={styles.goLiveButton}
-          onPress={handleGoLivePress}
-          activeOpacity={0.8}
-        >
-          <IconSymbol
-            ios_icon_name="video.fill"
-            android_material_icon_name="videocam"
-            size={20}
-            color={colors.text}
-          />
-          <Text style={[styles.goLiveText, { color: colors.text }]}>GO LIVE</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
@@ -582,22 +567,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  goLiveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(164, 0, 40, 0.1)',
-    borderWidth: 1,
-    borderColor: '#A40028',
-  },
-  goLiveText: {
-    fontSize: 14,
-    fontWeight: '700',
+    justifyContent: 'center',
   },
   tabBar: {
     flexDirection: 'row',
