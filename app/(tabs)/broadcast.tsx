@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, BackHandler, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, BackHandler, ActivityIndicator, TextInput, Modal, ScrollView } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, FlashMode } from 'expo-camera';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -13,7 +13,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import ChatOverlay from '@/components/ChatOverlay';
 import GiftAnimationOverlay from '@/components/GiftAnimationOverlay';
 import ConnectionStatusIndicator from '@/components/ConnectionStatusIndicator';
-import StreamHealthDashboard from '@/components/StreamHealthDashboard';
 import ViewerListModal from '@/components/ViewerListModal';
 import ContentLabelBadge from '@/components/ContentLabelBadge';
 import { ContentLabel } from '@/components/ContentLabelModal';
@@ -73,6 +72,7 @@ export default function BroadcastScreen() {
   const [peakViewers, setPeakViewers] = useState(0);
   const [totalViewers, setTotalViewers] = useState(0);
   const [totalGifts, setTotalGifts] = useState(0);
+  const [totalLikes, setTotalLikes] = useState(0);
 
   // Camera controls
   const [isMicOn, setIsMicOn] = useState(true);
@@ -82,7 +82,8 @@ export default function BroadcastScreen() {
   const [giftAnimations, setGiftAnimations] = useState<GiftAnimation[]>([]);
   const [showViewerList, setShowViewerList] = useState(false);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
-  const [showHealthDashboard, setShowHealthDashboard] = useState(true);
+  const [showLiveSettings, setShowLiveSettings] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const streamStartTime = useRef<string | null>(null);
@@ -90,6 +91,7 @@ export default function BroadcastScreen() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const realtimeRef = useRef<any>(null);
   const giftChannelRef = useRef<any>(null);
+  const likesChannelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
 
   // Connection monitoring
@@ -244,6 +246,7 @@ export default function BroadcastScreen() {
         setPeakViewers(0);
         setTotalViewers(0);
         setTotalGifts(0);
+        setTotalLikes(0);
         setLiveSeconds(0);
         console.log('✅ [STREAM-CREATE-6] Stream state updated successfully');
       }
@@ -372,11 +375,34 @@ export default function BroadcastScreen() {
     giftChannelRef.current = channel;
   }, []);
 
+  /* ───────────────── LIKES SUBSCRIPTION ───────────────── */
+  const subscribeToLikes = useCallback((streamId: string) => {
+    if (!isMountedRef.current) return;
+
+    console.log('🔌 Subscribing to likes:', `stream:${streamId}:likes`);
+
+    const channel = supabase
+      .channel(`stream:${streamId}:likes`)
+      .on('broadcast', { event: 'like_sent' }, (payload) => {
+        console.log('❤️ Like received:', payload);
+        
+        if (!isMountedRef.current) return;
+        
+        setTotalLikes((prev) => prev + 1);
+      })
+      .subscribe((status) => {
+        console.log('📡 Likes channel subscription status:', status);
+      });
+
+    likesChannelRef.current = channel;
+  }, []);
+
   useEffect(() => {
     if (isLive && currentStream?.id && isMountedRef.current) {
       console.log('🚀 Initializing Realtime channels for stream:', currentStream.id);
       subscribeViewers(currentStream.id);
       subscribeToGifts(currentStream.id);
+      subscribeToLikes(currentStream.id);
     }
     
     return () => {
@@ -390,8 +416,13 @@ export default function BroadcastScreen() {
         supabase.removeChannel(giftChannelRef.current);
         giftChannelRef.current = null;
       }
+      if (likesChannelRef.current) {
+        console.log('🔌 Unsubscribing from likes channel');
+        supabase.removeChannel(likesChannelRef.current);
+        likesChannelRef.current = null;
+      }
     };
-  }, [isLive, currentStream?.id, subscribeViewers, subscribeToGifts]);
+  }, [isLive, currentStream?.id, subscribeViewers, subscribeToGifts, subscribeToLikes]);
 
   const handleAnimationComplete = (animationId: string) => {
     if (isMountedRef.current) {
@@ -407,6 +438,10 @@ export default function BroadcastScreen() {
     if (giftChannelRef.current) {
       supabase.removeChannel(giftChannelRef.current);
       giftChannelRef.current = null;
+    }
+    if (likesChannelRef.current) {
+      supabase.removeChannel(likesChannelRef.current);
+      likesChannelRef.current = null;
     }
   };
 
@@ -487,6 +522,7 @@ export default function BroadcastScreen() {
         setPeakViewers(0);
         setTotalViewers(0);
         setTotalGifts(0);
+        setTotalLikes(0);
         setLiveSeconds(0);
         setCurrentStream(null);
         setGiftAnimations([]);
@@ -496,7 +532,7 @@ export default function BroadcastScreen() {
 
       Alert.alert(
         'Stream Ended',
-        `Your live stream has been ended successfully.\n\n📊 Stats:\n• Peak Viewers: ${peakViewers}\n• Total Viewers: ${totalViewerCount}\n• Total Gifts: ${totalGifts}\n• Duration: ${formatTime(liveSeconds)}`,
+        `Your live stream has been ended successfully.\n\n📊 Stats:\n• Peak Viewers: ${peakViewers}\n• Total Viewers: ${totalViewerCount}\n• Total Gifts: ${totalGifts}\n• Total Likes: ${totalLikes}\n• Duration: ${formatTime(liveSeconds)}`,
         [
           {
             text: 'OK',
@@ -572,6 +608,11 @@ export default function BroadcastScreen() {
     console.log('❌ Cancelling stream creation...');
     setIsStreaming(false);
     router.back();
+  };
+
+  const handleShare = () => {
+    console.log('📤 Share stream');
+    setShowShareModal(true);
   };
 
   /* ───────────────── RENDER ───────────────── */
@@ -680,7 +721,7 @@ export default function BroadcastScreen() {
         </View>
       )}
 
-      {/* OVERLAY LAYER - z-index 50 */}
+      {/* OVERLAY LAYER */}
       <View style={styles.overlay} pointerEvents="box-none">
         {isLive && currentStream && (
           <>
@@ -691,72 +732,165 @@ export default function BroadcastScreen() {
               maxAttempts={6}
             />
 
-            {/* Top Bar */}
+            {/* TOP BAR - TikTok Style */}
             <View style={styles.topBar}>
               <View style={styles.topLeft}>
-                <AppLogo size={80} opacity={0.35} alignment="left" />
+                {/* Host Avatar & Name */}
+                <View style={styles.hostInfo}>
+                  <View style={styles.hostAvatar}>
+                    <IconSymbol
+                      ios_icon_name="person.fill"
+                      android_material_icon_name="person"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                  <Text style={styles.hostName}>{user?.display_name || 'Host'}</Text>
+                </View>
+
+                {/* Live Badge */}
                 <LiveBadge size="small" />
-                {params.contentLabel && (
-                  <ContentLabelBadge label={params.contentLabel} size="small" />
-                )}
-              </View>
-              <View style={styles.statsContainer}>
+
+                {/* Viewer Count */}
                 <TouchableOpacity 
-                  style={styles.stat}
+                  style={styles.viewerCountButton}
                   onPress={() => setShowViewerList(true)}
                   activeOpacity={0.7}
                 >
                   <IconSymbol
                     ios_icon_name="eye.fill"
                     android_material_icon_name="visibility"
-                    size={16}
-                    color={colors.text}
+                    size={14}
+                    color="#FFFFFF"
                   />
-                  <Text style={styles.statText}>{viewerCount}</Text>
+                  <Text style={styles.viewerCountText}>{viewerCount}</Text>
                 </TouchableOpacity>
-                <View style={styles.stat}>
-                  <IconSymbol
-                    ios_icon_name="clock.fill"
-                    android_material_icon_name="schedule"
-                    size={16}
-                    color={colors.text}
-                  />
-                  <Text style={styles.statText}>{formatTime(liveSeconds)}</Text>
-                </View>
               </View>
+
+              {/* Close (End Live) Button */}
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setShowExitConfirmation(true)}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
             </View>
 
-            {/* Content Warning Banner */}
-            {params.contentLabel && (params.contentLabel === 'roast_mode' || params.contentLabel === 'adult_only') && (
-              <View style={styles.warningBanner}>
-                <IconSymbol
-                  ios_icon_name="exclamationmark.triangle.fill"
-                  android_material_icon_name="warning"
-                  size={14}
-                  color={colors.text}
-                />
-                <Text style={styles.warningText}>Viewer discretion advised</Text>
+            {/* Content Label Badge */}
+            {params.contentLabel && (
+              <View style={styles.contentLabelContainer}>
+                <ContentLabelBadge label={params.contentLabel} size="small" />
               </View>
             )}
 
-            {/* Stream Health Dashboard */}
-            <StreamHealthDashboard
-              viewerCount={viewerCount}
-              giftCount={totalGifts}
-              isVisible={showHealthDashboard}
-            />
+            {/* RIGHT SIDE OVERLAYS - TikTok Style */}
+            <View style={styles.rightSideControls}>
+              {/* Likes Animation */}
+              <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
+                <IconSymbol
+                  ios_icon_name="heart.fill"
+                  android_material_icon_name="favorite"
+                  size={32}
+                  color="#FF1744"
+                />
+                <Text style={styles.rightSideButtonText}>{totalLikes}</Text>
+              </TouchableOpacity>
 
-            {/* Chat Overlay - ALWAYS RENDERED when live */}
+              {/* Gifts */}
+              <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
+                <IconSymbol
+                  ios_icon_name="gift.fill"
+                  android_material_icon_name="card_giftcard"
+                  size={32}
+                  color="#FFD700"
+                />
+                <Text style={styles.rightSideButtonText}>{totalGifts}</Text>
+              </TouchableOpacity>
+
+              {/* Roast Reactions */}
+              <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
+                <Text style={styles.roastEmoji}>🔥</Text>
+                <Text style={styles.rightSideButtonText}>Roast</Text>
+              </TouchableOpacity>
+
+              {/* Share */}
+              <TouchableOpacity 
+                style={styles.rightSideButton} 
+                onPress={handleShare}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="square.and.arrow.up.fill"
+                  android_material_icon_name="share"
+                  size={32}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.rightSideButtonText}>Share</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* BOTTOM LEFT - Chat Overlay */}
             <ChatOverlay
               streamId={currentStream.id}
               isBroadcaster={true}
               streamDelay={0}
             />
+
+            {/* BOTTOM CENTER - Controls */}
+            <View style={styles.bottomCenterControls}>
+              {/* Mic Control */}
+              <TouchableOpacity
+                style={[styles.bottomControlButton, !isMicOn && styles.bottomControlButtonOff]}
+                onPress={toggleMic}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name={isMicOn ? 'mic.fill' : 'mic.slash.fill'}
+                  android_material_icon_name={isMicOn ? 'mic' : 'mic_off'}
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+
+              {/* Camera Flip */}
+              <TouchableOpacity
+                style={styles.bottomControlButton}
+                onPress={toggleCameraFacing}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
+                  android_material_icon_name="flip_camera_ios"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+
+              {/* Settings */}
+              <TouchableOpacity
+                style={styles.bottomControlButton}
+                onPress={() => setShowLiveSettings(true)}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="gearshape.fill"
+                  android_material_icon_name="settings"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
           </>
         )}
       </View>
 
-      {/* GIFT ANIMATIONS - z-index 100 */}
+      {/* GIFT ANIMATIONS */}
       {giftAnimations.map((animation) => (
         <GiftAnimationOverlay
           key={animation.id}
@@ -768,43 +902,6 @@ export default function BroadcastScreen() {
           onAnimationComplete={() => handleAnimationComplete(animation.id)}
         />
       ))}
-
-      {/* CONTROLS - POSITIONED HIGHER TO AVOID TAB BAR - z-index 150 */}
-      <View style={styles.controlsWrapper}>
-        {isLive && (
-          <View style={styles.liveControls}>
-            <TouchableOpacity
-              style={[styles.controlButton, !isMicOn && styles.controlButtonOff]}
-              onPress={toggleMic}
-            >
-              <IconSymbol
-                ios_icon_name={isMicOn ? 'mic.fill' : 'mic.slash.fill'}
-                android_material_icon_name={isMicOn ? 'mic' : 'mic_off'}
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-
-            <GradientButton
-              title="END LIVE"
-              onPress={() => setShowExitConfirmation(true)}
-              size="large"
-            />
-
-            <TouchableOpacity
-              style={styles.controlButton}
-              onPress={toggleCameraFacing}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
-                android_material_icon_name="flip_camera_ios"
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
 
       {/* VIEWER LIST MODAL */}
       {currentStream && user && (
@@ -819,6 +916,25 @@ export default function BroadcastScreen() {
           isModerator={false}
         />
       )}
+
+      {/* LIVE SETTINGS MODAL */}
+      <LiveSettingsModal
+        visible={showLiveSettings}
+        onClose={() => setShowLiveSettings(false)}
+        streamTitle={params.streamTitle || ''}
+        liveSeconds={liveSeconds}
+        viewerCount={viewerCount}
+        peakViewers={peakViewers}
+        totalGifts={totalGifts}
+        totalLikes={totalLikes}
+      />
+
+      {/* SHARE MODAL */}
+      <ShareModal
+        visible={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        streamTitle={params.streamTitle || ''}
+      />
 
       {/* EXIT CONFIRMATION MODAL */}
       {showExitConfirmation && (
@@ -856,6 +972,216 @@ export default function BroadcastScreen() {
         </View>
       )}
     </View>
+  );
+}
+
+/* ───────────────── LIVE SETTINGS MODAL ───────────────── */
+
+interface LiveSettingsModalProps {
+  visible: boolean;
+  onClose: () => void;
+  streamTitle: string;
+  liveSeconds: number;
+  viewerCount: number;
+  peakViewers: number;
+  totalGifts: number;
+  totalLikes: number;
+}
+
+function LiveSettingsModal({
+  visible,
+  onClose,
+  streamTitle,
+  liveSeconds,
+  viewerCount,
+  peakViewers,
+  totalGifts,
+  totalLikes,
+}: LiveSettingsModalProps) {
+  const formatTime = (s: number) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.settingsOverlay}>
+        <View style={styles.settingsPanel}>
+          <View style={styles.settingsHeader}>
+            <Text style={styles.settingsTitle}>Live Settings</Text>
+            <TouchableOpacity onPress={onClose}>
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.settingsContent} showsVerticalScrollIndicator={false}>
+            {/* Stream Info */}
+            <View style={styles.settingSection}>
+              <Text style={styles.settingLabel}>Stream Information</Text>
+              <View style={styles.infoCard}>
+                <Text style={styles.infoTitle}>{streamTitle}</Text>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoText}>Duration: {formatTime(liveSeconds)}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Live Stats */}
+            <View style={styles.settingSection}>
+              <Text style={styles.settingLabel}>Live Statistics</Text>
+              <View style={styles.statsGrid}>
+                <View style={styles.statCard}>
+                  <IconSymbol
+                    ios_icon_name="eye.fill"
+                    android_material_icon_name="visibility"
+                    size={24}
+                    color={colors.brandPrimary}
+                  />
+                  <Text style={styles.statValue}>{viewerCount}</Text>
+                  <Text style={styles.statLabel}>Current</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <IconSymbol
+                    ios_icon_name="chart.line.uptrend.xyaxis"
+                    android_material_icon_name="trending_up"
+                    size={24}
+                    color={colors.brandPrimary}
+                  />
+                  <Text style={styles.statValue}>{peakViewers}</Text>
+                  <Text style={styles.statLabel}>Peak</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <IconSymbol
+                    ios_icon_name="gift.fill"
+                    android_material_icon_name="card_giftcard"
+                    size={24}
+                    color={colors.brandPrimary}
+                  />
+                  <Text style={styles.statValue}>{totalGifts}</Text>
+                  <Text style={styles.statLabel}>Gifts</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <IconSymbol
+                    ios_icon_name="heart.fill"
+                    android_material_icon_name="favorite"
+                    size={24}
+                    color={colors.brandPrimary}
+                  />
+                  <Text style={styles.statValue}>{totalLikes}</Text>
+                  <Text style={styles.statLabel}>Likes</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Moderator Management */}
+            <View style={styles.settingSection}>
+              <Text style={styles.settingLabel}>Moderators</Text>
+              <TouchableOpacity style={styles.manageButton}>
+                <Text style={styles.manageButtonText}>Manage Moderators</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron_right"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Pin Messages */}
+            <View style={styles.settingSection}>
+              <Text style={styles.settingLabel}>Pinned Messages</Text>
+              <TouchableOpacity style={styles.manageButton}>
+                <Text style={styles.manageButtonText}>Manage Pinned Messages</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron_right"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+
+          <View style={styles.settingsFooter}>
+            <GradientButton title="Done" onPress={onClose} size="large" />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/* ───────────────── SHARE MODAL ───────────────── */
+
+interface ShareModalProps {
+  visible: boolean;
+  onClose: () => void;
+  streamTitle: string;
+}
+
+function ShareModal({ visible, onClose, streamTitle }: ShareModalProps) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.settingsOverlay}>
+        <View style={styles.settingsPanel}>
+          <View style={styles.settingsHeader}>
+            <Text style={styles.settingsTitle}>Share Stream</Text>
+            <TouchableOpacity onPress={onClose}>
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.shareContent}>
+            <Text style={styles.shareTitle}>{streamTitle}</Text>
+            <Text style={styles.shareSubtitle}>Share this live stream with your friends!</Text>
+
+            <View style={styles.shareButtons}>
+              <TouchableOpacity style={styles.shareButton}>
+                <IconSymbol
+                  ios_icon_name="link"
+                  android_material_icon_name="link"
+                  size={32}
+                  color={colors.brandPrimary}
+                />
+                <Text style={styles.shareButtonText}>Copy Link</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.shareButton}>
+                <IconSymbol
+                  ios_icon_name="message.fill"
+                  android_material_icon_name="message"
+                  size={32}
+                  color={colors.brandPrimary}
+                />
+                <Text style={styles.shareButtonText}>Message</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.shareButton}>
+                <IconSymbol
+                  ios_icon_name="square.and.arrow.up"
+                  android_material_icon_name="share"
+                  size={32}
+                  color={colors.brandPrimary}
+                />
+                <Text style={styles.shareButtonText}>More</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.settingsFooter}>
+            <GradientButton title="Close" onPress={onClose} size="large" />
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -967,87 +1293,119 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
-    zIndex: 50,
   },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: Platform.OS === 'android' ? 60 : 50,
-    paddingHorizontal: 20,
-    zIndex: 60,
+    paddingHorizontal: 16,
+    zIndex: 100,
   },
   topLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    flexWrap: 'wrap',
     flex: 1,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  stat: {
+  hostInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 20,
     gap: 6,
   },
-  statText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  warningBanner: {
-    flexDirection: 'row',
+  hostAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.brandPrimary,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(164, 0, 40, 0.9)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginTop: 8,
-    marginHorizontal: 20,
-    borderRadius: 8,
-    gap: 8,
-    zIndex: 60,
   },
-  warningText: {
-    fontSize: 12,
+  hostName: {
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  controlsWrapper: {
-    position: 'absolute',
-    bottom: 140,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    zIndex: 150,
-  },
-  liveControls: {
+  viewerCountButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 40,
-    width: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    gap: 4,
   },
-  controlButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  viewerCountText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contentLabelContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 110 : 100,
+    left: 16,
+    zIndex: 100,
+  },
+  rightSideControls: {
+    position: 'absolute',
+    right: 12,
+    bottom: 200,
+    gap: 24,
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  rightSideButton: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  rightSideButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  roastEmoji: {
+    fontSize: 32,
+  },
+  bottomCenterControls: {
+    position: 'absolute',
+    bottom: 120,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+    paddingHorizontal: 20,
+    zIndex: 100,
+  },
+  bottomControlButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
-  controlButtonOff: {
-    backgroundColor: 'rgba(164, 0, 40, 0.7)',
+  bottomControlButtonOff: {
+    backgroundColor: 'rgba(164, 0, 40, 0.8)',
+    borderColor: colors.brandPrimary,
   },
   modal: {
     ...StyleSheet.absoluteFillObject,
@@ -1098,5 +1456,139 @@ const styles = StyleSheet.create({
   },
   confirmationEndButton: {
     flex: 1,
+  },
+  settingsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  settingsPanel: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  settingsTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  settingsContent: {
+    padding: 20,
+  },
+  settingSection: {
+    marginBottom: 24,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  infoCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 16,
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  manageButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  manageButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  settingsFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  shareContent: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  shareTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  shareSubtitle: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  shareButtons: {
+    flexDirection: 'row',
+    gap: 24,
+    justifyContent: 'center',
+  },
+  shareButton: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  shareButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

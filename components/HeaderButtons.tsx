@@ -1,7 +1,11 @@
+
 import React from "react";
 import { Pressable, StyleSheet, Alert } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { useTheme } from "@react-navigation/native";
+
+// Note: The "Go Live" button has been removed from the header.
+// The primary entry point for starting a live stream is the center button in the bottom navigation.
 
 export function HeaderRightButton() {
   const theme = useTheme();
