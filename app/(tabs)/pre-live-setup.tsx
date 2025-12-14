@@ -18,17 +18,19 @@ import AppLogo from '@/components/AppLogo';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamState } from '@/contexts/LiveStreamStateMachine';
+import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
-import EffectsPanel from '@/components/EffectsPanel';
-import FiltersPanel from '@/components/FiltersPanel';
+import ImprovedEffectsPanel from '@/components/ImprovedEffectsPanel';
+import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import LiveSettingsPanel from '@/components/LiveSettingsPanel';
-import CameraFilterOverlay from '@/components/CameraFilterOverlay';
-import VisualEffectsOverlay from '@/components/VisualEffectsOverlay';
+import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverlay';
+import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOverlay';
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
   const liveStreamState = useLiveStreamState();
+  const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
 
@@ -50,11 +52,6 @@ export default function PreLiveSetupScreen() {
   const [whoCanWatch, setWhoCanWatch] = useState<'public' | 'followers' | 'vip_club'>('public');
   const [selectedModerators, setSelectedModerators] = useState<string[]>([]);
 
-  // Effects and filters states
-  const [selectedEffect, setSelectedEffect] = useState<string | null>(null);
-  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
-  const [filterIntensity, setFilterIntensity] = useState(1.0);
-
   // VIP Club state
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
 
@@ -75,6 +72,8 @@ export default function PreLiveSetupScreen() {
     // Enter PRE_LIVE_SETUP state
     liveStreamState.enterPreLiveSetup();
     console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
+    console.log('🎨 [PRE-LIVE] Active filter:', activeFilter?.name || 'None');
+    console.log('✨ [PRE-LIVE] Active effect:', activeEffect?.name || 'None');
 
     return () => {
       isMountedRef.current = false;
@@ -114,6 +113,8 @@ export default function PreLiveSetupScreen() {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
     console.log('📊 [PRE-LIVE] Current state:', liveStreamState.currentState);
     console.log('🎯 [PRE-LIVE] Practice Mode:', practiceMode);
+    console.log('🎨 [PRE-LIVE] Active filter:', activeFilter?.name || 'None');
+    console.log('✨ [PRE-LIVE] Active effect:', activeEffect?.name || 'None');
 
     if (!streamTitle.trim()) {
       Alert.alert('Error', 'Please enter a stream title');
@@ -160,7 +161,7 @@ export default function PreLiveSetupScreen() {
       liveStreamState.startStreamCreation();
 
       // IMMEDIATELY navigate to broadcaster screen with all settings
-      // Navigation happens BEFORE stream creation (non-blocking)
+      // Filters and effects are managed by CameraEffectsContext (no need to pass as params)
       console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
       
       router.push({
@@ -172,9 +173,6 @@ export default function PreLiveSetupScreen() {
           practiceMode: practiceMode.toString(),
           whoCanWatch,
           selectedModerators: JSON.stringify(selectedModerators),
-          selectedEffect: selectedEffect || '',
-          selectedFilter: selectedFilter || '',
-          filterIntensity: filterIntensity.toString(),
           selectedVIPClub: selectedVIPClub || '',
         },
       });
@@ -184,8 +182,8 @@ export default function PreLiveSetupScreen() {
         practiceMode,
         selectedModerators: selectedModerators.length,
         selectedVIPClub,
-        selectedEffect,
-        selectedFilter,
+        hasFilter: hasActiveFilter(),
+        hasEffect: hasActiveEffect(),
       });
     } catch (error) {
       console.error('❌ [PRE-LIVE] Error in handleGoLive:', error);
@@ -226,11 +224,11 @@ export default function PreLiveSetupScreen() {
       {/* CAMERA PREVIEW BACKGROUND */}
       <CameraView style={StyleSheet.absoluteFill} facing={facing} />
 
-      {/* CAMERA FILTER OVERLAY */}
-      <CameraFilterOverlay filter={selectedFilter} intensity={filterIntensity} />
+      {/* CAMERA FILTER OVERLAY - Using improved component */}
+      <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
 
-      {/* VISUAL EFFECTS OVERLAY */}
-      <VisualEffectsOverlay effect={selectedEffect} />
+      {/* VISUAL EFFECTS OVERLAY - Using improved component */}
+      <ImprovedVisualEffectsOverlay effect={activeEffect} />
 
       {/* DARK OVERLAY */}
       <View style={styles.overlay} />
@@ -312,10 +310,10 @@ export default function PreLiveSetupScreen() {
             ios_icon_name="sparkles"
             android_material_icon_name="auto_awesome"
             size={28}
-            color="#FFFFFF"
+            color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
           />
           <Text style={styles.actionButtonText}>Effects</Text>
-          {selectedEffect && <View style={styles.activeDot} />}
+          {hasActiveEffect() && <View style={styles.activeDot} />}
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -326,10 +324,10 @@ export default function PreLiveSetupScreen() {
             ios_icon_name="camera.filters"
             android_material_icon_name="filter"
             size={28}
-            color="#FFFFFF"
+            color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
           />
           <Text style={styles.actionButtonText}>Filters</Text>
-          {selectedFilter && <View style={styles.activeDot} />}
+          {hasActiveFilter() && <View style={styles.activeDot} />}
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -408,8 +406,8 @@ export default function PreLiveSetupScreen() {
         <View style={styles.debugContainer}>
           <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
           <Text style={styles.debugText}>Practice: {practiceMode ? 'YES' : 'NO'}</Text>
-          <Text style={styles.debugText}>Moderators: {selectedModerators.length}</Text>
-          <Text style={styles.debugText}>VIP Club: {selectedVIPClub ? 'SET' : 'NONE'}</Text>
+          <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
+          <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
         </View>
       )}
 
@@ -420,22 +418,16 @@ export default function PreLiveSetupScreen() {
         onCancel={() => setShowContentLabelModal(false)}
       />
 
-      {/* EFFECTS PANEL */}
-      <EffectsPanel
+      {/* EFFECTS PANEL - Using improved component */}
+      <ImprovedEffectsPanel
         visible={showEffectsPanel}
         onClose={() => setShowEffectsPanel(false)}
-        selectedEffect={selectedEffect}
-        onSelectEffect={setSelectedEffect}
       />
 
-      {/* FILTERS PANEL */}
-      <FiltersPanel
+      {/* FILTERS PANEL - Using improved component */}
+      <ImprovedFiltersPanel
         visible={showFiltersPanel}
         onClose={() => setShowFiltersPanel(false)}
-        selectedFilter={selectedFilter}
-        onSelectFilter={setSelectedFilter}
-        filterIntensity={filterIntensity}
-        onIntensityChange={setFilterIntensity}
       />
 
       {/* VIP CLUB PANEL */}

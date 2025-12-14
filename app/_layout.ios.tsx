@@ -22,6 +22,7 @@ import { StreamingProvider } from "@/contexts/StreamingContext";
 import { LiveStreamStateMachineProvider } from "@/contexts/LiveStreamStateMachine";
 import { VIPClubProvider } from "@/contexts/VIPClubContext";
 import { ModeratorsProvider } from "@/contexts/ModeratorsContext";
+import { CameraEffectsProvider } from "@/contexts/CameraEffectsContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -89,31 +90,33 @@ function RootLayoutContent() {
             <LiveStreamStateMachineProvider>
               <VIPClubProvider>
                 <ModeratorsProvider>
-                  <WidgetProvider>
-                    <GestureHandlerRootView>
-                      <Stack
-                        screenOptions={{
-                          headerShown: false,
-                          contentStyle: { backgroundColor: colors.background },
-                        }}
-                      >
-                        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                        <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-                        <Stack.Screen name="auth/register" options={{ headerShown: false }} />
-                        <Stack.Screen
-                          name="live-player"
-                          options={{
-                            presentation: "fullScreenModal",
-                            animation: "slide_from_bottom",
+                  <CameraEffectsProvider>
+                    <WidgetProvider>
+                      <GestureHandlerRootView>
+                        <Stack
+                          screenOptions={{
+                            headerShown: false,
+                            contentStyle: { backgroundColor: colors.background },
                           }}
-                        />
-                        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-                        <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
-                        <Stack.Screen name="transparent-modal" options={{ presentation: 'transparentModal' }} />
-                      </Stack>
-                      <SystemBars style={colors.statusBarStyle === 'light' ? 'light' : 'dark'} />
-                    </GestureHandlerRootView>
-                  </WidgetProvider>
+                        >
+                          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                          <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+                          <Stack.Screen name="auth/register" options={{ headerShown: false }} />
+                          <Stack.Screen
+                            name="live-player"
+                            options={{
+                              presentation: "fullScreenModal",
+                              animation: "slide_from_bottom",
+                            }}
+                          />
+                          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+                          <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
+                          <Stack.Screen name="transparent-modal" options={{ presentation: 'transparentModal' }} />
+                        </Stack>
+                        <SystemBars style={colors.statusBarStyle === 'light' ? 'light' : 'dark'} />
+                      </GestureHandlerRootView>
+                    </WidgetProvider>
+                  </CameraEffectsProvider>
                 </ModeratorsProvider>
               </VIPClubProvider>
             </LiveStreamStateMachineProvider>

@@ -16,14 +16,15 @@ import ConnectionStatusIndicator from '@/components/ConnectionStatusIndicator';
 import ViewerListModal from '@/components/ViewerListModal';
 import ContentLabelBadge from '@/components/ContentLabelBadge';
 import { ContentLabel } from '@/components/ContentLabelModal';
-import CameraFilterOverlay from '@/components/CameraFilterOverlay';
-import VisualEffectsOverlay from '@/components/VisualEffectsOverlay';
-import EffectsPanel from '@/components/EffectsPanel';
-import FiltersPanel from '@/components/FiltersPanel';
+import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverlay';
+import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOverlay';
+import ImprovedEffectsPanel from '@/components/ImprovedEffectsPanel';
+import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useStreaming } from '@/contexts/StreamingContext';
 import { useLiveStreamState } from '@/contexts/LiveStreamStateMachine';
+import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { cloudflareService } from '@/app/services/cloudflareService';
 import { contentSafetyService } from '@/app/services/contentSafetyService';
@@ -52,8 +53,9 @@ export default function BroadcastScreen() {
   const { user } = useAuth();
   const { setIsStreaming, startStreamTimer, stopStreamTimer } = useStreaming();
   const liveStreamState = useLiveStreamState();
+  const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   
-  // Get params from navigation
+  // Get params from navigation (filters/effects now come from context)
   const params = useLocalSearchParams<{
     streamTitle?: string;
     contentLabel?: ContentLabel;
@@ -61,9 +63,6 @@ export default function BroadcastScreen() {
     practiceMode?: string;
     whoCanWatch?: string;
     selectedModerators?: string;
-    selectedEffect?: string;
-    selectedFilter?: string;
-    filterIntensity?: string;
     selectedVIPClub?: string;
   }>();
 
@@ -92,10 +91,8 @@ export default function BroadcastScreen() {
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
 
-  // Effects and filters (from params, can be changed during live)
-  const [selectedEffect, setSelectedEffect] = useState<string | null>(params.selectedEffect || null);
-  const [selectedFilter, setSelectedFilter] = useState<string | null>(params.selectedFilter || null);
-  const [filterIntensity, setFilterIntensity] = useState(parseFloat(params.filterIntensity || '1.0'));
+  // Effects and filters are now managed by CameraEffectsContext
+  // They persist automatically across screens and during live
 
   // UI states
   const [giftAnimations, setGiftAnimations] = useState<GiftAnimation[]>([]);
@@ -139,6 +136,8 @@ export default function BroadcastScreen() {
     console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
     console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
     console.log('🎯 [BROADCAST] Practice Mode:', isPracticeMode);
+    console.log('🎨 [BROADCAST] Active filter:', activeFilter?.name || 'None');
+    console.log('✨ [BROADCAST] Active effect:', activeEffect?.name || 'None');
 
     if (!user) {
       router.replace('/auth/login');
@@ -848,11 +847,11 @@ export default function BroadcastScreen() {
         </View>
       )}
 
-      {/* CAMERA FILTER OVERLAY */}
-      <CameraFilterOverlay filter={selectedFilter} intensity={filterIntensity} />
+      {/* CAMERA FILTER OVERLAY - Using improved component with context */}
+      <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
 
-      {/* VISUAL EFFECTS OVERLAY */}
-      <VisualEffectsOverlay effect={selectedEffect} />
+      {/* VISUAL EFFECTS OVERLAY - Using improved component with context */}
+      <ImprovedVisualEffectsOverlay effect={activeEffect} />
 
       {/* OVERLAY LAYER */}
       <View style={styles.overlay} pointerEvents="box-none">
@@ -965,7 +964,7 @@ export default function BroadcastScreen() {
                   ios_icon_name="sparkles"
                   android_material_icon_name="auto_awesome"
                   size={32}
-                  color={selectedEffect ? colors.brandPrimary : '#FFFFFF'}
+                  color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
                 />
                 <Text style={styles.rightSideButtonText}>Effects</Text>
               </TouchableOpacity>
@@ -980,7 +979,7 @@ export default function BroadcastScreen() {
                   ios_icon_name="camera.filters"
                   android_material_icon_name="filter"
                   size={32}
-                  color={selectedFilter ? colors.brandPrimary : '#FFFFFF'}
+                  color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
                 />
                 <Text style={styles.rightSideButtonText}>Filters</Text>
               </TouchableOpacity>
@@ -1069,6 +1068,8 @@ export default function BroadcastScreen() {
               <View style={styles.debugContainer}>
                 <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
                 <Text style={styles.debugText}>Mode: {isPracticeMode ? 'PRACTICE' : 'LIVE'}</Text>
+                <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
+                <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
               </View>
             )}
           </>
@@ -1102,22 +1103,16 @@ export default function BroadcastScreen() {
         />
       )}
 
-      {/* EFFECTS PANEL */}
-      <EffectsPanel
+      {/* EFFECTS PANEL - Using improved component with context */}
+      <ImprovedEffectsPanel
         visible={showEffectsPanel}
         onClose={() => setShowEffectsPanel(false)}
-        selectedEffect={selectedEffect}
-        onSelectEffect={setSelectedEffect}
       />
 
-      {/* FILTERS PANEL */}
-      <FiltersPanel
+      {/* FILTERS PANEL - Using improved component with context */}
+      <ImprovedFiltersPanel
         visible={showFiltersPanel}
         onClose={() => setShowFiltersPanel(false)}
-        selectedFilter={selectedFilter}
-        onSelectFilter={setSelectedFilter}
-        filterIntensity={filterIntensity}
-        onIntensityChange={setFilterIntensity}
       />
 
       {/* LIVE SETTINGS MODAL */}
