@@ -54,20 +54,20 @@ export default function AccountSecurityScreen() {
       setShow2FAModal(true);
     } else {
       Alert.alert(
-        'Inaktivera 2FA',
-        'Är du säker på att du vill inaktivera tvåfaktorsautentisering?',
+        'Disable 2FA',
+        'Are you sure you want to disable two-factor authentication?',
         [
-          { text: 'Avbryt', style: 'cancel' },
+          { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Inaktivera',
+            text: 'Disable',
             style: 'destructive',
             onPress: async () => {
               const result = await twoFactorAuthService.disable2FA(user.id);
               if (result.success) {
-                Alert.alert('Framgång', '2FA har inaktiverats.');
+                Alert.alert('Success', '2FA has been disabled.');
                 await loadData();
               } else {
-                Alert.alert('Fel', result.error || 'Misslyckades med att inaktivera 2FA.');
+                Alert.alert('Error', result.error || 'Failed to disable 2FA.');
               }
             },
           },
@@ -80,12 +80,12 @@ export default function AccountSecurityScreen() {
     if (!user) return;
 
     if (selectedMethod === 'sms' && !phoneNumber.trim()) {
-      Alert.alert('Fel', 'Vänligen ange ditt telefonnummer.');
+      Alert.alert('Error', 'Please enter your phone number.');
       return;
     }
 
     if (selectedMethod === 'email' && !email.trim()) {
-      Alert.alert('Fel', 'Vänligen ange din e-postadress.');
+      Alert.alert('Error', 'Please enter your email address.');
       return;
     }
 
@@ -97,36 +97,36 @@ export default function AccountSecurityScreen() {
     );
 
     if (result.success) {
-      Alert.alert('Framgång', '2FA har aktiverats framgångsrikt.');
+      Alert.alert('Success', '2FA has been enabled successfully.');
       setShow2FAModal(false);
       setPhoneNumber('');
       setEmail('');
       await loadData();
     } else {
-      Alert.alert('Fel', result.error || 'Misslyckades med att aktivera 2FA.');
+      Alert.alert('Error', result.error || 'Failed to enable 2FA.');
     }
   };
 
   const handleChangePassword = () => {
-    Alert.alert('Ändra lösenord', 'Funktionen för att ändra lösenord kommer snart.');
+    Alert.alert('Change Password', 'Password change functionality will be available soon.');
   };
 
   const handleLogoutDevice = async (loginId: string) => {
     Alert.alert(
-      'Logga ut enhet',
-      'Är du säker på att du vill logga ut från denna enhet?',
+      'Logout Device',
+      'Are you sure you want to logout from this device?',
       [
-        { text: 'Avbryt', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Logga ut',
+          text: 'Logout',
           style: 'destructive',
           onPress: async () => {
             const result = await twoFactorAuthService.logoutFromDevice(loginId);
             if (result.success) {
-              Alert.alert('Framgång', 'Enheten har loggats ut framgångsrikt.');
+              Alert.alert('Success', 'Device logged out successfully.');
               await loadData();
             } else {
-              Alert.alert('Fel', result.error || 'Misslyckades med att logga ut enheten.');
+              Alert.alert('Error', result.error || 'Failed to logout device.');
             }
           },
         },
@@ -138,20 +138,20 @@ export default function AccountSecurityScreen() {
     if (!user) return;
 
     Alert.alert(
-      'Logga ut alla enheter',
-      'Är du säker på att du vill logga ut från alla enheter? Du måste logga in igen.',
+      'Logout All Devices',
+      'Are you sure you want to logout from all devices? You will need to login again.',
       [
-        { text: 'Avbryt', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Logga ut alla',
+          text: 'Logout All',
           style: 'destructive',
           onPress: async () => {
             const result = await twoFactorAuthService.logoutFromAllDevices(user.id);
             if (result.success) {
-              Alert.alert('Framgång', 'Alla enheter har loggats ut framgångsrikt.');
+              Alert.alert('Success', 'All devices logged out successfully.');
               await loadData();
             } else {
-              Alert.alert('Fel', result.error || 'Misslyckades med att logga ut alla enheter.');
+              Alert.alert('Error', result.error || 'Failed to logout all devices.');
             }
           },
         },
@@ -170,7 +170,7 @@ export default function AccountSecurityScreen() {
             color={colors.text}
           />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Kontosäkerhet</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Account Security</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -181,21 +181,21 @@ export default function AccountSecurityScreen() {
       >
         {/* Security Settings */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>🔐 Säkerhetsinställningar</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>🔐 Security Settings</Text>
 
           <View style={[styles.settingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.settingRow}>
               <View style={styles.settingLeft}>
                 <IconSymbol
                   ios_icon_name="shield.fill"
-                  android_material_icon_name="shield"
+                  android_material_icon_name="security"
                   size={20}
                   color={colors.brandPrimary}
                 />
                 <View style={styles.settingInfo}>
-                  <Text style={[styles.settingTitle, { color: colors.text }]}>Tvåfaktorsautentisering</Text>
+                  <Text style={[styles.settingTitle, { color: colors.text }]}>Two-Factor Authentication</Text>
                   <Text style={[styles.settingSubtitle, { color: colors.textSecondary }]}>
-                    {twoFactorSettings?.is_enabled ? `Aktiverad via ${twoFactorSettings.method}` : 'Inte aktiverad'}
+                    {twoFactorSettings?.is_enabled ? `Enabled via ${twoFactorSettings.method}` : 'Not enabled'}
                   </Text>
                 </View>
               </View>
@@ -220,7 +220,7 @@ export default function AccountSecurityScreen() {
                   size={20}
                   color={colors.text}
                 />
-                <Text style={[styles.settingTitle, { color: colors.text }]}>Ändra lösenord</Text>
+                <Text style={[styles.settingTitle, { color: colors.text }]}>Change Password</Text>
               </View>
               <IconSymbol
                 ios_icon_name="chevron.right"
@@ -235,9 +235,9 @@ export default function AccountSecurityScreen() {
         {/* Login History */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>📱 Inloggningshistorik</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>📱 Login History</Text>
             <TouchableOpacity onPress={handleLogoutAllDevices}>
-              <Text style={[styles.logoutAllText, { color: colors.brandPrimary }]}>Logga ut alla</Text>
+              <Text style={[styles.logoutAllText, { color: colors.brandPrimary }]}>Logout All</Text>
             </TouchableOpacity>
           </View>
 
@@ -245,11 +245,11 @@ export default function AccountSecurityScreen() {
             <View style={[styles.emptyCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
               <IconSymbol
                 ios_icon_name="clock.fill"
-                android_material_icon_name="schedule"
+                android_material_icon_name="history"
                 size={32}
                 color={colors.textSecondary}
               />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Ingen inloggningshistorik</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No login history</Text>
             </View>
           ) : (
             loginHistory.map((login) => (
@@ -264,10 +264,10 @@ export default function AccountSecurityScreen() {
                     />
                     <View style={styles.loginDetails}>
                       <Text style={[styles.loginDevice, { color: colors.text }]}>
-                        {login.device?.toUpperCase() || 'Okänd enhet'}
+                        {login.device?.toUpperCase() || 'Unknown Device'}
                       </Text>
                       <Text style={[styles.loginTime, { color: colors.textSecondary }]}>
-                        {new Date(login.logged_in_at).toLocaleString('sv-SE')}
+                        {new Date(login.logged_in_at).toLocaleString()}
                       </Text>
                       {login.location && (
                         <Text style={[styles.loginLocation, { color: colors.textSecondary }]}>
@@ -290,7 +290,7 @@ export default function AccountSecurityScreen() {
                     style={[styles.logoutButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
                     onPress={() => handleLogoutDevice(login.id)}
                   >
-                    <Text style={[styles.logoutButtonText, { color: colors.brandPrimary }]}>Logga ut denna enhet</Text>
+                    <Text style={[styles.logoutButtonText, { color: colors.brandPrimary }]}>Logout This Device</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -309,7 +309,7 @@ export default function AccountSecurityScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Aktivera 2FA</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Enable 2FA</Text>
               <TouchableOpacity onPress={() => setShow2FAModal(false)}>
                 <IconSymbol
                   ios_icon_name="xmark"
@@ -321,7 +321,7 @@ export default function AccountSecurityScreen() {
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.label, { color: colors.text }]}>Verifieringsmetod</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Verification Method</Text>
 
               <TouchableOpacity
                 style={[styles.methodCard, { backgroundColor: selectedMethod === 'email' ? colors.brandPrimary + '20' : colors.backgroundAlt, borderColor: selectedMethod === 'email' ? colors.brandPrimary : colors.border }]}
@@ -335,7 +335,7 @@ export default function AccountSecurityScreen() {
                     color={selectedMethod === 'email' ? colors.brandPrimary : colors.text}
                   />
                   <Text style={[styles.methodText, { color: selectedMethod === 'email' ? colors.brandPrimary : colors.text }]}>
-                    E-postverifiering
+                    Email Verification
                   </Text>
                 </View>
                 {selectedMethod === 'email' && (
@@ -360,7 +360,7 @@ export default function AccountSecurityScreen() {
                     color={selectedMethod === 'sms' ? colors.brandPrimary : colors.text}
                   />
                   <Text style={[styles.methodText, { color: selectedMethod === 'sms' ? colors.brandPrimary : colors.text }]}>
-                    SMS-verifiering
+                    SMS Verification
                   </Text>
                 </View>
                 {selectedMethod === 'sms' && (
@@ -375,10 +375,10 @@ export default function AccountSecurityScreen() {
 
               {selectedMethod === 'sms' && (
                 <>
-                  <Text style={[styles.label, { color: colors.text }]}>Telefonnummer</Text>
+                  <Text style={[styles.label, { color: colors.text }]}>Phone Number</Text>
                   <TextInput
                     style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-                    placeholder="+46 70 123 45 67"
+                    placeholder="+1 234 567 8900"
                     placeholderTextColor={colors.textSecondary}
                     value={phoneNumber}
                     onChangeText={setPhoneNumber}
@@ -389,10 +389,10 @@ export default function AccountSecurityScreen() {
 
               {selectedMethod === 'email' && (
                 <>
-                  <Text style={[styles.label, { color: colors.text }]}>E-postadress</Text>
+                  <Text style={[styles.label, { color: colors.text }]}>Email Address</Text>
                   <TextInput
                     style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-                    placeholder="din@email.com"
+                    placeholder="your@email.com"
                     placeholderTextColor={colors.textSecondary}
                     value={email}
                     onChangeText={setEmail}
@@ -407,10 +407,10 @@ export default function AccountSecurityScreen() {
                   style={[styles.cancelButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
                   onPress={() => setShow2FAModal(false)}
                 >
-                  <Text style={[styles.cancelButtonText, { color: colors.text }]}>Avbryt</Text>
+                  <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
                 </TouchableOpacity>
                 <View style={styles.enableButtonContainer}>
-                  <GradientButton title="Aktivera 2FA" onPress={handleEnable2FA} />
+                  <GradientButton title="Enable 2FA" onPress={handleEnable2FA} />
                 </View>
               </View>
             </ScrollView>

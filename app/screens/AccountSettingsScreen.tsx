@@ -16,12 +16,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { adminService, AdminRole } from '@/app/services/adminService';
-import { useTranslation } from '@/hooks/useTranslation';
 
 export default function AccountSettingsScreen() {
   const { signOut, user, profile } = useAuth();
   const { colors } = useTheme();
-  const t = useTranslation();
   const [isPrivateProfile, setIsPrivateProfile] = useState(false);
   const [commentPermission, setCommentPermission] = useState<'everyone' | 'followers' | 'no_one'>('everyone');
   const [userRole, setUserRole] = useState<AdminRole | null>(null);
@@ -66,17 +64,17 @@ export default function AccountSettingsScreen() {
   const handleSignOut = async () => {
     if (isLive) {
       Alert.alert(
-        t.settings.cannotLogout,
-        t.settings.endLiveFirst,
-        [{ text: t.common.ok }]
+        'Cannot Logout',
+        'You must end your live session before logging out.',
+        [{ text: 'OK' }]
       );
       return;
     }
 
-    Alert.alert(t.settings.logout, t.settings.logoutConfirm, [
-      { text: t.common.cancel, style: 'cancel' },
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
       {
-        text: t.settings.logout,
+        text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
           await signOut();
@@ -104,11 +102,11 @@ export default function AccountSettingsScreen() {
   };
 
   const handleEnable2FA = () => {
-    Alert.alert(t.permissions.notifications, 'Denna funktion kommer snart.');
+    Alert.alert('Two-Factor Authentication', 'This feature will be available soon.');
   };
 
   const handleAddCredits = () => {
-    Alert.alert(t.wallet.addBalance, 'Betalningsintegration kommer snart.');
+    Alert.alert('Add Credits', 'Payment integration coming soon.');
   };
 
   const handleWithdrawEarnings = () => {
@@ -122,28 +120,28 @@ export default function AccountSettingsScreen() {
   const getRoleName = (role: AdminRole) => {
     switch (role) {
       case 'HEAD_ADMIN':
-        return t.settings.roleNames.headAdmin;
+        return 'Head Admin Dashboard';
       case 'ADMIN':
-        return t.settings.roleNames.admin;
+        return 'Admin Dashboard';
       case 'SUPPORT':
-        return t.settings.roleNames.support;
+        return 'Support Dashboard';
       case 'MODERATOR':
-        return t.settings.roleNames.moderator;
+        return 'Moderator Dashboard';
       default:
-        return 'Instrumentpanel';
+        return 'Dashboard';
     }
   };
 
   const getRoleDescription = (role: AdminRole) => {
     switch (role) {
       case 'HEAD_ADMIN':
-        return t.settings.roleDescriptions.headAdmin;
+        return 'Full platform control';
       case 'ADMIN':
-        return t.settings.roleDescriptions.admin;
+        return 'Manage reports & users';
       case 'SUPPORT':
-        return t.settings.roleDescriptions.support;
+        return 'Review appeals & tickets';
       case 'MODERATOR':
-        return t.settings.roleDescriptions.moderator;
+        return 'Stream moderation tools';
       default:
         return '';
     }
@@ -159,7 +157,7 @@ export default function AccountSettingsScreen() {
             color={colors.text}
           />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>{t.settings.title}</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Settings</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -177,7 +175,7 @@ export default function AccountSettingsScreen() {
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
             <View style={styles.sectionTitleRow}>
               <RoastIcon name="admin-dashboard" size={20} />
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.settings.dashboardTools}</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Dashboard & Tools</Text>
             </View>
 
             <TouchableOpacity 
@@ -212,7 +210,7 @@ export default function AccountSettingsScreen() {
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="appearance" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.settings.general}</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>General</Text>
           </View>
 
           <TouchableOpacity 
@@ -225,7 +223,7 @@ export default function AccountSettingsScreen() {
                 size={20}
                 color={colors.text}
               />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.appearance}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Appearance</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -244,7 +242,7 @@ export default function AccountSettingsScreen() {
                 size={20}
                 color={colors.text}
               />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.profileSettings}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Profile Settings</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -259,7 +257,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="notifications" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.notifications}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Notifications</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -274,7 +272,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="saved-streams" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.savedStreams}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Saved Streams</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -289,7 +287,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="achievements" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.achievements}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Achievements</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -303,7 +301,7 @@ export default function AccountSettingsScreen() {
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="shield" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.settings.accountSecurity}</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Account & Security</Text>
           </View>
 
           <TouchableOpacity 
@@ -316,7 +314,7 @@ export default function AccountSettingsScreen() {
                 size={20}
                 color={colors.text}
               />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.accountSecurityItem}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Account Security</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -331,7 +329,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="password" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.changePassword}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Change Password</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -346,7 +344,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="blocked-users" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.blockedUsers}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Blocked Users</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -360,7 +358,7 @@ export default function AccountSettingsScreen() {
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="fire-camera" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.settings.streaming}</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Streaming</Text>
           </View>
 
           <TouchableOpacity 
@@ -374,9 +372,9 @@ export default function AccountSettingsScreen() {
                 color={colors.brandPrimary}
               />
               <View>
-                <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.streamDashboard}</Text>
+                <Text style={[styles.settingText, { color: colors.text }]}>Stream Dashboard</Text>
                 <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
-                  {t.settings.streamDashboardSubtext}
+                  Manage VIP club, moderators & more
                 </Text>
               </View>
             </View>
@@ -393,7 +391,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="saved-streams" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.savedStreams}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Saved Streams</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -408,7 +406,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="stream-history" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.streamHistory}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Stream History</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -422,7 +420,7 @@ export default function AccountSettingsScreen() {
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="lava-wallet" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.settings.walletGifts}</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Wallet & Gifts</Text>
           </View>
 
           <TouchableOpacity 
@@ -432,9 +430,9 @@ export default function AccountSettingsScreen() {
             <View style={styles.settingLeft}>
               <RoastIcon name="premium-star-flame" size={20} />
               <View>
-                <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.premiumMembership}</Text>
+                <Text style={[styles.settingText, { color: colors.text }]}>PREMIUM Membership</Text>
                 <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
-                  {t.settings.premiumSubtext}
+                  Unlock exclusive benefits – 89 SEK/mo
                 </Text>
               </View>
             </View>
@@ -451,7 +449,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="lava-wallet" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.wallet}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Saldo</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -466,7 +464,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="roast-gift-box" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.giftInformation}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Gift Information</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -481,7 +479,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="subscriptions" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.manageSubscriptions}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Manage Subscriptions</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -496,7 +494,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="withdraw" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.withdrawEarnings}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Withdraw Earnings</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -511,7 +509,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="transactions" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.transactionHistory}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Transaction History</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -525,7 +523,7 @@ export default function AccountSettingsScreen() {
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="shield-flame" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.settings.safetyRules}</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Safety & Rules</Text>
           </View>
 
           <TouchableOpacity 
@@ -538,7 +536,7 @@ export default function AccountSettingsScreen() {
                 size={20}
                 color={colors.brandPrimary}
               />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.safetyCommunityRules}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Safety & Community Rules</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -553,7 +551,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="appeals" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.appealsViolations}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Appeals & Violations</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -568,7 +566,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="terms" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.termsOfService}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Terms of Service</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -583,7 +581,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="privacy" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.privacyPolicy}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Privacy Policy</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -597,7 +595,7 @@ export default function AccountSettingsScreen() {
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="profile" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t.settings.profilePreferences}</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Profile Preferences</Text>
           </View>
 
           <View style={[styles.settingItem, { borderBottomColor: colors.divider }]}>
@@ -607,7 +605,7 @@ export default function AccountSettingsScreen() {
                 size={20}
                 color={colors.text}
               />
-              <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.privateProfile}</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Private Profile</Text>
             </View>
             <Switch
               value={isPrivateProfile}
@@ -621,21 +619,17 @@ export default function AccountSettingsScreen() {
             <View style={styles.settingLeft}>
               <RoastIcon name="comment" size={20} />
               <View>
-                <Text style={[styles.settingText, { color: colors.text }]}>{t.settings.whoCanComment}</Text>
-                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
-                  {commentPermission === 'everyone' ? t.settings.commentPermissions.everyone : 
-                   commentPermission === 'followers' ? t.settings.commentPermissions.followers : 
-                   t.settings.commentPermissions.noOne}
-                </Text>
+                <Text style={[styles.settingText, { color: colors.text }]}>Who Can Comment</Text>
+                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>{commentPermission}</Text>
               </View>
             </View>
             <TouchableOpacity
               onPress={() => {
-                Alert.alert(t.settings.whoCanComment, 'Välj vem som kan kommentera dina inlägg', [
-                  { text: t.settings.commentPermissions.everyone, onPress: () => setCommentPermission('everyone') },
-                  { text: t.settings.commentPermissions.followers, onPress: () => setCommentPermission('followers') },
-                  { text: t.settings.commentPermissions.noOne, onPress: () => setCommentPermission('no_one') },
-                  { text: t.common.cancel, style: 'cancel' },
+                Alert.alert('Who Can Comment', 'Choose who can comment on your posts', [
+                  { text: 'Everyone', onPress: () => setCommentPermission('everyone') },
+                  { text: 'Followers', onPress: () => setCommentPermission('followers') },
+                  { text: 'No One', onPress: () => setCommentPermission('no_one') },
+                  { text: 'Cancel', style: 'cancel' },
                 ]);
               }}
             >
@@ -661,10 +655,10 @@ export default function AccountSettingsScreen() {
                 color={colors.brandPrimary}
               />
               <View>
-                <Text style={[styles.settingText, styles.dangerText, { color: colors.brandPrimary }]}>{t.settings.logout}</Text>
+                <Text style={[styles.settingText, styles.dangerText, { color: colors.brandPrimary }]}>Logout</Text>
                 {isLive && (
                   <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
-                    {t.settings.logoutEndLiveSubtext}
+                    End live session first
                   </Text>
                 )}
               </View>

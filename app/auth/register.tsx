@@ -16,7 +16,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import GradientButton from '@/components/GradientButton';
 import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTranslation } from '@/hooks/useTranslation';
 
 export default function RegisterScreen() {
   const [displayName, setDisplayName] = useState('');
@@ -26,72 +25,40 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const { signUp } = useAuth();
   const { colors } = useTheme();
-  const t = useTranslation();
 
   const handleRegister = async () => {
     if (!displayName || !email || !password || !confirmPassword) {
-      Alert.alert(t.common.error, t.auth.register.error);
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert(t.common.error, t.auth.register.passwordMismatch);
+      Alert.alert('Error', 'Passwords do not match');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert(t.common.error, t.auth.register.passwordTooShort);
+      Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
 
     setLoading(true);
-    
-    try {
-      const { error } = await signUp(email, password, displayName);
-      
-      if (error) {
-        // Display user-friendly error message - NO AUTOMATIC RETRIES
-        console.warn('⚠️ Registration failed:', error.message);
-        
-        // Show specific error messages based on error code
-        let errorTitle = t.auth.register.registrationFailed;
-        let errorMessage = error.message || t.errors.generic;
-        
-        if (error.code === 'user_already_exists') {
-          errorTitle = 'Account Already Exists';
-          errorMessage = 'An account with this email already exists. Please sign in instead or use a different email address.';
-        } else if (error.code === 'weak_password') {
-          errorTitle = 'Weak Password';
-          errorMessage = 'Your password must be at least 6 characters long. Please choose a stronger password.';
-        }
-        
-        Alert.alert(
-          errorTitle,
-          errorMessage,
-          [{ text: t.common.ok }]
-        );
-      } else {
-        console.log('✅ Registration successful');
-        Alert.alert(
-          t.auth.register.successTitle,
-          t.auth.register.successMessage,
-          [
-            {
-              text: t.common.ok,
-              onPress: () => router.replace('/auth/login'),
-            },
-          ]
-        );
-      }
-    } catch (error) {
-      console.warn('⚠️ Unexpected registration error:', error instanceof Error ? error.message : error);
+    const { error } = await signUp(email, password, displayName);
+    setLoading(false);
+
+    if (error) {
+      Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
+    } else {
       Alert.alert(
-        t.auth.register.registrationFailed,
-        t.errors.generic,
-        [{ text: t.common.ok }]
+        'Success!',
+        'Your account has been created. Please check your email to verify your account before signing in.',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/auth/login'),
+          },
+        ]
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -107,16 +74,16 @@ export default function RegisterScreen() {
         <View style={styles.header}>
           <AppLogo size="xlarge" alignment="center" />
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {t.auth.register.title}
+            Join the live streaming revolution
           </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.displayName}</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Display Name</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder={t.auth.register.displayNamePlaceholder}
+              placeholder="Choose your display name"
               placeholderTextColor={colors.placeholder}
               value={displayName}
               onChangeText={setDisplayName}
@@ -125,10 +92,10 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.email}</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder={t.auth.register.emailPlaceholder}
+              placeholder="Enter your email"
               placeholderTextColor={colors.placeholder}
               value={email}
               onChangeText={setEmail}
@@ -139,10 +106,10 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.password}</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder={t.auth.register.passwordPlaceholder}
+              placeholder="Create a password (min 6 characters)"
               placeholderTextColor={colors.placeholder}
               value={password}
               onChangeText={setPassword}
@@ -152,10 +119,10 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>{t.auth.register.confirmPassword}</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Confirm Password</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-              placeholder={t.auth.register.confirmPasswordPlaceholder}
+              placeholder="Confirm your password"
               placeholderTextColor={colors.placeholder}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -165,14 +132,14 @@ export default function RegisterScreen() {
           </View>
 
           <GradientButton
-            title={loading ? t.auth.register.creatingAccount : t.auth.register.createAccount}
+            title={loading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}
             onPress={handleRegister}
             disabled={loading}
           />
 
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>{t.common.or}</Text>
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
@@ -182,7 +149,7 @@ export default function RegisterScreen() {
             disabled={loading}
           >
             <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
-              {t.auth.register.alreadyHaveAccount}
+              Already have an account? Sign In
             </Text>
           </TouchableOpacity>
         </View>

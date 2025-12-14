@@ -6,11 +6,8 @@ Deno.serve(async (req) => {
   try {
     const { title, user_id } = await req.json();
 
-    console.log('🎬 start-live called with:', { title, user_id });
-
     // Validate required fields
     if (!title || !user_id) {
-      console.error('❌ Missing required fields');
       return new Response(
         JSON.stringify({
           success: false,
@@ -24,17 +21,11 @@ Deno.serve(async (req) => {
     const CF_ACCOUNT_ID = Deno.env.get("CF_ACCOUNT_ID") || Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
     const CF_API_TOKEN = Deno.env.get("CF_API_TOKEN") || Deno.env.get("CLOUDFLARE_API_TOKEN");
 
-    console.log('🔑 Cloudflare credentials check:', {
-      hasAccountId: !!CF_ACCOUNT_ID,
-      hasApiToken: !!CF_API_TOKEN,
-    });
-
     if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
-      console.error('❌ Missing Cloudflare credentials');
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Missing Cloudflare credentials. Please configure CF_ACCOUNT_ID and CF_API_TOKEN in Supabase Edge Function secrets.",
+          error: "Missing Cloudflare credentials. Please configure CF_ACCOUNT_ID (or CLOUDFLARE_ACCOUNT_ID) and CF_API_TOKEN in Supabase Edge Function secrets.",
         }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
@@ -45,7 +36,15 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('📡 Creating Cloudflare live input...');
+    // Fetch moderators for this creator
+    const { data: moderators, error: modError } = await supabase
+      .from('moderators')
+      .select('user_id, profiles(id, username, display_name, avatar_url)')
+      .eq('streamer_id', user_id);
+
+    if (modError) {
+      console.error('Error fetching moderators:', modError);
+    }
 
     // Create Cloudflare live input
     const createInput = await fetch(
@@ -58,24 +57,13 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           meta: { title, user_id },
-          recording: {
-            mode: "automatic",
-            timeoutSeconds: 10,
-          },
         }),
       }
     );
 
     const cloudflareResponse = await createInput.json();
 
-    console.log('☁️ Cloudflare response:', {
-      success: cloudflareResponse.success,
-      hasResult: !!cloudflareResponse.result,
-      errors: cloudflareResponse.errors,
-    });
-
     if (!cloudflareResponse.success || !cloudflareResponse.result) {
-      console.error('❌ Cloudflare API error:', cloudflareResponse.errors);
       return new Response(
         JSON.stringify({
           success: false,
@@ -89,11 +77,8 @@ Deno.serve(async (req) => {
 
     const { uid, rtmps, webRTC } = cloudflareResponse.result;
 
-    console.log('✅ Cloudflare live input created:', { uid });
-
     // Validate required fields from Cloudflare
     if (!uid) {
-      console.error('❌ Missing uid in Cloudflare response');
       return new Response(
         JSON.stringify({
           success: false,
@@ -106,16 +91,13 @@ Deno.serve(async (req) => {
     // Build playback URL
     const playback_url = `https://customer-${CF_ACCOUNT_ID}.cloudflarestream.com/${uid}/manifest/video.m3u8`;
 
-    console.log('📝 Creating stream record in database...');
-
-    // Create stream record in database with live_input_id
+    // Create stream record in database
     const { data: streamData, error: streamError } = await supabase
       .from('streams')
       .insert({
         id: uid,
         broadcaster_id: user_id,
         cloudflare_stream_id: uid,
-        live_input_id: uid, // THIS IS THE KEY FIX
         playback_url: playback_url,
         ingest_url: rtmps?.url || null,
         stream_key: rtmps?.streamKey || null,
@@ -128,26 +110,8 @@ Deno.serve(async (req) => {
       .single();
 
     if (streamError) {
-      console.error('❌ Error creating stream record:', streamError);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Failed to create stream record: ${streamError.message}`,
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log('✅ Stream record created successfully');
-
-    // Fetch moderators for this creator
-    const { data: moderators, error: modError } = await supabase
-      .from('moderators')
-      .select('user_id, profiles(id, username, display_name, avatar_url)')
-      .eq('streamer_id', user_id);
-
-    if (modError) {
-      console.error('⚠️ Error fetching moderators:', modError);
+      console.error('Error creating stream record:', streamError);
+      // Continue anyway, the stream is created in Cloudflare
     }
 
     // Format moderators array
@@ -176,7 +140,7 @@ Deno.serve(async (req) => {
       },
     };
 
-    console.log(`✅ Stream started successfully with ${moderatorsArray.length} moderators`);
+    console.log(`✅ Stream started with ${moderatorsArray.length} moderators`);
 
     // Send push notifications to followers when creator goes live
     try {
@@ -196,7 +160,7 @@ Deno.serve(async (req) => {
         .eq('following_id', user_id);
 
       if (!followersError && followers && followers.length > 0) {
-        console.log(`📢 Sending live notifications to ${followers.length} followers`);
+        console.log(`Sending live notifications to ${followers.length} followers`);
 
         // Send notification to each follower
         for (const follower of followers) {
@@ -253,7 +217,7 @@ Deno.serve(async (req) => {
         console.log(`✅ Sent live notifications to ${followers.length} followers`);
       }
     } catch (notifError) {
-      console.error('⚠️ Error sending live notifications:', notifError);
+      console.error('Error sending live notifications:', notifError);
       // Don't fail the stream start if notifications fail
     }
 
@@ -265,7 +229,7 @@ Deno.serve(async (req) => {
       }
     );
   } catch (e) {
-    console.error('❌ Critical error in start-live function:', e);
+    console.error('Error in start-live function:', e);
     return new Response(
       JSON.stringify({ 
         success: false, 

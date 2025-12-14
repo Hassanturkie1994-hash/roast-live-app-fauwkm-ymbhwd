@@ -77,12 +77,12 @@ class StripeService {
       });
 
       if (error) {
-        console.warn('⚠️ Edge Function error:', error);
+        console.error('Error creating checkout session:', error);
         return { success: false, error: error.message || 'Failed to create checkout session' };
       }
 
       if (!data || !data.sessionId || !data.url) {
-        console.warn('⚠️ Invalid response from server:', data);
+        console.error('Invalid response from server:', data);
         return { success: false, error: 'Invalid response from server' };
       }
 
@@ -95,7 +95,7 @@ class StripeService {
         },
       };
     } catch (error) {
-      console.error('❌ Error in createWalletTopUpSession:', error);
+      console.error('Error in createWalletTopUpSession:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create checkout session';
       return { success: false, error: errorMessage };
     }
@@ -162,12 +162,12 @@ class StripeService {
       });
 
       if (error) {
-        console.warn('⚠️ Edge Function error:', error);
+        console.error('Error creating subscription:', error);
         return { success: false, error: error.message || 'Failed to create subscription' };
       }
 
       if (!data || !data.subscriptionId || !data.customerId) {
-        console.warn('⚠️ Invalid response from server:', data);
+        console.error('Invalid response from server:', data);
         return { success: false, error: 'Invalid response from server' };
       }
 
@@ -181,7 +181,7 @@ class StripeService {
         },
       };
     } catch (error) {
-      console.error('❌ Error in createClubSubscription:', error);
+      console.error('Error in createClubSubscription:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create subscription';
       return { success: false, error: errorMessage };
     }
@@ -212,14 +212,14 @@ class StripeService {
       });
 
       if (error) {
-        console.warn('⚠️ Edge Function error:', error);
+        console.error('Error canceling subscription:', error);
         return { success: false, error: error.message || 'Failed to cancel subscription' };
       }
 
       console.log('✅ Subscription canceled successfully');
       return { success: true };
     } catch (error) {
-      console.error('❌ Error in cancelSubscription:', error);
+      console.error('Error in cancelSubscription:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to cancel subscription';
       return { success: false, error: errorMessage };
     }
@@ -248,19 +248,19 @@ class StripeService {
       });
 
       if (error) {
-        console.warn('⚠️ Edge Function error:', error);
+        console.error('Error getting customer portal URL:', error);
         return { success: false, error: error.message || 'Failed to get customer portal URL' };
       }
 
       if (!data || !data.url) {
-        console.warn('⚠️ Invalid response from server:', data);
+        console.error('Invalid response from server:', data);
         return { success: false, error: 'Invalid response from server' };
       }
 
       console.log('✅ Customer portal URL retrieved successfully');
       return { success: true, url: data.url };
     } catch (error) {
-      console.error('❌ Error in getCustomerPortalUrl:', error);
+      console.error('Error in getCustomerPortalUrl:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to get customer portal URL';
       return { success: false, error: errorMessage };
     }
@@ -289,19 +289,19 @@ class StripeService {
       });
 
       if (error) {
-        console.warn('⚠️ Edge Function error:', error);
+        console.error('Error verifying payment:', error);
         return { success: false, error: error.message || 'Failed to verify payment' };
       }
 
       if (!data || !data.status) {
-        console.warn('⚠️ Invalid response from server:', data);
+        console.error('Invalid response from server:', data);
         return { success: false, error: 'Invalid response from server' };
       }
 
       console.log('✅ Payment status verified:', data.status);
       return { success: true, status: data.status };
     } catch (error) {
-      console.error('❌ Error in verifyPaymentStatus:', error);
+      console.error('Error in verifyPaymentStatus:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to verify payment status';
       return { success: false, error: errorMessage };
     }

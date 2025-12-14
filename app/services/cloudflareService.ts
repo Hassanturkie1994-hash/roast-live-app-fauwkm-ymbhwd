@@ -1,4 +1,3 @@
-
 import { supabase } from '@/app/integrations/supabase/client';
 
 /* =========================
@@ -57,17 +56,17 @@ class CloudflareService {
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        const { data, error } = await supabase.functions.invoke<StartLiveResponse>('start-live', {
-          body: {
-            title,
-            user_id: userId,
-          },
-        });
+        const { data, error } =
+          await supabase.functions.invoke<StartLiveResponse>('start-live', {
+            body: {
+              title,
+              user_id: userId,
+            },
+          });
 
         console.log(`📡 start-live response (attempt ${attempt})`, { data, error });
 
         if (error) {
-          console.warn(`⚠️ Edge Function error (attempt ${attempt}):`, error);
           lastError = error;
 
           if (attempt < this.maxRetries) {
@@ -75,15 +74,10 @@ class CloudflareService {
             continue;
           }
 
-          // Return safe fallback instead of throwing
-          return {
-            success: false,
-            error: error.message || 'start-live failed',
-          };
+          throw new Error(error.message || 'start-live failed');
         }
 
         if (!data) {
-          console.warn(`⚠️ No response from start-live (attempt ${attempt})`);
           lastError = new Error('No response from start-live');
 
           if (attempt < this.maxRetries) {
@@ -91,18 +85,11 @@ class CloudflareService {
             continue;
           }
 
-          return {
-            success: false,
-            error: 'No response from start-live',
-          };
+          throw lastError;
         }
 
         if (!data.success) {
-          console.warn('⚠️ start-live returned success=false:', data.error);
-          return {
-            success: false,
-            error: data.error || 'start-live returned success=false',
-          };
+          throw new Error(data.error || 'start-live returned success=false');
         }
 
         // Defensive: backend might still be under development
@@ -122,11 +109,9 @@ class CloudflareService {
       }
     }
 
-    // Return safe fallback instead of throwing
-    return {
-      success: false,
-      error: lastError?.message || 'Failed to start live stream after retries',
-    };
+    throw new Error(
+      lastError?.message || 'Failed to start live stream after retries'
+    );
   }
 
   /* =========================
@@ -149,16 +134,16 @@ class CloudflareService {
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        const { data, error } = await supabase.functions.invoke<StopLiveResponse>('stop-live', {
-          body: {
-            live_input_id: idToUse,
-          },
-        });
+        const { data, error } =
+          await supabase.functions.invoke<StopLiveResponse>('stop-live', {
+            body: {
+              live_input_id: idToUse,
+            },
+          });
 
         console.log(`📡 stop-live response (attempt ${attempt})`, { data, error });
 
         if (error) {
-          console.warn(`⚠️ Edge Function error (attempt ${attempt}):`, error);
           lastError = error;
 
           if (attempt < this.maxRetries) {
@@ -173,7 +158,6 @@ class CloudflareService {
         }
 
         if (!data) {
-          console.warn(`⚠️ No response from stop-live (attempt ${attempt})`);
           lastError = new Error('No response from stop-live');
 
           if (attempt < this.maxRetries) {

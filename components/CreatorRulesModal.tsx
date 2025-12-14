@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import GradientButton from './GradientButton';
-import { useTranslation } from '@/hooks/useTranslation';
 
 interface CreatorRulesModalProps {
   visible: boolean;
@@ -30,31 +29,17 @@ export default function CreatorRulesModal({
   const [rule1Checked, setRule1Checked] = useState(false);
   const [rule2Checked, setRule2Checked] = useState(false);
   const [rule3Checked, setRule3Checked] = useState(false);
-  const t = useTranslation();
 
   const allRulesChecked = rule1Checked && rule2Checked && rule3Checked;
 
-  // Reset checkboxes when modal becomes visible
-  useEffect(() => {
-    if (visible) {
-      setRule1Checked(false);
-      setRule2Checked(false);
-      setRule3Checked(false);
-    }
-  }, [visible]);
-
   const handleConfirm = () => {
     if (allRulesChecked && !isLoading) {
-      console.log('✅ Alla regler markerade, bekräftar...');
       onConfirm();
-    } else {
-      console.log('⚠️ Kan inte bekräfta: allRulesChecked =', allRulesChecked, 'isLoading =', isLoading);
     }
   };
 
   const handleCancel = () => {
     if (!isLoading) {
-      console.log('❌ Avbryter skaparregler...');
       // Reset checkboxes
       setRule1Checked(false);
       setRule2Checked(false);
@@ -85,8 +70,8 @@ export default function CreatorRulesModal({
                 size={48}
                 color={colors.gradientEnd}
               />
-              <Text style={styles.title}>{t.creatorRules.title}</Text>
-              <Text style={styles.subtitle}>{t.creatorRules.subtitle}</Text>
+              <Text style={styles.title}>You&apos;re About to Go Live</Text>
+              <Text style={styles.subtitle}>Follow the rules</Text>
             </View>
 
             {/* Rules Checkboxes */}
@@ -107,7 +92,7 @@ export default function CreatorRulesModal({
                     />
                   )}
                 </View>
-                <Text style={styles.ruleText}>{t.creatorRules.rule1}</Text>
+                <Text style={styles.ruleText}>I will not reveal private info</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -126,7 +111,7 @@ export default function CreatorRulesModal({
                     />
                   )}
                 </View>
-                <Text style={styles.ruleText}>{t.creatorRules.rule2}</Text>
+                <Text style={styles.ruleText}>I will not harass minors</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -145,7 +130,7 @@ export default function CreatorRulesModal({
                     />
                   )}
                 </View>
-                <Text style={styles.ruleText}>{t.creatorRules.rule3}</Text>
+                <Text style={styles.ruleText}>Roast interactions remain entertainment</Text>
               </TouchableOpacity>
             </View>
 
@@ -154,21 +139,21 @@ export default function CreatorRulesModal({
               <View style={styles.explanationRow}>
                 <Text style={styles.explanationIcon}>🔴</Text>
                 <Text style={styles.explanationText}>
-                  {t.creatorRules.explanation1}
+                  If your stream receives multiple serious violations → stream may be paused
                 </Text>
               </View>
 
               <View style={styles.explanationRow}>
                 <Text style={styles.explanationIcon}>⚠️</Text>
                 <Text style={styles.explanationText}>
-                  {t.creatorRules.explanation2}
+                  Repeated violations → loss of hosting privileges
                 </Text>
               </View>
 
               <View style={styles.explanationRow}>
                 <Text style={styles.explanationIcon}>💬</Text>
                 <Text style={styles.explanationText}>
-                  {t.creatorRules.explanation3}
+                  Your moderators can enforce safety
                 </Text>
               </View>
             </View>
@@ -176,16 +161,16 @@ export default function CreatorRulesModal({
             {/* Buttons */}
             <View style={styles.buttonsContainer}>
               <TouchableOpacity
-                style={[styles.cancelButton, isLoading && styles.buttonDisabled]}
+                style={styles.cancelButton}
                 onPress={handleCancel}
                 disabled={isLoading}
               >
-                <Text style={[styles.cancelButtonText, isLoading && styles.textDisabled]}>{t.creatorRules.cancel}</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
 
               <View style={styles.confirmButtonContainer}>
                 <GradientButton
-                  title={isLoading ? t.creatorRules.starting : t.creatorRules.confirmAndGoLive}
+                  title={isLoading ? 'CONFIRMING...' : 'CONFIRM & GO LIVE'}
                   onPress={handleConfirm}
                   size="medium"
                   disabled={!allRulesChecked || isLoading}
@@ -194,9 +179,8 @@ export default function CreatorRulesModal({
             </View>
 
             {isLoading && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={colors.gradientEnd} />
-                <Text style={styles.loadingText}>{t.creatorRules.startingStream}</Text>
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size="large" color={colors.gradientEnd} />
               </View>
             )}
           </ScrollView>
@@ -303,7 +287,6 @@ const styles = StyleSheet.create({
   buttonsContainer: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
   },
   cancelButton: {
     flex: 1,
@@ -320,25 +303,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  textDisabled: {
-    opacity: 0.5,
-  },
   confirmButtonContainer: {
     flex: 1,
   },
-  loadingContainer: {
-    flexDirection: 'row',
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
   },
 });

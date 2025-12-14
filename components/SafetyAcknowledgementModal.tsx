@@ -5,13 +5,13 @@ import {
   Text,
   StyleSheet,
   Modal,
+  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from './IconSymbol';
 import GradientButton from './GradientButton';
-import { useTranslation } from '@/hooks/useTranslation';
 
 interface SafetyAcknowledgementModalProps {
   visible: boolean;
@@ -25,7 +25,6 @@ export default function SafetyAcknowledgementModal({
   isLoading = false,
 }: SafetyAcknowledgementModalProps) {
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
-  const t = useTranslation();
 
   const handleScroll = (event: any) => {
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
@@ -52,8 +51,8 @@ export default function SafetyAcknowledgementModal({
               size={64}
               color={colors.gradientEnd}
             />
-            <Text style={styles.title}>{t.safety.acknowledgement.title}</Text>
-            <Text style={styles.subtitle}>{t.safety.acknowledgement.subtitle}</Text>
+            <Text style={styles.title}>Welcome to Roast Live</Text>
+            <Text style={styles.subtitle}>Keep Roast Live safe</Text>
           </View>
 
           {/* Guidelines Content */}
@@ -66,30 +65,47 @@ export default function SafetyAcknowledgementModal({
           >
             <View style={styles.guidelinesContainer}>
               <View style={styles.guidelineSection}>
-                <Text style={styles.sectionTitle}>{t.safety.acknowledgement.communityValues}</Text>
+                <Text style={styles.sectionTitle}>✅ Our Community Values</Text>
                 <Text style={styles.sectionText}>
-                  {t.safety.acknowledgement.communityValuesText}
+                  - Respect and kindness towards all members{'\n'}
+                  - Creative and entertaining content{'\n'}
+                  - Playful roasting that stays fun{'\n'}
+                  - Supporting creators and fellow viewers{'\n'}
+                  - Reporting violations when you see them
                 </Text>
               </View>
 
               <View style={styles.guidelineSection}>
-                <Text style={styles.sectionTitle}>{t.safety.acknowledgement.zeroTolerance}</Text>
+                <Text style={styles.sectionTitle}>🚫 Zero Tolerance For</Text>
                 <Text style={styles.sectionText}>
-                  {t.safety.acknowledgement.zeroToleranceText}
+                  - Harassment, bullying, or hate speech{'\n'}
+                  - Threats of violence or harm{'\n'}
+                  - Sexual content involving minors{'\n'}
+                  - Sharing private information{'\n'}
+                  - Illegal activities or content{'\n'}
+                  - Spam or bot behavior
                 </Text>
               </View>
 
               <View style={styles.guidelineSection}>
-                <Text style={styles.sectionTitle}>{t.safety.acknowledgement.importantNotes}</Text>
+                <Text style={styles.sectionTitle}>⚠️ Important Notes</Text>
                 <Text style={styles.sectionText}>
-                  {t.safety.acknowledgement.importantNotesText}
+                  - You must accept these guidelines to livestream{'\n'}
+                  - Violations may result in warnings, suspensions, or bans{'\n'}
+                  - Strikes expire after 7-60 days depending on severity{'\n'}
+                  - Multiple reports may trigger safety reviews{'\n'}
+                  - False reports may result in action against your account
                 </Text>
               </View>
 
               <View style={styles.guidelineSection}>
-                <Text style={styles.sectionTitle}>{t.safety.acknowledgement.responsibilities}</Text>
+                <Text style={styles.sectionTitle}>💬 Your Responsibilities</Text>
                 <Text style={styles.sectionText}>
-                  {t.safety.acknowledgement.responsibilitiesText}
+                  - Follow all community guidelines{'\n'}
+                  - Respect content ratings (Family Friendly, Roast Mode, 18+){'\n'}
+                  - Moderate your own chat if you&apos;re a creator{'\n'}
+                  - Report violations you encounter{'\n'}
+                  - Keep your account secure
                 </Text>
               </View>
 
@@ -101,7 +117,7 @@ export default function SafetyAcknowledgementModal({
                   color={colors.gradientEnd}
                 />
                 <Text style={styles.highlightText}>
-                  {t.safety.acknowledgement.highlightText}
+                  By accepting, you agree to follow these guidelines and understand that violations may result in account restrictions.
                 </Text>
               </View>
             </View>
@@ -116,14 +132,14 @@ export default function SafetyAcknowledgementModal({
                 size={24}
                 color={colors.textSecondary}
               />
-              <Text style={styles.scrollIndicatorText}>{t.safety.acknowledgement.scrollToContinue}</Text>
+              <Text style={styles.scrollIndicatorText}>Scroll to continue</Text>
             </View>
           )}
 
           {/* Accept Button */}
           <View style={styles.buttonContainer}>
             <GradientButton
-              title={isLoading ? t.safety.acknowledgement.accepting : t.safety.acknowledgement.accept}
+              title={isLoading ? 'ACCEPTING...' : 'Accept Community Guidelines'}
               onPress={onAccept}
               size="large"
               disabled={!hasScrolledToBottom || isLoading}

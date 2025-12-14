@@ -13,7 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import { useTheme } from '@/contexts/ThemeContext';
 import AppLogo from '@/components/AppLogo';
 import { CDNImage } from '@/components/CDNImage';

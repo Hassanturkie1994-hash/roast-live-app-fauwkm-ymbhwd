@@ -16,7 +16,6 @@ import { useTheme } from '@/contexts/ThemeContext';
 import GradientButton from '@/components/GradientButton';
 import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
-import { useTranslation } from '@/hooks/useTranslation';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -24,53 +23,21 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const { colors } = useTheme();
-  const t = useTranslation();
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert(t.common.error, t.auth.login.error);
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     setLoading(true);
-    
-    try {
-      const { error } = await signIn(email, password);
-      
-      if (error) {
-        // Display user-friendly error message - NO AUTOMATIC RETRIES
-        console.warn('⚠️ Login failed:', error.message);
-        
-        // Show specific error messages based on error code
-        let errorTitle = t.auth.login.loginFailed;
-        let errorMessage = error.message || t.errors.generic;
-        
-        if (error.code === 'invalid_credentials') {
-          errorTitle = 'Invalid Credentials';
-          errorMessage = 'The email or password you entered is incorrect. Please check your credentials and try again.';
-        } else if (error.code === 'email_not_confirmed') {
-          errorTitle = 'Email Not Confirmed';
-          errorMessage = 'Please verify your email address before logging in. Check your inbox for the confirmation link.';
-        }
-        
-        Alert.alert(
-          errorTitle,
-          errorMessage,
-          [{ text: t.common.ok }]
-        );
-      } else {
-        console.log('✅ Login successful');
-        router.replace('/(tabs)/(home)');
-      }
-    } catch (error) {
-      console.warn('⚠️ Unexpected login error:', error instanceof Error ? error.message : error);
-      Alert.alert(
-        t.auth.login.loginFailed,
-        t.errors.generic,
-        [{ text: t.common.ok }]
-      );
-    } finally {
-      setLoading(false);
+    const { error } = await signIn(email, password);
+    setLoading(false);
+
+    if (error) {
+      Alert.alert('Login Failed', error.message || 'An error occurred during login');
+    } else {
+      router.replace('/(tabs)/(home)');
     }
   };
 
@@ -86,16 +53,16 @@ export default function LoginScreen() {
         <View style={styles.header}>
           <AppLogo size="xlarge" alignment="center" />
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {t.auth.login.subtitle}
+            Welcome back to the live experience
           </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>{t.auth.login.email}</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              placeholder={t.auth.login.emailPlaceholder}
+              placeholder="Enter your email"
               placeholderTextColor={colors.placeholder}
               value={email}
               onChangeText={setEmail}
@@ -106,10 +73,10 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>{t.auth.login.password}</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-              placeholder={t.auth.login.passwordPlaceholder}
+              placeholder="Enter your password"
               placeholderTextColor={colors.placeholder}
               value={password}
               onChangeText={setPassword}
@@ -120,24 +87,24 @@ export default function LoginScreen() {
 
           <TouchableOpacity style={styles.forgotPassword}>
             <Text style={[styles.forgotPasswordText, { color: colors.brandPrimary }]}>
-              {t.auth.login.forgotPassword}
+              Forgot password?
             </Text>
           </TouchableOpacity>
 
           <GradientButton
-            title={loading ? t.auth.login.signingIn : t.auth.login.signIn}
+            title={loading ? 'SIGNING IN...' : 'SIGN IN'}
             onPress={handleLogin}
             disabled={loading}
           />
 
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>{t.common.or}</Text>
+            <Text style={[styles.dividerText, { color: colors.textSecondary }]}>OR</Text>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
           <GradientButton
-            title={t.auth.login.createAccount}
+            title="Create New Account"
             onPress={() => router.push('/auth/register')}
             disabled={loading}
             variant="secondary"

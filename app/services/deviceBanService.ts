@@ -1,5 +1,5 @@
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import * as Device from 'expo-device';
 import * as Crypto from 'expo-crypto';
 

@@ -26,7 +26,7 @@ export function usePushNotifications(userId: string | null) {
     registrationAttempted.current = true;
 
     registerForPushNotifications(userId).catch(error => {
-      console.warn('⚠️ Failed to register for push notifications:', error instanceof Error ? error.message : error);
+      console.error('Failed to register for push notifications:', error);
     });
 
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
@@ -54,7 +54,7 @@ export function usePushNotifications(userId: string | null) {
         try {
           notificationListener.current.remove();
         } catch (error) {
-          console.warn('⚠️ Error removing notification listener:', error instanceof Error ? error.message : error);
+          console.log('Error removing notification listener:', error);
         }
         notificationListener.current = null;
       }
@@ -63,7 +63,7 @@ export function usePushNotifications(userId: string | null) {
         try {
           responseListener.current.remove();
         } catch (error) {
-          console.warn('⚠️ Error removing response listener:', error instanceof Error ? error.message : error);
+          console.log('Error removing response listener:', error);
         }
         responseListener.current = null;
       }
@@ -77,8 +77,8 @@ export function usePushNotifications(userId: string | null) {
       const isExpoGo = Constants.appOwnership === 'expo';
       
       if (isExpoGo && Platform.OS === 'android') {
-        console.warn('⚠️ Push notifications are not supported in Expo Go on Android (SDK 53+)');
-        console.warn('Please use a development build for push notification testing');
+        console.log('⚠️ Push notifications are not supported in Expo Go on Android (SDK 53+)');
+        console.log('Please use a development build for push notification testing');
         return;
       }
 
@@ -91,7 +91,7 @@ export function usePushNotifications(userId: string | null) {
       }
 
       if (finalStatus !== 'granted') {
-        console.warn('⚠️ Push notification permission not granted');
+        console.log('Push notification permission not granted');
         return;
       }
 
@@ -100,28 +100,28 @@ export function usePushNotifications(userId: string | null) {
       try {
         const projectId = Constants.expoConfig?.extra?.eas?.projectId;
         
-        if (!projectId || projectId === 'placeholder-project-id-for-development') {
-          console.warn('⚠️ No valid projectId found in app.json');
-          console.warn('Push notifications are disabled in development mode');
-          console.warn('To enable push notifications:');
-          console.warn('1. Create an EAS project at https://expo.dev/');
-          console.warn('2. Add your project ID to app.json under extra.eas.projectId');
-          return;
+        if (!projectId) {
+          console.warn('⚠️ No projectId found in app.json. Please add it under extra.eas.projectId');
+          console.warn('You can find your project ID at https://expo.dev/');
+          console.warn('Falling back to device push token...');
+          
+          const deviceToken = await Notifications.getDevicePushTokenAsync();
+          token = deviceToken.data;
+        } else {
+          const tokenData = await Notifications.getExpoPushTokenAsync({
+            projectId: projectId,
+          });
+          token = tokenData.data;
         }
-        
-        const tokenData = await Notifications.getExpoPushTokenAsync({
-          projectId: projectId,
-        });
-        token = tokenData.data;
       } catch (error) {
-        console.warn('⚠️ Error getting Expo push token:', error instanceof Error ? error.message : error);
+        console.error('Error getting Expo push token:', error);
         
         try {
           const deviceToken = await Notifications.getDevicePushTokenAsync();
           token = deviceToken.data;
           console.log('✅ Using device push token as fallback');
         } catch (deviceError) {
-          console.warn('⚠️ Error getting device push token:', deviceError instanceof Error ? deviceError.message : deviceError);
+          console.error('Error getting device push token:', deviceError);
           return;
         }
       }
@@ -137,10 +137,10 @@ export function usePushNotifications(userId: string | null) {
       if (result.success) {
         console.log('✅ Push notification token registered successfully');
       } else {
-        console.warn('⚠️ Failed to register push notification token:', result.error);
+        console.error('❌ Failed to register push notification token:', result.error);
       }
     } catch (error) {
-      console.warn('⚠️ Error registering for push notifications:', error instanceof Error ? error.message : error);
+      console.error('Error registering for push notifications:', error);
     }
   };
 

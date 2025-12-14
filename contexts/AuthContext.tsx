@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceBanService } from '@/app/services/deviceBanService';
@@ -60,24 +60,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (error) {
-          console.warn('⚠️ Error creating wallet:', error.message);
+          console.error('Error creating wallet:', error);
         } else {
-          console.log('✅ Wallet created successfully');
+          console.log('Wallet created successfully');
         }
       }
     } catch (error) {
-      console.warn('⚠️ Error in ensureWalletExists:', error instanceof Error ? error.message : error);
+      console.error('Error in ensureWalletExists:', error);
     }
   }, []);
 
   const checkDeviceBan = useCallback(async (): Promise<boolean> => {
-    try {
-      const { banned } = await deviceBanService.isDeviceBanned();
-      return banned;
-    } catch (error) {
-      console.warn('⚠️ Error checking device ban:', error instanceof Error ? error.message : error);
-      return false;
-    }
+    const { banned } = await deviceBanService.isDeviceBanned();
+    return banned;
   }, []);
 
   const fetchProfile = useCallback(async (userId: string, userEmail?: string) => {
@@ -91,30 +86,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
 
       if (error) {
-        console.warn('⚠️ Error fetching profile:', error.message);
+        console.error('Error fetching profile:', error);
         setProfileFetched(true);
         return null;
       }
 
       if (!data) {
         console.log('Profile not found, creating new profile for user:', userId);
-        
-        // CRITICAL FIX: Verify user is authenticated before creating profile
-        const { data: { user: authenticatedUser }, error: authError } = await supabase.auth.getUser();
-        
-        if (authError || !authenticatedUser) {
-          console.warn('⚠️ User not authenticated, cannot create profile');
-          console.warn('Profile will be created on next login after email confirmation');
-          setProfileFetched(true);
-          return null;
-        }
-
-        // Ensure the authenticated user matches the requested user
-        if (authenticatedUser.id !== userId) {
-          console.warn('⚠️ User ID mismatch - security violation prevented');
-          setProfileFetched(true);
-          return null;
-        }
         
         const username = userEmail ? userEmail.split('@')[0] : `user_${userId.substring(0, 8)}`;
         
@@ -133,12 +111,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single();
 
         if (createError) {
-          console.warn('⚠️ Error creating profile:', createError.message);
+          console.error('Error creating profile:', createError);
           setProfileFetched(true);
           return null;
         }
 
-        console.log('✅ Profile created successfully:', newProfile);
+        console.log('Profile created successfully:', newProfile);
         
         await ensureWalletExists(userId);
         await deviceBanService.storeDeviceFingerprint(userId);
@@ -147,7 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return newProfile;
       }
 
-      console.log('✅ Profile fetched successfully:', data);
+      console.log('Profile fetched successfully:', data);
       
       await ensureWalletExists(userId);
       await deviceBanService.storeDeviceFingerprint(userId);
@@ -155,7 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       return data;
     } catch (error) {
-      console.warn('⚠️ Error in fetchProfile:', error instanceof Error ? error.message : error);
+      console.error('Error in fetchProfile:', error);
       setProfileFetched(true);
       return null;
     }
@@ -169,7 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, fetchProfile]);
 
   const handleAuthError = useCallback(async (error: AuthError) => {
-    console.warn('⚠️ Auth error:', error.message);
+    console.error('Auth error:', error);
     
     if (error.message?.includes('Invalid Refresh Token') || 
         error.message?.includes('Refresh Token Not Found')) {
@@ -181,7 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setProfile(null);
       } catch (signOutError) {
-        console.warn('⚠️ Error during forced sign out:', signOutError instanceof Error ? signOutError.message : signOutError);
+        console.error('Error during forced sign out:', signOutError);
       }
     }
   }, []);
@@ -221,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         }
       } catch (error) {
-        console.warn('⚠️ Error initializing auth:', error instanceof Error ? error.message : error);
+        console.error('Error initializing auth:', error);
         if (mounted) {
           setLoading(false);
         }
@@ -279,116 +257,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchProfile, profileFetched, checkDeviceBan, handleAuthError]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    try {
-      const isBanned = await checkDeviceBan();
-      if (isBanned) {
-        return { error: { message: 'This device is banned from accessing Roast Live' } };
-      }
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        // Handle specific auth errors gracefully - NO AUTOMATIC RETRIES
-        if (error.message?.includes('Invalid login credentials')) {
-          console.warn('⚠️ Invalid login credentials provided');
-          return { 
-            error: { 
-              message: 'Invalid email or password. Please check your credentials and try again.',
-              code: 'invalid_credentials'
-            } 
-          };
-        }
-        
-        if (error.message?.includes('Email not confirmed')) {
-          console.warn('⚠️ Email not confirmed');
-          return { 
-            error: { 
-              message: 'Please verify your email address before logging in. Check your inbox for the confirmation link.',
-              code: 'email_not_confirmed'
-            } 
-          };
-        }
-        
-        console.warn('⚠️ Sign in error:', error.message);
-        return { error: { message: error.message, code: error.name } };
-      }
-      
-      console.log('✅ Sign in successful');
-      return { error: null };
-    } catch (error) {
-      console.warn('⚠️ Unexpected error during sign in:', error instanceof Error ? error.message : error);
-      return { error: { message: 'An unexpected error occurred. Please try again.', code: 'unexpected_error' } };
+    const isBanned = await checkDeviceBan();
+    if (isBanned) {
+      return { error: { message: 'This device is banned from accessing Roast Live' } };
     }
-  }, [checkDeviceBan]);
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (error) {
+      handleAuthError(error);
+    }
+    
+    return { error };
+  }, [checkDeviceBan, handleAuthError]);
 
   const signUp = useCallback(async (email: string, password: string, displayName: string) => {
-    try {
-      const isBanned = await checkDeviceBan();
-      if (isBanned) {
-        return { error: { message: 'This device is banned from accessing Roast Live' } };
-      }
+    const isBanned = await checkDeviceBan();
+    if (isBanned) {
+      return { error: { message: 'This device is banned from accessing Roast Live' } };
+    }
 
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: 'https://natively.dev/email-confirmed',
-          data: {
-            display_name: displayName,
-          },
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: 'https://natively.dev/email-confirmed',
+        data: {
+          display_name: displayName,
         },
+      },
+    });
+
+    if (error) {
+      return { error };
+    }
+
+    if (data.user) {
+      const username = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || email.split('@')[0];
+      
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id: data.user.id,
+        username: username,
+        display_name: displayName,
+        avatar_url: null,
+        unique_profile_link: `roastlive.com/@${username}`,
+        followers_count: 0,
+        following_count: 0,
       });
 
-      if (error) {
-        // Handle specific signup errors gracefully - NO AUTOMATIC RETRIES
-        if (error.message?.includes('User already registered')) {
-          console.warn('⚠️ User already registered');
-          return { 
-            error: { 
-              message: 'An account with this email already exists. Please sign in instead.',
-              code: 'user_already_exists'
-            } 
-          };
-        }
-        
-        if (error.message?.includes('Password should be at least')) {
-          console.warn('⚠️ Password too weak');
-          return { 
-            error: { 
-              message: 'Password must be at least 6 characters long.',
-              code: 'weak_password'
-            } 
-          };
-        }
-        
-        console.warn('⚠️ Sign up error:', error.message);
-        return { error: { message: error.message, code: error.name } };
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        return { error: profileError };
       }
 
-      // CRITICAL FIX: Do NOT create profile during signup
-      // Profile will be created automatically when user confirms email and signs in
-      // This prevents RLS violations since user is not yet authenticated
-      
-      console.log('✅ Signup successful - profile will be created after email confirmation');
-      console.log('📧 Please check your email to confirm your account');
-
-      return { error: null };
-    } catch (error) {
-      console.warn('⚠️ Unexpected error during sign up:', error instanceof Error ? error.message : error);
-      return { error: { message: 'An unexpected error occurred. Please try again.', code: 'unexpected_error' } };
+      await deviceBanService.storeDeviceFingerprint(data.user.id);
     }
+
+    return { error: null };
   }, [checkDeviceBan]);
 
   const signOut = useCallback(async () => {
-    try {
-      await supabase.auth.signOut();
-      console.log('✅ Sign out successful');
-    } catch (error) {
-      console.warn('⚠️ Error during sign out:', error instanceof Error ? error.message : error);
-    }
+    await supabase.auth.signOut();
   }, []);
 
   return (

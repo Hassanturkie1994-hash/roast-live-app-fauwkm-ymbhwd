@@ -64,17 +64,18 @@ Deno.serve(async (req) => {
 
     console.log('📊 Updating stream record in database...');
 
-    // Update stream record in database - try both live_input_id and id
+    // Update stream record in database - THIS IS THE CRITICAL PART
     const { error: updateError } = await supabase
       .from('streams')
       .update({
         status: 'ended',
         ended_at: new Date().toISOString(),
       })
-      .or(`live_input_id.eq.${live_input_id},id.eq.${live_input_id}`);
+      .eq('live_input_id', live_input_id);
 
     if (updateError) {
       console.error('⚠️ Error updating stream record:', updateError);
+      // Return error if database update fails
       return new Response(
         JSON.stringify({
           success: false,
@@ -123,6 +124,7 @@ Deno.serve(async (req) => {
     console.log('☁️ Attempting to stop Cloudflare live input...');
 
     // Try to stop the Cloudflare live input
+    // We use try-catch here because Cloudflare API failures should not break the function
     try {
       // First try PATCH to disable recording
       const stopInput = await fetch(
@@ -175,6 +177,7 @@ Deno.serve(async (req) => {
         if (!deleteResponse.success) {
           console.warn('⚠️ Both PATCH and DELETE failed - but database was updated successfully');
           
+          // Return success anyway - database update is what matters
           return new Response(
             JSON.stringify({
               success: true,
@@ -193,6 +196,7 @@ Deno.serve(async (req) => {
 
       console.log('✅ Stream stopped successfully (database + Cloudflare)');
 
+      // Return success response
       return new Response(
         JSON.stringify({
           success: true,
@@ -206,6 +210,7 @@ Deno.serve(async (req) => {
         }
       );
     } catch (cloudflareError) {
+      // Cloudflare API error - but database was updated successfully
       console.error('❌ Cloudflare API error:', cloudflareError);
       console.log('✅ Database was updated successfully despite Cloudflare error');
       

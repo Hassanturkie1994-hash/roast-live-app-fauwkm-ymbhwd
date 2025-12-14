@@ -21,6 +21,7 @@ function TabLayoutContent() {
         <Stack.Screen key="home" name="(home)" />
         <Stack.Screen key="explore" name="explore" />
         <Stack.Screen key="broadcaster" name="broadcaster" />
+        <Stack.Screen key="broadcasterscreen" name="broadcasterscreen" />
         <Stack.Screen key="inbox" name="inbox" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>

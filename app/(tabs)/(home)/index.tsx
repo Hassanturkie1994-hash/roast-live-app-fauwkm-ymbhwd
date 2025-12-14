@@ -17,7 +17,7 @@ import StoriesBar from '@/components/StoriesBar';
 import AppLogo from '@/components/AppLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 import { queryCache } from '@/app/services/queryCache';
 import { normalizeStreams, NormalizedStream, RawStreamData } from '@/utils/streamNormalizer';
 

@@ -16,7 +16,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService } from '@/app/services/notificationService';
-import { useTranslation } from '@/hooks/useTranslation';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -29,7 +28,6 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
   const pathname = usePathname();
   const { user } = useAuth();
   const { colors, themeOpacity } = useTheme();
-  const t = useTranslation();
   const [unreadCount, setUnreadCount] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
@@ -43,7 +41,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
         setUnreadCount(result.count);
       }
     } catch (error) {
-      console.error('Fel vid hämtning av oläst antal:', error);
+      console.error('Error fetching unread count:', error);
     }
   }, [user]);
 
@@ -60,7 +58,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
   useEffect(() => {
     // Animate tab bar hiding/showing when streaming status changes
     if (isStreaming) {
-      console.log('🚫 Döljer flikfält - användaren streamar');
+      console.log('🚫 Hiding tab bar - user is streaming');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 100,
@@ -74,7 +72,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
         }),
       ]).start();
     } else {
-      console.log('✅ Visar flikfält - användaren slutade streama');
+      console.log('✅ Showing tab bar - user stopped streaming');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
@@ -131,7 +129,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 color={isActive('/(tabs)/(home)') ? colors.tabIconActiveColor : colors.tabIconColor}
               />
               <Text style={[styles.tabLabel, { color: isActive('/(tabs)/(home)') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
-                {t.tabs.home}
+                Home
               </Text>
             </TouchableOpacity>
 
@@ -146,7 +144,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 color={isActive('/explore') ? colors.tabIconActiveColor : colors.tabIconColor}
               />
               <Text style={[styles.tabLabel, { color: isActive('/explore') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
-                {t.tabs.explore}
+                Explore
               </Text>
             </TouchableOpacity>
 
@@ -166,7 +164,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                   size={28}
                   color="#FFFFFF"
                 />
-                <Text style={styles.centerButtonText}>{t.tabs.goLive}</Text>
+                <Text style={styles.centerButtonText}>Go Live</Text>
               </LinearGradient>
             </TouchableOpacity>
 
@@ -188,7 +186,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 )}
               </View>
               <Text style={[styles.tabLabel, { color: isActive('/inbox') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
-                {t.tabs.inbox}
+                Inbox
               </Text>
             </TouchableOpacity>
 
@@ -203,7 +201,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 color={isActive('/profile') ? colors.tabIconActiveColor : colors.tabIconColor}
               />
               <Text style={[styles.tabLabel, { color: isActive('/profile') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
-                {t.tabs.profile}
+                Profile
               </Text>
             </TouchableOpacity>
           </View>
