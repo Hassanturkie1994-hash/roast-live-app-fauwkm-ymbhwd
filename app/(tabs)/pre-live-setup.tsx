@@ -20,6 +20,10 @@ import AppLogo from '@/components/AppLogo';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
+import EffectsPanel from '@/components/EffectsPanel';
+import FiltersPanel from '@/components/FiltersPanel';
+import VIPClubPanel from '@/components/VIPClubPanel';
+import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
@@ -30,13 +34,28 @@ export default function PreLiveSetupScreen() {
   const [streamTitle, setStreamTitle] = useState('');
   const [contentLabel, setContentLabel] = useState<ContentLabel | null>(null);
   const [showContentLabelModal, setShowContentLabelModal] = useState(false);
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Settings states
+  // Panel visibility states
+  const [showEffectsPanel, setShowEffectsPanel] = useState(false);
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
+  const [showVIPClubPanel, setShowVIPClubPanel] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+
+  // Settings states (passed to LiveSettingsPanel)
   const [aboutLive, setAboutLive] = useState('');
   const [practiceMode, setPracticeMode] = useState(false);
-  const [whoCanWatch, setWhoCanWatch] = useState<'everyone' | 'followers' | 'club'>('everyone');
+  const [whoCanWatch, setWhoCanWatch] = useState<'public' | 'followers' | 'vip_club'>('public');
+  const [selectedModerators, setSelectedModerators] = useState<string[]>([]);
+  const [pinnedViewers, setPinnedViewers] = useState<string[]>([]);
+
+  // Effects and filters states
+  const [selectedEffect, setSelectedEffect] = useState<string | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
+  const [filterIntensity, setFilterIntensity] = useState(1.0);
+
+  // VIP Club state
+  const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
 
@@ -100,7 +119,7 @@ export default function PreLiveSetupScreen() {
 
       console.log('✅ Validation passed, navigating to broadcaster screen');
 
-      // IMMEDIATELY navigate to broadcaster screen
+      // IMMEDIATELY navigate to broadcaster screen with all settings
       router.push({
         pathname: '/(tabs)/broadcast',
         params: {
@@ -109,6 +128,12 @@ export default function PreLiveSetupScreen() {
           aboutLive,
           practiceMode: practiceMode.toString(),
           whoCanWatch,
+          selectedModerators: JSON.stringify(selectedModerators),
+          pinnedViewers: JSON.stringify(pinnedViewers),
+          selectedEffect: selectedEffect || '',
+          selectedFilter: selectedFilter || '',
+          filterIntensity: filterIntensity.toString(),
+          selectedVIPClub: selectedVIPClub || '',
         },
       });
     } catch (error) {
@@ -168,15 +193,21 @@ export default function PreLiveSetupScreen() {
         </View>
       </View>
 
-      {/* LIVE GOALS / ROAST GOALS */}
+      {/* ESTIMATED EARNINGS & ROAST GOALS */}
       <View style={styles.goalsContainer}>
         <View style={styles.goalCard}>
-          <Text style={styles.goalIcon}>🔥</Text>
-          <Text style={styles.goalText}>Roast Goal: 100 viewers</Text>
+          <Text style={styles.goalIcon}>💎</Text>
+          <View style={styles.goalTextContainer}>
+            <Text style={styles.goalLabel}>Est. Earnings</Text>
+            <Text style={styles.goalValue}>$0.00</Text>
+          </View>
         </View>
         <View style={styles.goalCard}>
-          <Text style={styles.goalIcon}>💎</Text>
-          <Text style={styles.goalText}>Earnings: $0.00</Text>
+          <Text style={styles.goalIcon}>🔥</Text>
+          <View style={styles.goalTextContainer}>
+            <Text style={styles.goalLabel}>Roast Goal</Text>
+            <Text style={styles.goalValue}>100 viewers</Text>
+          </View>
         </View>
       </View>
 
@@ -215,7 +246,10 @@ export default function PreLiveSetupScreen() {
 
       {/* BOTTOM ACTION BAR */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.actionButton} onPress={() => Alert.alert('Effects', 'Coming soon!')}>
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowEffectsPanel(true)}
+        >
           <IconSymbol
             ios_icon_name="sparkles"
             android_material_icon_name="auto_awesome"
@@ -223,9 +257,13 @@ export default function PreLiveSetupScreen() {
             color="#FFFFFF"
           />
           <Text style={styles.actionButtonText}>Effects</Text>
+          {selectedEffect && <View style={styles.activeDot} />}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton} onPress={() => Alert.alert('Filters', 'Coming soon!')}>
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowFiltersPanel(true)}
+        >
           <IconSymbol
             ios_icon_name="camera.filters"
             android_material_icon_name="filter"
@@ -233,9 +271,27 @@ export default function PreLiveSetupScreen() {
             color="#FFFFFF"
           />
           <Text style={styles.actionButtonText}>Filters</Text>
+          {selectedFilter && <View style={styles.activeDot} />}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton} onPress={() => setShowSettingsPanel(true)}>
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowVIPClubPanel(true)}
+        >
+          <IconSymbol
+            ios_icon_name="star.circle.fill"
+            android_material_icon_name="workspace_premium"
+            size={28}
+            color="#FFD700"
+          />
+          <Text style={styles.actionButtonText}>VIP Club</Text>
+          {selectedVIPClub && <View style={styles.activeDot} />}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowSettingsPanel(true)}
+        >
           <IconSymbol
             ios_icon_name="gearshape.fill"
             android_material_icon_name="settings"
@@ -243,16 +299,6 @@ export default function PreLiveSetupScreen() {
             color="#FFFFFF"
           />
           <Text style={styles.actionButtonText}>Settings</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionButton} onPress={() => Alert.alert('Community', 'Coming soon!')}>
-          <IconSymbol
-            ios_icon_name="person.3.fill"
-            android_material_icon_name="group"
-            size={28}
-            color="#FFFFFF"
-          />
-          <Text style={styles.actionButtonText}>Community</Text>
         </TouchableOpacity>
       </View>
 
@@ -292,8 +338,34 @@ export default function PreLiveSetupScreen() {
         onCancel={() => setShowContentLabelModal(false)}
       />
 
+      {/* EFFECTS PANEL */}
+      <EffectsPanel
+        visible={showEffectsPanel}
+        onClose={() => setShowEffectsPanel(false)}
+        selectedEffect={selectedEffect}
+        onSelectEffect={setSelectedEffect}
+      />
+
+      {/* FILTERS PANEL */}
+      <FiltersPanel
+        visible={showFiltersPanel}
+        onClose={() => setShowFiltersPanel(false)}
+        selectedFilter={selectedFilter}
+        onSelectFilter={setSelectedFilter}
+        filterIntensity={filterIntensity}
+        onIntensityChange={setFilterIntensity}
+      />
+
+      {/* VIP CLUB PANEL */}
+      <VIPClubPanel
+        visible={showVIPClubPanel}
+        onClose={() => setShowVIPClubPanel(false)}
+        selectedClub={selectedVIPClub}
+        onSelectClub={setSelectedVIPClub}
+      />
+
       {/* SETTINGS PANEL */}
-      <SettingsPanel
+      <LiveSettingsPanel
         visible={showSettingsPanel}
         onClose={() => setShowSettingsPanel(false)}
         aboutLive={aboutLive}
@@ -302,143 +374,12 @@ export default function PreLiveSetupScreen() {
         setPracticeMode={setPracticeMode}
         whoCanWatch={whoCanWatch}
         setWhoCanWatch={setWhoCanWatch}
+        selectedModerators={selectedModerators}
+        setSelectedModerators={setSelectedModerators}
+        pinnedViewers={pinnedViewers}
+        setPinnedViewers={setPinnedViewers}
       />
     </View>
-  );
-}
-
-/* ───────────────── SETTINGS PANEL COMPONENT ───────────────── */
-
-interface SettingsPanelProps {
-  visible: boolean;
-  onClose: () => void;
-  aboutLive: string;
-  setAboutLive: (text: string) => void;
-  practiceMode: boolean;
-  setPracticeMode: (value: boolean) => void;
-  whoCanWatch: 'everyone' | 'followers' | 'club';
-  setWhoCanWatch: (value: 'everyone' | 'followers' | 'club') => void;
-}
-
-function SettingsPanel({
-  visible,
-  onClose,
-  aboutLive,
-  setAboutLive,
-  practiceMode,
-  setPracticeMode,
-  whoCanWatch,
-  setWhoCanWatch,
-}: SettingsPanelProps) {
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.settingsOverlay}>
-        <View style={styles.settingsPanel}>
-          <View style={styles.settingsHeader}>
-            <Text style={styles.settingsTitle}>Live Settings</Text>
-            <TouchableOpacity onPress={onClose}>
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.settingsContent} showsVerticalScrollIndicator={false}>
-            {/* About This Live */}
-            <View style={styles.settingSection}>
-              <Text style={styles.settingLabel}>About this Live</Text>
-              <TextInput
-                style={styles.settingTextArea}
-                placeholder="Describe your roast session..."
-                placeholderTextColor={colors.placeholder}
-                value={aboutLive}
-                onChangeText={setAboutLive}
-                multiline
-                numberOfLines={4}
-                maxLength={500}
-              />
-            </View>
-
-            {/* Practice Mode */}
-            <View style={styles.settingSection}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Practice Mode</Text>
-                  <Text style={styles.settingDescription}>Stream privately to test your setup</Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.toggle, practiceMode && styles.toggleActive]}
-                  onPress={() => setPracticeMode(!practiceMode)}
-                >
-                  <View style={[styles.toggleThumb, practiceMode && styles.toggleThumbActive]} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Who Can Watch */}
-            <View style={styles.settingSection}>
-              <Text style={styles.settingLabel}>Who can watch this live</Text>
-              <TouchableOpacity
-                style={[styles.optionButton, whoCanWatch === 'everyone' && styles.optionButtonActive]}
-                onPress={() => setWhoCanWatch('everyone')}
-              >
-                <Text style={[styles.optionText, whoCanWatch === 'everyone' && styles.optionTextActive]}>
-                  Everyone
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.optionButton, whoCanWatch === 'followers' && styles.optionButtonActive]}
-                onPress={() => setWhoCanWatch('followers')}
-              >
-                <Text style={[styles.optionText, whoCanWatch === 'followers' && styles.optionTextActive]}>
-                  Followers Only
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.optionButton, whoCanWatch === 'club' && styles.optionButtonActive]}
-                onPress={() => setWhoCanWatch('club')}
-              >
-                <Text style={[styles.optionText, whoCanWatch === 'club' && styles.optionTextActive]}>
-                  Club Members Only
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Moderators */}
-            <View style={styles.settingSection}>
-              <Text style={styles.settingLabel}>Moderators</Text>
-              <TouchableOpacity style={styles.manageButton}>
-                <Text style={styles.manageButtonText}>Manage Moderators</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron_right"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Safety Rules */}
-            <View style={styles.settingSection}>
-              <Text style={styles.settingLabel}>Safety & Community Rules</Text>
-              <View style={styles.rulesBox}>
-                <Text style={styles.ruleItem}>• No harassment or hate speech</Text>
-                <Text style={styles.ruleItem}>• No revealing private information</Text>
-                <Text style={styles.ruleItem}>• Keep roasts entertaining, not harmful</Text>
-                <Text style={styles.ruleItem}>• Respect all community members</Text>
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={styles.settingsFooter}>
-            <GradientButton title="Done" onPress={onClose} size="large" />
-          </View>
-        </View>
-      </View>
-    </Modal>
   );
 }
 
@@ -502,20 +443,28 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     borderRadius: 12,
     padding: 12,
-    gap: 8,
+    gap: 10,
   },
   goalIcon: {
-    fontSize: 20,
+    fontSize: 24,
   },
-  goalText: {
+  goalTextContainer: {
     flex: 1,
-    fontSize: 12,
-    fontWeight: '600',
+  },
+  goalLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 2,
+  },
+  goalValue: {
+    fontSize: 14,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   titleContainer: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 200 : 190,
+    top: Platform.OS === 'android' ? 210 : 200,
     left: 20,
     right: 20,
     zIndex: 10,
@@ -531,7 +480,7 @@ const styles = StyleSheet.create({
   },
   contentLabelDisplay: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 270 : 260,
+    top: Platform.OS === 'android' ? 280 : 270,
     left: 20,
     right: 20,
     flexDirection: 'row',
@@ -561,11 +510,23 @@ const styles = StyleSheet.create({
   actionButton: {
     alignItems: 'center',
     gap: 6,
+    position: 'relative',
   },
   actionButtonText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  activeDot: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#00FF00',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
   },
   flipButton: {
     position: 'absolute',
@@ -598,144 +559,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  settingsOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  settingsPanel: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-  },
-  settingsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  settingsTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  settingsContent: {
-    padding: 20,
-  },
-  settingSection: {
-    marginBottom: 24,
-  },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  settingDescription: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  settingTextArea: {
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    color: colors.text,
-    fontSize: 14,
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  settingInfo: {
-    flex: 1,
-  },
-  toggle: {
-    width: 50,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.border,
-    padding: 2,
-    justifyContent: 'center',
-  },
-  toggleActive: {
-    backgroundColor: colors.brandPrimary,
-  },
-  toggleThumb: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#FFFFFF',
-  },
-  toggleThumbActive: {
-    alignSelf: 'flex-end',
-  },
-  optionButton: {
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
-  optionButtonActive: {
-    backgroundColor: 'rgba(164, 0, 40, 0.1)',
-    borderColor: colors.brandPrimary,
-    borderWidth: 2,
-  },
-  optionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  optionTextActive: {
-    color: colors.brandPrimary,
-  },
-  manageButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  manageButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  rulesBox: {
-    backgroundColor: 'rgba(164, 0, 40, 0.1)',
-    borderColor: colors.brandPrimary,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  ruleItem: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.text,
-    lineHeight: 20,
-  },
-  settingsFooter: {
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
 });
