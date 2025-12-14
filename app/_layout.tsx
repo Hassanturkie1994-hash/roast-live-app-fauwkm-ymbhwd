@@ -18,7 +18,7 @@ import { StatusBar } from "expo-status-bar";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { WidgetProvider } from "@/contexts/WidgetContext";
-import { initializeServices } from "./services/serviceRegistry";
+import { initializeServices } from "@/app/services/serviceRegistry";
 
 LogBox.ignoreLogs([
   'expo-notifications: Android Push notifications',

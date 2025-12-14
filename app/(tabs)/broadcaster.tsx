@@ -23,7 +23,7 @@ import WebRTCLivePublisher from '@/components/WebRTCLivePublisher';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useStreaming } from '@/contexts/StreamingContext';
-import { supabase } from '@/app/integrations/supabase/client';
+import { supabase } from '@/integrations/supabase/client';
 import { cloudflareService } from '@/app/services/cloudflareService';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import { contentSafetyService } from '@/app/services/contentSafetyService';
