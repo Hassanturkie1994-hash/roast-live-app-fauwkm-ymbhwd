@@ -19,10 +19,11 @@ import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import { StreamingProvider } from "@/contexts/StreamingContext";
-import { LiveStreamStateMachineProvider } from "@/contexts/LiveStreamStateMachine";
+import { LiveStreamStateProvider } from "@/contexts/LiveStreamStateMachine";
 import { VIPClubProvider } from "@/contexts/VIPClubContext";
 import { ModeratorsProvider } from "@/contexts/ModeratorsContext";
 import { CameraEffectsProvider } from "@/contexts/CameraEffectsContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,6 +56,30 @@ function RootLayoutContent() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
+  // FIX ISSUE 1: Validate all providers are defined
+  useEffect(() => {
+    console.log('🚀 iOS App initialized');
+    
+    const providers = {
+      AuthProvider,
+      StreamingProvider,
+      LiveStreamStateProvider,
+      VIPClubProvider,
+      ModeratorsProvider,
+      CameraEffectsProvider,
+      WidgetProvider,
+    };
+    
+    Object.entries(providers).forEach(([name, provider]) => {
+      if (typeof provider === 'undefined') {
+        console.error(`❌ CRITICAL: ${name} is undefined!`);
+        throw new Error(`Provider ${name} is undefined. Check export/import syntax.`);
+      } else {
+        console.log(`✅ ${name} is defined`);
+      }
+    });
+  }, []);
+
   if (!loaded) {
     return null;
   }
@@ -82,12 +107,12 @@ function RootLayoutContent() {
   };
 
   return (
-    <>
+    <ErrorBoundary>
       <StatusBar style={colors.statusBarStyle === 'light' ? 'light' : 'dark'} animated />
       <NavigationThemeProvider value={navigationTheme}>
         <AuthProvider>
           <StreamingProvider>
-            <LiveStreamStateMachineProvider>
+            <LiveStreamStateProvider>
               <VIPClubProvider>
                 <ModeratorsProvider>
                   <CameraEffectsProvider>
@@ -119,11 +144,11 @@ function RootLayoutContent() {
                   </CameraEffectsProvider>
                 </ModeratorsProvider>
               </VIPClubProvider>
-            </LiveStreamStateMachineProvider>
+            </LiveStreamStateProvider>
           </StreamingProvider>
         </AuthProvider>
       </NavigationThemeProvider>
-    </>
+    </ErrorBoundary>
   );
 }
 

@@ -11,9 +11,35 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
+/**
+ * RootLayout - Main app layout with provider hierarchy
+ * 
+ * FIX ISSUE 1: Added provider validation guards to fail fast with readable errors
+ * All providers are correctly imported as named exports
+ */
 export default function RootLayout() {
   useEffect(() => {
     console.log('🚀 App initialized on platform:', Platform.OS);
+    
+    // FIX ISSUE 1: Validate all providers are defined
+    const providers = {
+      ThemeProvider,
+      AuthProvider,
+      StreamingProvider,
+      LiveStreamStateProvider,
+      CameraEffectsProvider,
+      VIPClubProvider,
+      ModeratorsProvider,
+    };
+    
+    Object.entries(providers).forEach(([name, provider]) => {
+      if (typeof provider === 'undefined') {
+        console.error(`❌ CRITICAL: ${name} is undefined!`);
+        throw new Error(`Provider ${name} is undefined. Check export/import syntax.`);
+      } else {
+        console.log(`✅ ${name} is defined`);
+      }
+    });
   }, []);
 
   return (

@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 
 /**
  * Live Stream State Machine
@@ -54,7 +54,14 @@ interface LiveStreamStateContext {
 
 const LiveStreamStateContext = createContext<LiveStreamStateContext | undefined>(undefined);
 
-export function LiveStreamStateMachineProvider({ children }: { children: ReactNode }) {
+/**
+ * LiveStreamStateProvider - Manages the live stream state machine
+ * 
+ * CRITICAL: This component MUST be exported as a named export
+ * FIX ISSUE 1: Renamed from LiveStreamStateMachineProvider to LiveStreamStateProvider
+ * to match the import in _layout.tsx
+ */
+export function LiveStreamStateProvider({ children }: { children: ReactNode }) {
   const [currentState, setCurrentState] = useState<LiveStreamState>('IDLE');
   const [previousState, setPreviousState] = useState<LiveStreamState | null>(null);
   const [error, setErrorState] = useState<string | null>(null);
@@ -165,6 +172,11 @@ export function LiveStreamStateMachineProvider({ children }: { children: ReactNo
     return currentState === 'ERROR';
   }, [currentState]);
 
+  // Add console log to verify provider is rendering
+  useEffect(() => {
+    console.log('✅ [LiveStreamStateProvider] Mounted and ready');
+  }, []);
+
   return (
     <LiveStreamStateContext.Provider
       value={{
@@ -193,10 +205,15 @@ export function LiveStreamStateMachineProvider({ children }: { children: ReactNo
   );
 }
 
+// Verify export is not undefined
+if (typeof LiveStreamStateProvider === 'undefined') {
+  console.error('❌ CRITICAL: LiveStreamStateProvider is undefined at export time!');
+}
+
 export function useLiveStreamState() {
   const context = useContext(LiveStreamStateContext);
   if (context === undefined) {
-    throw new Error('useLiveStreamState must be used within a LiveStreamStateMachineProvider');
+    throw new Error('useLiveStreamState must be used within a LiveStreamStateProvider');
   }
   return context;
 }
