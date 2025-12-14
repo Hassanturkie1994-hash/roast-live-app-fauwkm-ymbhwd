@@ -24,13 +24,13 @@ interface FiltersPanelProps {
 
 const FILTERS = [
   { id: 'none', name: 'None', icon: '🚫', color: '#FFFFFF', description: 'No filter' },
-  { id: 'warm', name: 'Warm', icon: '🌅', color: '#FF8C42', description: 'Warm tones' },
-  { id: 'cool', name: 'Cool', icon: '❄️', color: '#4A90E2', description: 'Cool tones' },
-  { id: 'vintage', name: 'Vintage', icon: '📷', color: '#D4A574', description: 'Retro look' },
+  { id: 'warm', name: 'Warm', icon: '🌅', color: '#FF8C42', description: 'Warmer skin tones' },
+  { id: 'cool', name: 'Cool', icon: '❄️', color: '#4A90E2', description: 'Cooler blue tones' },
+  { id: 'vintage', name: 'Vintage', icon: '📷', color: '#D4A574', description: 'Sepia retro look' },
   { id: 'dramatic', name: 'Dramatic', icon: '🎭', color: '#8B4789', description: 'High contrast' },
-  { id: 'bright', name: 'Bright', icon: '☀️', color: '#FFD700', description: 'Brighten' },
-  { id: 'noir', name: 'Noir', icon: '🎬', color: '#2C2C2C', description: 'Black & white' },
-  { id: 'vivid', name: 'Vivid', icon: '🌈', color: '#FF1744', description: 'Saturated' },
+  { id: 'bright', name: 'Bright', icon: '☀️', color: '#FFD700', description: 'Brighten image' },
+  { id: 'noir', name: 'Noir', icon: '🎬', color: '#2C2C2C', description: 'Desaturated B&W' },
+  { id: 'vivid', name: 'Vivid', icon: '🌈', color: '#FF1744', description: 'Boost saturation' },
 ];
 
 const FACE_FILTERS = [
@@ -78,7 +78,7 @@ export default function FiltersPanel({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Color Filters</Text>
               <Text style={styles.sectionDescription}>
-                Apply real-time color grading to your camera preview and stream
+                Subtle color grading that enhances your camera feed without hiding it
               </Text>
               <ScrollView 
                 horizontal 
@@ -127,9 +127,9 @@ export default function FiltersPanel({
 
             {/* Face Filters */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Face Filters</Text>
+              <Text style={styles.sectionTitle}>Face Filters (AR)</Text>
               <Text style={styles.sectionDescription}>
-                Enhance your appearance (Coming Soon)
+                Real-time face tracking and geometry modification (Coming Soon)
               </Text>
               <View style={styles.faceFiltersGrid}>
                 {FACE_FILTERS.map((filter) => (
@@ -183,7 +183,15 @@ export default function FiltersPanel({
                 color={colors.brandPrimary}
               />
               <Text style={styles.infoText}>
-                Filters apply to both your camera preview and live stream output. You can change filters during your live stream without interruption.
+                Color filters use subtle color grading to enhance your camera feed. Your face and background remain fully visible. Filters work in both preview and live stream, and can be changed during broadcast.
+              </Text>
+            </View>
+
+            {/* Technical Note */}
+            <View style={styles.technicalNote}>
+              <Text style={styles.technicalNoteTitle}>🔬 Technical Implementation</Text>
+              <Text style={styles.technicalNoteText}>
+                Current filters use overlay blend modes for color grading. For advanced features like true color matrix filtering or face tracking AR filters, integration with expo-gl or react-native-vision-camera would be required.
               </Text>
             </View>
           </ScrollView>
@@ -364,6 +372,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     gap: 10,
+    marginBottom: 16,
   },
   infoText: {
     flex: 1,
@@ -371,6 +380,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.text,
     lineHeight: 18,
+  },
+  technicalNote: {
+    backgroundColor: 'rgba(74, 144, 226, 0.1)',
+    borderColor: 'rgba(74, 144, 226, 0.3)',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+  },
+  technicalNoteTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
+  },
+  technicalNoteText: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
   footer: {
     padding: 20,

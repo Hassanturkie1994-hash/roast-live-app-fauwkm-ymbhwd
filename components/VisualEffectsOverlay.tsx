@@ -14,19 +14,21 @@ interface Particle {
   y: Animated.Value;
   opacity: Animated.Value;
   scale: Animated.Value;
+  rotation: Animated.Value;
 }
 
 /**
  * VisualEffectsOverlay
  * 
  * Renders animated visual effects over the camera preview.
- * Effects include flames, sparkles, hearts, stars, confetti, smoke, and lightning.
+ * Effects are GPU-optimized particle systems that layer on top of the camera feed.
  * 
- * These are GPU-friendly animated overlays that don't block the UI thread.
+ * CRITICAL: Effects MUST NOT block or tint the camera view.
+ * They are decorative overlays only.
  */
 export default function VisualEffectsOverlay({ effect }: VisualEffectsOverlayProps) {
   const particles = useRef<Particle[]>([]);
-  const animationRef = useRef<NodeJS.Timeout | null>(null);
+  const animationLoopRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (effect && effect !== 'none') {
@@ -41,93 +43,199 @@ export default function VisualEffectsOverlay({ effect }: VisualEffectsOverlayPro
   }, [effect]);
 
   const startEffect = () => {
+    console.log('🎨 [EFFECTS] Starting effect:', effect);
+    
     // Create particles
     const particleCount = getParticleCount();
-    particles.current = Array.from({ length: particleCount }, (_, i) => ({
-      id: i,
-      x: new Animated.Value(Math.random() * width),
-      y: new Animated.Value(height + 50),
-      opacity: new Animated.Value(0),
-      scale: new Animated.Value(0.5 + Math.random() * 0.5),
-    }));
+    particles.current = Array.from({ length: particleCount }, (_, i) => createParticle(i));
 
     // Start animation loop
+    animationLoopRef.current = true;
     animateParticles();
   };
 
   const stopEffect = () => {
-    if (animationRef.current) {
-      clearTimeout(animationRef.current);
-      animationRef.current = null;
-    }
+    console.log('🎨 [EFFECTS] Stopping effect');
+    animationLoopRef.current = false;
     particles.current = [];
+  };
+
+  const createParticle = (id: number): Particle => {
+    const startX = Math.random() * width;
+    const startY = getStartY();
+    
+    return {
+      id,
+      x: new Animated.Value(startX),
+      y: new Animated.Value(startY),
+      opacity: new Animated.Value(0),
+      scale: new Animated.Value(0.3 + Math.random() * 0.7),
+      rotation: new Animated.Value(Math.random() * 360),
+    };
+  };
+
+  const getStartY = () => {
+    switch (effect) {
+      case 'fire':
+      case 'smoke':
+        return height + 50; // Start from bottom
+      case 'confetti':
+        return -50; // Start from top
+      default:
+        return height + 50; // Default: start from bottom
+    }
   };
 
   const getParticleCount = () => {
     switch (effect) {
       case 'fire':
+        return 20; // More particles for fire effect
       case 'smoke':
         return 15;
       case 'sparkles':
       case 'stars':
-        return 20;
-      case 'hearts':
-        return 12;
-      case 'confetti':
         return 25;
+      case 'hearts':
+        return 15;
+      case 'confetti':
+        return 30;
       case 'lightning':
-        return 5;
+        return 8;
       default:
-        return 10;
+        return 15;
     }
   };
 
   const animateParticles = () => {
+    if (!animationLoopRef.current) return;
+
     particles.current.forEach((particle, index) => {
-      const delay = index * 100;
-      const duration = 2000 + Math.random() * 1000;
+      const delay = index * 150; // Stagger particle animations
+      const duration = getDuration();
+      const endY = getEndY();
 
       setTimeout(() => {
+        if (!animationLoopRef.current) return;
+
+        // Animate particle movement
         Animated.parallel([
+          // Y movement (up or down depending on effect)
           Animated.timing(particle.y, {
-            toValue: -100,
+            toValue: endY,
             duration,
             useNativeDriver: true,
           }),
+          // Fade in and out
           Animated.sequence([
             Animated.timing(particle.opacity, {
-              toValue: 1,
-              duration: 300,
+              toValue: getMaxOpacity(),
+              duration: 400,
               useNativeDriver: true,
             }),
-            Animated.delay(duration - 600),
+            Animated.delay(duration - 800),
             Animated.timing(particle.opacity, {
               toValue: 0,
-              duration: 300,
+              duration: 400,
               useNativeDriver: true,
             }),
           ]),
+          // X drift (horizontal movement)
           Animated.timing(particle.x, {
-            toValue: particle.x._value + (Math.random() - 0.5) * 100,
+            toValue: particle.x._value + (Math.random() - 0.5) * 150,
+            duration,
+            useNativeDriver: true,
+          }),
+          // Rotation (for confetti and some effects)
+          Animated.timing(particle.rotation, {
+            toValue: particle.rotation._value + 360,
             duration,
             useNativeDriver: true,
           }),
         ]).start(() => {
-          // Reset particle
-          particle.y.setValue(height + 50);
-          particle.x.setValue(Math.random() * width);
-          particle.opacity.setValue(0);
+          // Reset particle for continuous loop
+          if (animationLoopRef.current) {
+            particle.y.setValue(getStartY());
+            particle.x.setValue(Math.random() * width);
+            particle.opacity.setValue(0);
+            particle.rotation.setValue(Math.random() * 360);
+          }
         });
       }, delay);
     });
 
-    // Loop animation
-    animationRef.current = setTimeout(() => {
-      animateParticles();
-    }, 3000);
+    // Continue loop
+    setTimeout(() => {
+      if (animationLoopRef.current) {
+        animateParticles();
+      }
+    }, getDuration() + 500);
   };
 
-  const getParticleEmoji = () => {
+  const getDuration = () => {
+    switch (effect) {
+      case 'fire':
+        return 2500;
+      case 'smoke':
+        return 3500;
+      case 'sparkles':
+      case 'stars':
+        return 3000;
+      case 'hearts':
+        return 3500;
+      case 'confetti':
+        return 2000;
+      case 'lightning':
+        return 800;
+      default:
+        return 3000;
+    }
+  };
+
+  const getEndY = () => {
+    switch (effect) {
+      case 'fire':
+      case 'smoke':
+        return -100; // Move upward
+      case 'confetti':
+        return height + 50; // Fall downward
+      default:
+        return -100; // Default: move upward
+    }
+  };
+
+  const getMaxOpacity = () => {
+    switch (effect) {
+      case 'smoke':
+        return 0.4; // Smoke is more transparent
+      case 'lightning':
+        return 0.9; // Lightning is bright
+      default:
+        return 0.7; // Default opacity
+    }
+  };
+
+  const getParticleColor = () => {
+    switch (effect) {
+      case 'fire':
+        return ['#FF4500', '#FF6347', '#FFA500', '#FFD700'];
+      case 'sparkles':
+        return ['#FFD700', '#FFFFFF', '#FFF8DC', '#FFFFE0'];
+      case 'hearts':
+        return ['#FF1744', '#FF4081', '#F50057', '#C51162'];
+      case 'stars':
+        return ['#FFD700', '#FFA500', '#FFFF00', '#FFFFFF'];
+      case 'confetti':
+        return ['#FF1744', '#00E676', '#2979FF', '#FFD600', '#FF6D00'];
+      case 'smoke':
+        return ['#CCCCCC', '#AAAAAA', '#999999', '#BBBBBB'];
+      case 'lightning':
+        return ['#00FFFF', '#FFFFFF', '#E0FFFF', '#AFEEEE'];
+      default:
+        return ['#FFFFFF'];
+    }
+  };
+
+  const getParticleShape = () => {
     switch (effect) {
       case 'fire':
         return '🔥';
@@ -152,28 +260,51 @@ export default function VisualEffectsOverlay({ effect }: VisualEffectsOverlayPro
     return null;
   }
 
-  const emoji = getParticleEmoji();
+  const colors = getParticleColor();
+  const shape = getParticleShape();
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {particles.current.map((particle) => (
-        <Animated.Text
-          key={particle.id}
-          style={[
-            styles.particle,
-            {
-              transform: [
-                { translateX: particle.x },
-                { translateY: particle.y },
-                { scale: particle.scale },
-              ],
-              opacity: particle.opacity,
-            },
-          ]}
-        >
-          {emoji}
-        </Animated.Text>
-      ))}
+      {particles.current.map((particle, index) => {
+        const color = colors[index % colors.length];
+        
+        return (
+          <Animated.View
+            key={particle.id}
+            style={[
+              styles.particle,
+              {
+                transform: [
+                  { translateX: particle.x },
+                  { translateY: particle.y },
+                  { scale: particle.scale },
+                  { 
+                    rotate: particle.rotation.interpolate({
+                      inputRange: [0, 360],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+                opacity: particle.opacity,
+              },
+            ]}
+          >
+            {/* Render particle as colored circle or emoji */}
+            {effect === 'confetti' || effect === 'lightning' ? (
+              <View 
+                style={[
+                  styles.particleCircle, 
+                  { backgroundColor: color }
+                ]} 
+              />
+            ) : (
+              <Animated.Text style={[styles.particleEmoji, { color }]}>
+                {shape}
+              </Animated.Text>
+            )}
+          </Animated.View>
+        );
+      })}
     </View>
   );
 }
@@ -181,6 +312,20 @@ export default function VisualEffectsOverlay({ effect }: VisualEffectsOverlayPro
 const styles = StyleSheet.create({
   particle: {
     position: 'absolute',
-    fontSize: 24,
+  },
+  particleEmoji: {
+    fontSize: 28,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  particleCircle: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
 });

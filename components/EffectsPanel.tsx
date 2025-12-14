@@ -21,12 +21,12 @@ interface EffectsPanelProps {
 
 const EFFECTS = [
   { id: 'none', name: 'None', icon: '🚫', description: 'No effect' },
-  { id: 'fire', name: 'Roast Flames', icon: '🔥', description: 'Animated flames for roast mode' },
+  { id: 'fire', name: 'Roast Flames', icon: '🔥', description: 'Animated flame particles rising' },
   { id: 'sparkles', name: 'Sparkles', icon: '✨', description: 'Magical sparkle particles' },
   { id: 'hearts', name: 'Hearts', icon: '❤️', description: 'Floating heart animations' },
   { id: 'stars', name: 'Stars', icon: '⭐', description: 'Twinkling star particles' },
   { id: 'confetti', name: 'Confetti', icon: '🎉', description: 'Celebration confetti burst' },
-  { id: 'smoke', name: 'Smoke', icon: '💨', description: 'Subtle smoke overlay' },
+  { id: 'smoke', name: 'Smoke', icon: '💨', description: 'Subtle smoke particles' },
   { id: 'lightning', name: 'Lightning', icon: '⚡', description: 'Electric bolt effects' },
 ];
 
@@ -63,7 +63,7 @@ export default function EffectsPanel({
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             <Text style={styles.description}>
-              Add animated visual effects to your camera preview and live stream. Effects are GPU-optimized and won&apos;t impact performance.
+              Add animated particle effects layered on top of your camera feed. Effects are GPU-optimized and won&apos;t impact performance or hide your face.
             </Text>
 
             <View style={styles.effectsGrid}>
@@ -108,7 +108,19 @@ export default function EffectsPanel({
                 color={colors.brandPrimary}
               />
               <Text style={styles.infoText}>
-                Effects render as animated overlays on your camera feed. You can toggle effects during your live stream without restarting. Only one effect can be active at a time.
+                Effects are animated visual elements that layer on top of your camera feed. They use GPU-accelerated animations and never block or tint your camera view. You can toggle effects during your live stream without interruption. Only one effect can be active at a time.
+              </Text>
+            </View>
+
+            {/* Technical Note */}
+            <View style={styles.technicalNote}>
+              <Text style={styles.technicalNoteTitle}>🎬 How Effects Work</Text>
+              <Text style={styles.technicalNoteText}>
+                • Particle System: Each effect generates multiple animated particles{'\n'}
+                • GPU Optimized: Uses native driver for smooth 60 FPS animations{'\n'}
+                • Non-Blocking: Effects render as overlays, never hiding the camera{'\n'}
+                • Dynamic: Particles continuously spawn and animate in loops{'\n'}
+                • Customizable: Each effect has unique colors, speeds, and behaviors
               </Text>
             </View>
           </ScrollView>
@@ -212,12 +224,32 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     gap: 10,
+    marginBottom: 16,
   },
   infoText: {
     flex: 1,
     fontSize: 12,
     fontWeight: '500',
     color: colors.text,
+    lineHeight: 18,
+  },
+  technicalNote: {
+    backgroundColor: 'rgba(74, 144, 226, 0.1)',
+    borderColor: 'rgba(74, 144, 226, 0.3)',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+  },
+  technicalNoteTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  technicalNoteText: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: colors.textSecondary,
     lineHeight: 18,
   },
   footer: {
