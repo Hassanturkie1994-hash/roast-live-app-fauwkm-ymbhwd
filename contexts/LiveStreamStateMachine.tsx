@@ -27,7 +27,7 @@ export type LiveStreamState =
   | 'STREAM_ENDED'
   | 'ERROR';
 
-interface LiveStreamStateContext {
+interface LiveStreamStateContextType {
   currentState: LiveStreamState;
   previousState: LiveStreamState | null;
   error: string | null;
@@ -52,7 +52,7 @@ interface LiveStreamStateContext {
   hasError: () => boolean;
 }
 
-const LiveStreamStateContext = createContext<LiveStreamStateContext | undefined>(undefined);
+const LiveStreamStateContext = createContext<LiveStreamStateContextType | undefined>(undefined);
 
 /**
  * LiveStreamStateProvider - Manages the live stream state machine

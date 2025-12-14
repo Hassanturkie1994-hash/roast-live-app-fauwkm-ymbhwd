@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -78,7 +78,7 @@ export default function PreLiveSetupScreen() {
     return () => {
       isMountedRef.current = false;
     };
-  }, [user, permission]);
+  }, [user, permission, liveStreamState, activeFilter?.name, activeEffect?.name, requestPermission]);
 
   // Update state machine when content label is selected
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function PreLiveSetupScreen() {
       liveStreamState.selectContentLabel();
       console.log('🏷️ [PRE-LIVE] Content label selected, state updated');
     }
-  }, [contentLabel]);
+  }, [contentLabel, liveStreamState]);
 
   // Update state machine when practice mode changes
   useEffect(() => {
@@ -97,7 +97,7 @@ export default function PreLiveSetupScreen() {
       liveStreamState.disablePracticeMode();
       console.log('🎯 [PRE-LIVE] Practice mode disabled');
     }
-  }, [practiceMode]);
+  }, [practiceMode, liveStreamState]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
@@ -109,7 +109,7 @@ export default function PreLiveSetupScreen() {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
-  const handleGoLive = async () => {
+  const handleGoLive = useCallback(async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
     console.log('📊 [PRE-LIVE] Current state:', liveStreamState.currentState);
     console.log('🎯 [PRE-LIVE] Practice Mode:', practiceMode);
@@ -194,7 +194,7 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  };
+  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, activeFilter?.name, activeEffect?.name, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, hasActiveFilter, hasActiveEffect]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);

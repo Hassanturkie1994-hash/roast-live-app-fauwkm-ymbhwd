@@ -130,71 +130,8 @@ export default function BroadcastScreen() {
     },
   });
 
-  /* ───────────────── MOUNT / AUTH GUARD ───────────────── */
-  useEffect(() => {
-    isMountedRef.current = true;
-    console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
-    console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
-    console.log('🎯 [BROADCAST] Practice Mode:', isPracticeMode);
-    console.log('🎨 [BROADCAST] Active filter:', activeFilter?.name || 'None');
-    console.log('✨ [BROADCAST] Active effect:', activeEffect?.name || 'None');
-
-    if (!user) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    // Validate params
-    if (!params.streamTitle || !params.contentLabel) {
-      console.error('❌ [BROADCAST] Missing required params:', { 
-        streamTitle: params.streamTitle, 
-        contentLabel: params.contentLabel 
-      });
-      
-      Alert.alert(
-        'Missing Stream Information',
-        'Required stream information is missing. Please try again.',
-        [
-          {
-            text: 'Go Back',
-            style: 'cancel',
-            onPress: () => {
-              liveStreamState.setError('Missing stream information');
-              router.back();
-            },
-          },
-        ]
-      );
-      
-      setStreamCreationError('Missing stream information');
-      setIsCreatingStream(false);
-      return;
-    }
-
-    // PRACTICE MODE: Skip stream creation entirely
-    if (isPracticeMode) {
-      console.log('🎯 [BROADCAST] Practice Mode enabled - skipping Cloudflare stream creation');
-      startPracticeMode();
-    } else {
-      // REAL LIVE: Create stream on mount
-      createStreamOnMount();
-    }
-
-    return () => {
-      isMountedRef.current = false;
-      console.log('🎬 [BROADCAST] BroadcastScreen unmounted');
-      // Deactivate keep awake when component unmounts
-      try {
-        deactivateKeepAwake();
-        console.log('💤 [BROADCAST] Keep awake deactivated on unmount');
-      } catch (error) {
-        console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake on unmount:', error);
-      }
-    };
-  }, [user]);
-
   /* ───────────────── PRACTICE MODE SETUP ───────────────── */
-  const startPracticeMode = async () => {
+  const startPracticeMode = useCallback(async () => {
     try {
       console.log('🎯 [PRACTICE] Starting Practice Mode');
 
@@ -232,10 +169,10 @@ export default function BroadcastScreen() {
         setIsCreatingStream(false);
       }
     }
-  };
+  }, [liveStreamState, setIsStreaming]);
 
   /* ───────────────── STREAM CREATION ON MOUNT ───────────────── */
-  const createStreamOnMount = async () => {
+  const createStreamOnMount = useCallback(async () => {
     if (!user || !params.streamTitle || !params.contentLabel) {
       console.error('❌ [BROADCAST] Cannot create stream: missing required data');
       liveStreamState.setError('Missing required information');
@@ -366,12 +303,75 @@ export default function BroadcastScreen() {
         setIsCreatingStream(false);
       }
     }
-  };
+  }, [user, params.streamTitle, params.contentLabel, liveStreamState, setIsStreaming, startStreamTimer]);
+
+  /* ───────────────── MOUNT / AUTH GUARD ───────────────── */
+  useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
+    console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
+    console.log('🎯 [BROADCAST] Practice Mode:', isPracticeMode);
+    console.log('🎨 [BROADCAST] Active filter:', activeFilter?.name || 'None');
+    console.log('✨ [BROADCAST] Active effect:', activeEffect?.name || 'None');
+
+    if (!user) {
+      router.replace('/auth/login');
+      return;
+    }
+
+    // Validate params
+    if (!params.streamTitle || !params.contentLabel) {
+      console.error('❌ [BROADCAST] Missing required params:', { 
+        streamTitle: params.streamTitle, 
+        contentLabel: params.contentLabel 
+      });
+      
+      Alert.alert(
+        'Missing Stream Information',
+        'Required stream information is missing. Please try again.',
+        [
+          {
+            text: 'Go Back',
+            style: 'cancel',
+            onPress: () => {
+              liveStreamState.setError('Missing stream information');
+              router.back();
+            },
+          },
+        ]
+      );
+      
+      setStreamCreationError('Missing stream information');
+      setIsCreatingStream(false);
+      return;
+    }
+
+    // PRACTICE MODE: Skip stream creation entirely
+    if (isPracticeMode) {
+      console.log('🎯 [BROADCAST] Practice Mode enabled - skipping Cloudflare stream creation');
+      startPracticeMode();
+    } else {
+      // REAL LIVE: Create stream on mount
+      createStreamOnMount();
+    }
+
+    return () => {
+      isMountedRef.current = false;
+      console.log('🎬 [BROADCAST] BroadcastScreen unmounted');
+      // Deactivate keep awake when component unmounts
+      try {
+        deactivateKeepAwake();
+        console.log('💤 [BROADCAST] Keep awake deactivated on unmount');
+      } catch (error) {
+        console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake on unmount:', error);
+      }
+    };
+  }, [user, params, isPracticeMode, liveStreamState, activeFilter?.name, activeEffect?.name, createStreamOnMount, startPracticeMode]);
 
   /* ───────────────── PERMISSIONS ───────────────── */
   useEffect(() => {
     if (!permission?.granted) requestPermission();
-  }, [permission]);
+  }, [permission, requestPermission]);
 
   /* ───────────────── BACK BUTTON HANDLER ───────────────── */
   useEffect(() => {
