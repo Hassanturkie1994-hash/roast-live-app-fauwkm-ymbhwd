@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, BackHandler, ActivityIndicator, TextInput, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, BackHandler, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, FlashMode } from 'expo-camera';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -16,9 +16,14 @@ import ConnectionStatusIndicator from '@/components/ConnectionStatusIndicator';
 import ViewerListModal from '@/components/ViewerListModal';
 import ContentLabelBadge from '@/components/ContentLabelBadge';
 import { ContentLabel } from '@/components/ContentLabelModal';
+import CameraFilterOverlay from '@/components/CameraFilterOverlay';
+import VisualEffectsOverlay from '@/components/VisualEffectsOverlay';
+import EffectsPanel from '@/components/EffectsPanel';
+import FiltersPanel from '@/components/FiltersPanel';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useStreaming } from '@/contexts/StreamingContext';
+import { useLiveStreamState } from '@/contexts/LiveStreamStateMachine';
 import { supabase } from '@/app/integrations/supabase/client';
 import { cloudflareService } from '@/app/services/cloudflareService';
 import { contentSafetyService } from '@/app/services/contentSafetyService';
@@ -46,6 +51,7 @@ interface GiftAnimation {
 export default function BroadcastScreen() {
   const { user } = useAuth();
   const { setIsStreaming, startStreamTimer, stopStreamTimer } = useStreaming();
+  const liveStreamState = useLiveStreamState();
   
   // Get params from navigation
   const params = useLocalSearchParams<{
@@ -54,6 +60,9 @@ export default function BroadcastScreen() {
     aboutLive?: string;
     practiceMode?: string;
     whoCanWatch?: string;
+    selectedEffect?: string;
+    selectedFilter?: string;
+    filterIntensity?: string;
   }>();
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -78,12 +87,19 @@ export default function BroadcastScreen() {
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
 
+  // Effects and filters (from params, can be changed during live)
+  const [selectedEffect, setSelectedEffect] = useState<string | null>(params.selectedEffect || null);
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(params.selectedFilter || null);
+  const [filterIntensity, setFilterIntensity] = useState(parseFloat(params.filterIntensity || '1.0'));
+
   // UI states
   const [giftAnimations, setGiftAnimations] = useState<GiftAnimation[]>([]);
   const [showViewerList, setShowViewerList] = useState(false);
   const [showExitConfirmation, setShowExitConfirmation] = useState(false);
   const [showLiveSettings, setShowLiveSettings] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showEffectsPanel, setShowEffectsPanel] = useState(false);
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
 
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const streamStartTime = useRef<string | null>(null);
@@ -115,7 +131,8 @@ export default function BroadcastScreen() {
   /* ───────────────── MOUNT / AUTH GUARD ───────────────── */
   useEffect(() => {
     isMountedRef.current = true;
-    console.log('🎬 BroadcastScreen mounted with params:', params);
+    console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
+    console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
 
     if (!user) {
       router.replace('/auth/login');
@@ -124,7 +141,7 @@ export default function BroadcastScreen() {
 
     // Validate params
     if (!params.streamTitle || !params.contentLabel) {
-      console.error('❌ Missing required params:', { 
+      console.error('❌ [BROADCAST] Missing required params:', { 
         streamTitle: params.streamTitle, 
         contentLabel: params.contentLabel 
       });
@@ -136,7 +153,10 @@ export default function BroadcastScreen() {
           {
             text: 'Go Back',
             style: 'cancel',
-            onPress: () => router.back(),
+            onPress: () => {
+              liveStreamState.setError('Missing stream information');
+              router.back();
+            },
           },
         ]
       );
@@ -151,13 +171,13 @@ export default function BroadcastScreen() {
 
     return () => {
       isMountedRef.current = false;
-      console.log('🎬 BroadcastScreen unmounted');
+      console.log('🎬 [BROADCAST] BroadcastScreen unmounted');
       // Deactivate keep awake when component unmounts
       try {
         deactivateKeepAwake();
-        console.log('💤 Keep awake deactivated on unmount');
+        console.log('💤 [BROADCAST] Keep awake deactivated on unmount');
       } catch (error) {
-        console.warn('⚠️ Failed to deactivate keep awake on unmount:', error);
+        console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake on unmount:', error);
       }
     };
   }, [user]);
@@ -165,7 +185,8 @@ export default function BroadcastScreen() {
   /* ───────────────── STREAM CREATION ON MOUNT ───────────────── */
   const createStreamOnMount = async () => {
     if (!user || !params.streamTitle || !params.contentLabel) {
-      console.error('❌ Cannot create stream: missing required data');
+      console.error('❌ [BROADCAST] Cannot create stream: missing required data');
+      liveStreamState.setError('Missing required information');
       setStreamCreationError('Missing required information');
       setIsCreatingStream(false);
       return;
@@ -174,6 +195,7 @@ export default function BroadcastScreen() {
     console.log('🎬 [STREAM-CREATE-1] Starting stream creation...');
     console.log('📝 [STREAM-CREATE-1] Title:', params.streamTitle);
     console.log('🏷️ [STREAM-CREATE-1] Label:', params.contentLabel);
+    console.log('📊 [STREAM-CREATE-1] State:', liveStreamState.currentState);
 
     try {
       // STEP 1: Activate keep awake (non-blocking)
@@ -234,8 +256,12 @@ export default function BroadcastScreen() {
         console.error('⚠️ [STREAM-CREATE-5] Error creating archive (continuing anyway):', archiveError);
       }
 
-      // STEP 5: Update UI state
-      console.log('🎉 [STREAM-CREATE-6] Setting stream state in UI...');
+      // STEP 5: Update state machine
+      console.log('🔄 [STREAM-CREATE-6] Updating state machine to STREAM_READY...');
+      liveStreamState.streamCreated();
+
+      // STEP 6: Update UI state
+      console.log('🎉 [STREAM-CREATE-7] Setting stream state in UI...');
       if (isMountedRef.current) {
         setCurrentStream(result.stream);
         setIsLive(true);
@@ -248,18 +274,22 @@ export default function BroadcastScreen() {
         setTotalGifts(0);
         setTotalLikes(0);
         setLiveSeconds(0);
-        console.log('✅ [STREAM-CREATE-6] Stream state updated successfully');
+        console.log('✅ [STREAM-CREATE-7] Stream state updated successfully');
       }
+
+      // STEP 7: Start broadcasting
+      console.log('🔄 [STREAM-CREATE-8] Transitioning to BROADCASTING state...');
+      liveStreamState.startBroadcasting();
 
       startStreamTimer();
 
-      console.log('📺 [STREAM-CREATE-7] Stream details:', {
+      console.log('📺 [STREAM-CREATE-9] Stream details:', {
         id: result.stream.id,
         live_input_id: result.stream.live_input_id,
         playback_url: result.stream.playback_url,
       });
 
-      console.log('🎊 [STREAM-CREATE-8] Stream creation complete!');
+      console.log('🎊 [STREAM-CREATE-10] Stream creation complete! Now LIVE!');
     } catch (error) {
       console.error('❌ [STREAM-CREATE-ERROR] Error creating stream:', error);
       
@@ -277,6 +307,8 @@ export default function BroadcastScreen() {
         }
       }
       
+      liveStreamState.setError(errorMessage);
+      
       if (isMountedRef.current) {
         setStreamCreationError(errorMessage);
         setIsCreatingStream(false);
@@ -293,7 +325,7 @@ export default function BroadcastScreen() {
   useEffect(() => {
     if (isLive && Platform.OS === 'android') {
       const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-        console.log('🚫 Back button pressed during livestream - showing confirmation');
+        console.log('🚫 [BROADCAST] Back button pressed during livestream - showing confirmation');
         setShowExitConfirmation(true);
         return true;
       });
@@ -321,12 +353,12 @@ export default function BroadcastScreen() {
   const subscribeViewers = useCallback((streamId: string) => {
     if (!isMountedRef.current) return;
 
-    console.log('🔌 Subscribing to viewer updates:', `stream:${streamId}:broadcaster`);
+    console.log('🔌 [BROADCAST] Subscribing to viewer updates:', `stream:${streamId}:broadcaster`);
 
     const channel = supabase
       .channel(`stream:${streamId}:broadcaster`)
       .on('broadcast', { event: 'viewer_count' }, (payload) => {
-        console.log('👥 Viewer count update:', payload);
+        console.log('👥 [BROADCAST] Viewer count update:', payload);
         
         if (!isMountedRef.current) return;
         
@@ -335,7 +367,7 @@ export default function BroadcastScreen() {
         setPeakViewers(prev => count > prev ? count : prev);
       })
       .subscribe((status) => {
-        console.log('📡 Viewer channel subscription status:', status);
+        console.log('📡 [BROADCAST] Viewer channel subscription status:', status);
       });
 
     realtimeRef.current = channel;
@@ -345,12 +377,12 @@ export default function BroadcastScreen() {
   const subscribeToGifts = useCallback((streamId: string) => {
     if (!isMountedRef.current) return;
 
-    console.log('🔌 Subscribing to gifts:', `stream:${streamId}:gifts`);
+    console.log('🔌 [BROADCAST] Subscribing to gifts:', `stream:${streamId}:gifts`);
 
     const channel = supabase
       .channel(`stream:${streamId}:gifts`)
       .on('broadcast', { event: 'gift_sent' }, (payload) => {
-        console.log('🎁 Gift received:', payload);
+        console.log('🎁 [BROADCAST] Gift received:', payload);
         
         if (!isMountedRef.current) return;
         
@@ -369,7 +401,7 @@ export default function BroadcastScreen() {
         setTotalGifts((prev) => prev + 1);
       })
       .subscribe((status) => {
-        console.log('📡 Gift channel subscription status:', status);
+        console.log('📡 [BROADCAST] Gift channel subscription status:', status);
       });
 
     giftChannelRef.current = channel;
@@ -379,19 +411,19 @@ export default function BroadcastScreen() {
   const subscribeToLikes = useCallback((streamId: string) => {
     if (!isMountedRef.current) return;
 
-    console.log('🔌 Subscribing to likes:', `stream:${streamId}:likes`);
+    console.log('🔌 [BROADCAST] Subscribing to likes:', `stream:${streamId}:likes`);
 
     const channel = supabase
       .channel(`stream:${streamId}:likes`)
       .on('broadcast', { event: 'like_sent' }, (payload) => {
-        console.log('❤️ Like received:', payload);
+        console.log('❤️ [BROADCAST] Like received:', payload);
         
         if (!isMountedRef.current) return;
         
         setTotalLikes((prev) => prev + 1);
       })
       .subscribe((status) => {
-        console.log('📡 Likes channel subscription status:', status);
+        console.log('📡 [BROADCAST] Likes channel subscription status:', status);
       });
 
     likesChannelRef.current = channel;
@@ -399,7 +431,7 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     if (isLive && currentStream?.id && isMountedRef.current) {
-      console.log('🚀 Initializing Realtime channels for stream:', currentStream.id);
+      console.log('🚀 [BROADCAST] Initializing Realtime channels for stream:', currentStream.id);
       subscribeViewers(currentStream.id);
       subscribeToGifts(currentStream.id);
       subscribeToLikes(currentStream.id);
@@ -407,17 +439,17 @@ export default function BroadcastScreen() {
     
     return () => {
       if (realtimeRef.current) {
-        console.log('🔌 Unsubscribing from viewer channel');
+        console.log('🔌 [BROADCAST] Unsubscribing from viewer channel');
         supabase.removeChannel(realtimeRef.current);
         realtimeRef.current = null;
       }
       if (giftChannelRef.current) {
-        console.log('🔌 Unsubscribing from gift channel');
+        console.log('🔌 [BROADCAST] Unsubscribing from gift channel');
         supabase.removeChannel(giftChannelRef.current);
         giftChannelRef.current = null;
       }
       if (likesChannelRef.current) {
-        console.log('🔌 Unsubscribing from likes channel');
+        console.log('🔌 [BROADCAST] Unsubscribing from likes channel');
         supabase.removeChannel(likesChannelRef.current);
         likesChannelRef.current = null;
       }
@@ -453,10 +485,13 @@ export default function BroadcastScreen() {
     }
 
     try {
-      console.log('🛑 Ending stream:', {
+      console.log('🛑 [BROADCAST] Ending stream:', {
         liveInputId: currentStream.live_input_id,
         streamId: currentStream.id,
       });
+      
+      // Update state machine
+      liveStreamState.endStream();
       
       // Stop reconnection attempts
       stopReconnect();
@@ -464,9 +499,9 @@ export default function BroadcastScreen() {
       // Deactivate keep awake
       try {
         deactivateKeepAwake();
-        console.log('💤 Keep awake deactivated');
+        console.log('💤 [BROADCAST] Keep awake deactivated');
       } catch (keepAwakeError) {
-        console.warn('⚠️ Failed to deactivate keep awake:', keepAwakeError);
+        console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake:', keepAwakeError);
       }
 
       // Get total unique viewers
@@ -494,7 +529,7 @@ export default function BroadcastScreen() {
           archived_url: currentStream.playback_url,
         });
 
-        console.log('📦 Stream archive updated with metrics:', {
+        console.log('📦 [BROADCAST] Stream archive updated with metrics:', {
           duration,
           peakViewers,
           totalViewers: totalViewerCount,
@@ -506,7 +541,7 @@ export default function BroadcastScreen() {
         streamId: currentStream.id,
       });
 
-      console.log('✅ Stream ended successfully');
+      console.log('✅ [BROADCAST] Stream ended successfully');
 
       // Stop stream timer and update database
       if (user) {
@@ -530,6 +565,9 @@ export default function BroadcastScreen() {
         streamStartTime.current = null;
       }
 
+      // Reset state machine
+      liveStreamState.resetToIdle();
+
       Alert.alert(
         'Stream Ended',
         `Your live stream has been ended successfully.\n\n📊 Stats:\n• Peak Viewers: ${peakViewers}\n• Total Viewers: ${totalViewerCount}\n• Total Gifts: ${totalGifts}\n• Total Likes: ${totalLikes}\n• Duration: ${formatTime(liveSeconds)}`,
@@ -541,7 +579,7 @@ export default function BroadcastScreen() {
         ]
       );
     } catch (error) {
-      console.error('❌ Error ending stream:', error);
+      console.error('❌ [BROADCAST] Error ending stream:', error);
       
       const errorMessage = error instanceof Error 
         ? error.message 
@@ -563,7 +601,7 @@ export default function BroadcastScreen() {
 
   /* ───────────────── CAMERA CONTROLS ───────────────── */
   const toggleCameraFacing = () => {
-    console.log('📷 Switching camera');
+    console.log('📷 [BROADCAST] Switching camera');
     if (isMountedRef.current) {
       setFacing((current) => (current === 'back' ? 'front' : 'back'));
       if (facing === 'back') {
@@ -574,7 +612,7 @@ export default function BroadcastScreen() {
 
   const toggleFlash = () => {
     if (facing === 'back') {
-      console.log('💡 Toggling flash');
+      console.log('💡 [BROADCAST] Toggling flash');
       if (isMountedRef.current) {
         setFlashMode((current) => (current === 'off' ? 'on' : 'off'));
       }
@@ -584,34 +622,36 @@ export default function BroadcastScreen() {
   };
 
   const toggleCamera = () => {
-    console.log('📹 Toggling camera on/off');
+    console.log('📹 [BROADCAST] Toggling camera on/off');
     if (isMountedRef.current) {
       setIsCameraOn((current) => !current);
     }
   };
 
   const toggleMic = () => {
-    console.log('🎤 Toggling microphone');
+    console.log('🎤 [BROADCAST] Toggling microphone');
     if (isMountedRef.current) {
       setIsMicOn((current) => !current);
     }
   };
 
   const handleRetry = () => {
-    console.log('🔄 Retrying stream creation...');
+    console.log('🔄 [BROADCAST] Retrying stream creation...');
     setStreamCreationError(null);
     setIsCreatingStream(true);
+    liveStreamState.startStreamCreation();
     createStreamOnMount();
   };
 
   const handleCancel = () => {
-    console.log('❌ Cancelling stream creation...');
+    console.log('❌ [BROADCAST] Cancelling stream creation...');
     setIsStreaming(false);
+    liveStreamState.resetToIdle();
     router.back();
   };
 
   const handleShare = () => {
-    console.log('📤 Share stream');
+    console.log('📤 [BROADCAST] Share stream');
     setShowShareModal(true);
   };
 
@@ -655,6 +695,9 @@ export default function BroadcastScreen() {
             <Text style={styles.loadingStep}>⏳ Creating stream...</Text>
             <Text style={styles.loadingStep}>⏳ Connecting to server...</Text>
           </View>
+          {__DEV__ && (
+            <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+          )}
         </View>
       </View>
     );
@@ -680,6 +723,9 @@ export default function BroadcastScreen() {
           />
           <Text style={styles.errorTitle}>Failed to Start Stream</Text>
           <Text style={styles.errorMessage}>{streamCreationError}</Text>
+          {__DEV__ && (
+            <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+          )}
           <View style={styles.errorButtons}>
             <TouchableOpacity
               style={styles.errorCancelButton}
@@ -720,6 +766,12 @@ export default function BroadcastScreen() {
           <Text style={styles.cameraOffText}>Camera Off — Stream Still Active</Text>
         </View>
       )}
+
+      {/* CAMERA FILTER OVERLAY */}
+      <CameraFilterOverlay filter={selectedFilter} intensity={filterIntensity} />
+
+      {/* VISUAL EFFECTS OVERLAY */}
+      <VisualEffectsOverlay effect={selectedEffect} />
 
       {/* OVERLAY LAYER */}
       <View style={styles.overlay} pointerEvents="box-none">
@@ -813,10 +865,34 @@ export default function BroadcastScreen() {
                 <Text style={styles.rightSideButtonText}>{totalGifts}</Text>
               </TouchableOpacity>
 
-              {/* Roast Reactions */}
-              <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
-                <Text style={styles.roastEmoji}>🔥</Text>
-                <Text style={styles.rightSideButtonText}>Roast</Text>
+              {/* Effects */}
+              <TouchableOpacity 
+                style={styles.rightSideButton} 
+                onPress={() => setShowEffectsPanel(true)}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="sparkles"
+                  android_material_icon_name="auto_awesome"
+                  size={32}
+                  color={selectedEffect ? colors.brandPrimary : '#FFFFFF'}
+                />
+                <Text style={styles.rightSideButtonText}>Effects</Text>
+              </TouchableOpacity>
+
+              {/* Filters */}
+              <TouchableOpacity 
+                style={styles.rightSideButton} 
+                onPress={() => setShowFiltersPanel(true)}
+                activeOpacity={0.7}
+              >
+                <IconSymbol
+                  ios_icon_name="camera.filters"
+                  android_material_icon_name="filter"
+                  size={32}
+                  color={selectedFilter ? colors.brandPrimary : '#FFFFFF'}
+                />
+                <Text style={styles.rightSideButtonText}>Filters</Text>
               </TouchableOpacity>
 
               {/* Share */}
@@ -886,6 +962,13 @@ export default function BroadcastScreen() {
                 />
               </TouchableOpacity>
             </View>
+
+            {/* STATE MACHINE DEBUG (Remove in production) */}
+            {__DEV__ && (
+              <View style={styles.debugContainer}>
+                <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+              </View>
+            )}
           </>
         )}
       </View>
@@ -916,6 +999,24 @@ export default function BroadcastScreen() {
           isModerator={false}
         />
       )}
+
+      {/* EFFECTS PANEL */}
+      <EffectsPanel
+        visible={showEffectsPanel}
+        onClose={() => setShowEffectsPanel(false)}
+        selectedEffect={selectedEffect}
+        onSelectEffect={setSelectedEffect}
+      />
+
+      {/* FILTERS PANEL */}
+      <FiltersPanel
+        visible={showFiltersPanel}
+        onClose={() => setShowFiltersPanel(false)}
+        selectedFilter={selectedFilter}
+        onSelectFilter={setSelectedFilter}
+        filterIntensity={filterIntensity}
+        onIntensityChange={setFilterIntensity}
+      />
 
       {/* LIVE SETTINGS MODAL */}
       <LiveSettingsModal
@@ -1378,9 +1479,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  roastEmoji: {
-    fontSize: 32,
-  },
   bottomCenterControls: {
     position: 'absolute',
     bottom: 120,
@@ -1406,6 +1504,20 @@ const styles = StyleSheet.create({
   bottomControlButtonOff: {
     backgroundColor: 'rgba(164, 0, 40, 0.8)',
     borderColor: colors.brandPrimary,
+  },
+  debugContainer: {
+    position: 'absolute',
+    bottom: 60,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 8,
+    padding: 8,
+    zIndex: 100,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#00FF00',
   },
   modal: {
     ...StyleSheet.absoluteFillObject,

@@ -21,13 +21,13 @@ interface EffectsPanelProps {
 
 const EFFECTS = [
   { id: 'none', name: 'None', icon: '🚫', description: 'No effect' },
-  { id: 'fire', name: 'Fire', icon: '🔥', description: 'Roast mode flames' },
-  { id: 'sparkles', name: 'Sparkles', icon: '✨', description: 'Magical sparkles' },
-  { id: 'hearts', name: 'Hearts', icon: '❤️', description: 'Floating hearts' },
-  { id: 'stars', name: 'Stars', icon: '⭐', description: 'Twinkling stars' },
-  { id: 'confetti', name: 'Confetti', icon: '🎉', description: 'Party confetti' },
-  { id: 'smoke', name: 'Smoke', icon: '💨', description: 'Smoke effect' },
-  { id: 'lightning', name: 'Lightning', icon: '⚡', description: 'Electric bolts' },
+  { id: 'fire', name: 'Roast Flames', icon: '🔥', description: 'Animated flames for roast mode' },
+  { id: 'sparkles', name: 'Sparkles', icon: '✨', description: 'Magical sparkle particles' },
+  { id: 'hearts', name: 'Hearts', icon: '❤️', description: 'Floating heart animations' },
+  { id: 'stars', name: 'Stars', icon: '⭐', description: 'Twinkling star particles' },
+  { id: 'confetti', name: 'Confetti', icon: '🎉', description: 'Celebration confetti burst' },
+  { id: 'smoke', name: 'Smoke', icon: '💨', description: 'Subtle smoke overlay' },
+  { id: 'lightning', name: 'Lightning', icon: '⚡', description: 'Electric bolt effects' },
 ];
 
 export default function EffectsPanel({
@@ -63,7 +63,7 @@ export default function EffectsPanel({
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             <Text style={styles.description}>
-              Select a visual effect to apply to your camera preview. Effects are visible only during setup and won&apos;t affect your stream.
+              Add animated visual effects to your camera preview and live stream. Effects are GPU-optimized and won&apos;t impact performance.
             </Text>
 
             <View style={styles.effectsGrid}>
@@ -97,6 +97,19 @@ export default function EffectsPanel({
                   </TouchableOpacity>
                 );
               })}
+            </View>
+
+            {/* Info Box */}
+            <View style={styles.infoBox}>
+              <IconSymbol
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.brandPrimary}
+              />
+              <Text style={styles.infoText}>
+                Effects render as animated overlays on your camera feed. You can toggle effects during your live stream without restarting. Only one effect can be active at a time.
+              </Text>
             </View>
           </ScrollView>
 
@@ -148,6 +161,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    marginBottom: 20,
   },
   effectCard: {
     width: '48%',
@@ -173,6 +187,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
+    textAlign: 'center',
   },
   effectNameActive: {
     color: colors.brandPrimary,
@@ -187,6 +202,23 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.brandPrimary,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text,
+    lineHeight: 18,
   },
   footer: {
     padding: 20,

@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
-  Slider,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
@@ -23,14 +23,14 @@ interface FiltersPanelProps {
 }
 
 const FILTERS = [
-  { id: 'none', name: 'None', icon: '🚫', color: '#FFFFFF' },
-  { id: 'warm', name: 'Warm', icon: '🌅', color: '#FF8C42' },
-  { id: 'cool', name: 'Cool', icon: '❄️', color: '#4A90E2' },
-  { id: 'vintage', name: 'Vintage', icon: '📷', color: '#D4A574' },
-  { id: 'dramatic', name: 'Dramatic', icon: '🎭', color: '#8B4789' },
-  { id: 'bright', name: 'Bright', icon: '☀️', color: '#FFD700' },
-  { id: 'noir', name: 'Noir', icon: '🎬', color: '#2C2C2C' },
-  { id: 'vivid', name: 'Vivid', icon: '🌈', color: '#FF1744' },
+  { id: 'none', name: 'None', icon: '🚫', color: '#FFFFFF', description: 'No filter' },
+  { id: 'warm', name: 'Warm', icon: '🌅', color: '#FF8C42', description: 'Warm tones' },
+  { id: 'cool', name: 'Cool', icon: '❄️', color: '#4A90E2', description: 'Cool tones' },
+  { id: 'vintage', name: 'Vintage', icon: '📷', color: '#D4A574', description: 'Retro look' },
+  { id: 'dramatic', name: 'Dramatic', icon: '🎭', color: '#8B4789', description: 'High contrast' },
+  { id: 'bright', name: 'Bright', icon: '☀️', color: '#FFD700', description: 'Brighten' },
+  { id: 'noir', name: 'Noir', icon: '🎬', color: '#2C2C2C', description: 'Black & white' },
+  { id: 'vivid', name: 'Vivid', icon: '🌈', color: '#FF1744', description: 'Saturated' },
 ];
 
 const FACE_FILTERS = [
@@ -78,7 +78,7 @@ export default function FiltersPanel({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Color Filters</Text>
               <Text style={styles.sectionDescription}>
-                Apply color grading to your stream
+                Apply real-time color grading to your camera preview and stream
               </Text>
               <ScrollView 
                 horizontal 
@@ -108,6 +108,7 @@ export default function FiltersPanel({
                       <Text style={[styles.filterName, isSelected && styles.filterNameActive]}>
                         {filter.name}
                       </Text>
+                      <Text style={styles.filterDescription}>{filter.description}</Text>
                       {isSelected && (
                         <View style={styles.checkmark}>
                           <IconSymbol
@@ -128,19 +129,22 @@ export default function FiltersPanel({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Face Filters</Text>
               <Text style={styles.sectionDescription}>
-                Enhance your appearance
+                Enhance your appearance (Coming Soon)
               </Text>
               <View style={styles.faceFiltersGrid}>
                 {FACE_FILTERS.map((filter) => (
                   <TouchableOpacity
                     key={filter.id}
-                    style={styles.faceFilterCard}
-                    onPress={() => console.log('Face filter:', filter.id)}
+                    style={[styles.faceFilterCard, styles.faceFilterCardDisabled]}
+                    onPress={() => console.log('Face filter coming soon:', filter.id)}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.faceFilterIcon}>{filter.icon}</Text>
                     <Text style={styles.faceFilterName}>{filter.name}</Text>
                     <Text style={styles.faceFilterDescription}>{filter.description}</Text>
+                    <View style={styles.comingSoonBadge}>
+                      <Text style={styles.comingSoonText}>Soon</Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -169,6 +173,19 @@ export default function FiltersPanel({
                 </Text>
               </View>
             )}
+
+            {/* Info Box */}
+            <View style={styles.infoBox}>
+              <IconSymbol
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.brandPrimary}
+              />
+              <Text style={styles.infoText}>
+                Filters apply to both your camera preview and live stream output. You can change filters during your live stream without interruption.
+              </Text>
+            </View>
           </ScrollView>
 
           <View style={styles.footer}>
@@ -252,10 +269,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 2,
   },
   filterNameActive: {
     color: colors.brandPrimary,
     fontWeight: '700',
+  },
+  filterDescription: {
+    fontSize: 10,
+    fontWeight: '400',
+    color: colors.textSecondary,
   },
   checkmark: {
     position: 'absolute',
@@ -275,6 +298,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
+    position: 'relative',
+  },
+  faceFilterCardDisabled: {
+    opacity: 0.6,
   },
   faceFilterIcon: {
     fontSize: 32,
@@ -292,6 +319,20 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  comingSoonBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: colors.brandPrimary,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  comingSoonText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   sliderContainer: {
     flexDirection: 'row',
@@ -313,6 +354,23 @@ const styles = StyleSheet.create({
     color: colors.brandPrimary,
     textAlign: 'center',
     marginTop: 8,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.brandPrimary,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text,
+    lineHeight: 18,
   },
   footer: {
     padding: 20,

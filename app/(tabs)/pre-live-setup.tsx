@@ -8,8 +8,6 @@ import {
   TextInput,
   Platform,
   Alert,
-  ScrollView,
-  Modal,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
@@ -19,14 +17,18 @@ import GradientButton from '@/components/GradientButton';
 import AppLogo from '@/components/AppLogo';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLiveStreamState } from '@/contexts/LiveStreamStateMachine';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import EffectsPanel from '@/components/EffectsPanel';
 import FiltersPanel from '@/components/FiltersPanel';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import LiveSettingsPanel from '@/components/LiveSettingsPanel';
+import CameraFilterOverlay from '@/components/CameraFilterOverlay';
+import VisualEffectsOverlay from '@/components/VisualEffectsOverlay';
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
+  const liveStreamState = useLiveStreamState();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
 
@@ -71,13 +73,37 @@ export default function PreLiveSetupScreen() {
       requestPermission();
     }
 
+    // Enter PRE_LIVE_SETUP state
+    liveStreamState.enterPreLiveSetup();
+    console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
+
     return () => {
       isMountedRef.current = false;
     };
   }, [user, permission]);
 
+  // Update state machine when content label is selected
+  useEffect(() => {
+    if (contentLabel && liveStreamState.currentState === 'PRE_LIVE_SETUP') {
+      liveStreamState.selectContentLabel();
+      console.log('🏷️ [PRE-LIVE] Content label selected, state updated');
+    }
+  }, [contentLabel]);
+
+  // Update state machine when practice mode changes
+  useEffect(() => {
+    if (practiceMode && liveStreamState.currentState === 'CONTENT_LABEL_SELECTED') {
+      liveStreamState.enablePracticeMode();
+      console.log('🎯 [PRE-LIVE] Practice mode enabled');
+    } else if (!practiceMode && liveStreamState.currentState === 'PRACTICE_MODE_ACTIVE') {
+      liveStreamState.disablePracticeMode();
+      console.log('🎯 [PRE-LIVE] Practice mode disabled');
+    }
+  }, [practiceMode]);
+
   const handleClose = () => {
-    console.log('❌ Pre-Live setup closed');
+    console.log('❌ [PRE-LIVE] Pre-Live setup closed');
+    liveStreamState.resetToIdle();
     router.back();
   };
 
@@ -86,7 +112,8 @@ export default function PreLiveSetupScreen() {
   };
 
   const handleGoLive = async () => {
-    console.log('🚀 Go LIVE button pressed');
+    console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
+    console.log('📊 [PRE-LIVE] Current state:', liveStreamState.currentState);
 
     if (!streamTitle.trim()) {
       Alert.alert('Error', 'Please enter a stream title');
@@ -104,6 +131,13 @@ export default function PreLiveSetupScreen() {
       return;
     }
 
+    // Check if we can go live
+    if (!liveStreamState.canGoLive()) {
+      console.warn('⚠️ [PRE-LIVE] Cannot go live from current state:', liveStreamState.currentState);
+      Alert.alert('Error', 'Please complete setup before going live');
+      return;
+    }
+
     try {
       setIsLoading(true);
 
@@ -117,9 +151,16 @@ export default function PreLiveSetupScreen() {
       // Log creator rules acceptance
       await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
 
-      console.log('✅ Validation passed, navigating to broadcaster screen');
+      console.log('✅ [PRE-LIVE] Validation passed');
+      console.log('🎬 [PRE-LIVE] Transitioning to STREAM_CREATING state');
+
+      // Transition to STREAM_CREATING state
+      liveStreamState.startStreamCreation();
 
       // IMMEDIATELY navigate to broadcaster screen with all settings
+      // Navigation happens BEFORE stream creation (non-blocking)
+      console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
+      
       router.push({
         pathname: '/(tabs)/broadcast',
         params: {
@@ -136,8 +177,11 @@ export default function PreLiveSetupScreen() {
           selectedVIPClub: selectedVIPClub || '',
         },
       });
+
+      console.log('✅ [PRE-LIVE] Navigation initiated successfully');
     } catch (error) {
-      console.error('Error in handleGoLive:', error);
+      console.error('❌ [PRE-LIVE] Error in handleGoLive:', error);
+      liveStreamState.setError('Failed to start stream setup. Please try again.');
       Alert.alert('Error', 'Failed to start stream setup. Please try again.');
     } finally {
       if (isMountedRef.current) {
@@ -147,7 +191,7 @@ export default function PreLiveSetupScreen() {
   };
 
   const handleContentLabelSelected = (label: ContentLabel) => {
-    console.log('🏷️ Content label selected:', label);
+    console.log('🏷️ [PRE-LIVE] Content label selected:', label);
     setContentLabel(label);
     setShowContentLabelModal(false);
   };
@@ -173,6 +217,12 @@ export default function PreLiveSetupScreen() {
     <View style={styles.container}>
       {/* CAMERA PREVIEW BACKGROUND */}
       <CameraView style={StyleSheet.absoluteFill} facing={facing} />
+
+      {/* CAMERA FILTER OVERLAY */}
+      <CameraFilterOverlay filter={selectedFilter} intensity={filterIntensity} />
+
+      {/* VISUAL EFFECTS OVERLAY */}
+      <VisualEffectsOverlay effect={selectedEffect} />
 
       {/* DARK OVERLAY */}
       <View style={styles.overlay} />
@@ -323,13 +373,20 @@ export default function PreLiveSetupScreen() {
           </TouchableOpacity>
         ) : (
           <GradientButton
-            title={isLoading ? 'LOADING...' : 'GO LIVE'}
+            title={isLoading ? 'LOADING...' : practiceMode ? 'START PRACTICE' : 'GO LIVE'}
             onPress={handleGoLive}
             size="large"
-            disabled={isLoading}
+            disabled={isLoading || !liveStreamState.canGoLive()}
           />
         )}
       </View>
+
+      {/* STATE MACHINE DEBUG (Remove in production) */}
+      {__DEV__ && (
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+        </View>
+      )}
 
       {/* CONTENT LABEL MODAL */}
       <ContentLabelModal
@@ -406,6 +463,7 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    pointerEvents: 'none',
   },
   topBar: {
     flexDirection: 'row',
@@ -559,5 +617,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  debugContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 350 : 340,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 8,
+    padding: 8,
+    zIndex: 10,
+  },
+  debugText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#00FF00',
   },
 });
