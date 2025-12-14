@@ -393,8 +393,9 @@ export default function BroadcasterScreen() {
         return;
       }
 
-      // Show content label selection modal
+      // Close setup modal and show content label selection modal
       if (isMountedRef.current) {
+        setShowSetup(false);
         setShowContentLabelModal(true);
       }
     } catch (error) {
@@ -427,6 +428,16 @@ export default function BroadcasterScreen() {
       if (isMountedRef.current) {
         setShowCreatorRulesModal(false);
         setShowContentLabelModal(true);
+      }
+      return;
+    }
+
+    if (!streamTitle.trim()) {
+      console.error('❌ Cannot start stream: no stream title');
+      Alert.alert('Error', 'Please enter a stream title');
+      if (isMountedRef.current) {
+        setShowCreatorRulesModal(false);
+        setShowSetup(true);
       }
       return;
     }
@@ -478,6 +489,7 @@ export default function BroadcasterScreen() {
               if (isMountedRef.current) {
                 setShowSetup(false);
                 setContentLabel(null);
+                setStreamTitle('');
               }
             }
           }
@@ -492,6 +504,8 @@ export default function BroadcasterScreen() {
 
   const startLiveWithLabel = async (label: ContentLabel) => {
     console.log('🎬 Starting live stream with label:', label);
+    console.log('📝 Stream title:', streamTitle);
+    console.log('👤 User ID:', user?.id);
     
     if (!user || !isMountedRef.current) {
       console.error('❌ Cannot start stream: user or component unmounted');
@@ -503,6 +517,11 @@ export default function BroadcasterScreen() {
       throw new Error('Content label is required');
     }
 
+    if (!streamTitle.trim()) {
+      console.error('❌ Cannot start stream: no stream title');
+      throw new Error('Stream title is required');
+    }
+
     try {
       console.log('📡 Calling cloudflareService.startLive...');
       console.log('📡 Parameters:', { title: streamTitle, userId: user.id });
@@ -512,33 +531,55 @@ export default function BroadcasterScreen() {
         userId: user.id 
       });
 
-      console.log('✅ cloudflareService.startLive response:', result);
+      console.log('✅ cloudflareService.startLive response:', JSON.stringify(result, null, 2));
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to start stream');
+        const errorMsg = result.error || 'Failed to start stream';
+        console.error('❌ Stream creation failed:', errorMsg);
+        throw new Error(errorMsg);
       }
 
       if (!result.stream) {
+        console.error('❌ No stream data returned from server');
         throw new Error('No stream data returned from server');
+      }
+
+      if (!result.stream.id) {
+        console.error('❌ No stream ID in response');
+        throw new Error('Invalid stream data: missing stream ID');
       }
 
       console.log('📝 Setting content label on stream...');
       // Set content label on stream
-      await contentSafetyService.setStreamContentLabel(result.stream.id, label);
+      try {
+        await contentSafetyService.setStreamContentLabel(result.stream.id, label);
+        console.log('✅ Content label set successfully');
+      } catch (labelError) {
+        console.error('⚠️ Failed to set content label:', labelError);
+        // Continue anyway - don't block streaming
+      }
 
       console.log('📦 Creating archive record...');
       // Create archive record
       const startTime = new Date().toISOString();
       streamStartTime.current = startTime;
-      const archiveResult = await liveStreamArchiveService.createArchive(
-        user.id,
-        streamTitle,
-        startTime
-      );
+      
+      try {
+        const archiveResult = await liveStreamArchiveService.createArchive(
+          user.id,
+          streamTitle,
+          startTime
+        );
 
-      if (archiveResult.success && archiveResult.data && isMountedRef.current) {
-        setArchiveId(archiveResult.data.id);
-        console.log('📦 Stream archive created:', archiveResult.data.id);
+        if (archiveResult.success && archiveResult.data && isMountedRef.current) {
+          setArchiveId(archiveResult.data.id);
+          console.log('📦 Stream archive created:', archiveResult.data.id);
+        } else {
+          console.warn('⚠️ Failed to create archive:', archiveResult.error);
+        }
+      } catch (archiveError) {
+        console.error('⚠️ Error creating archive:', archiveError);
+        // Continue anyway - don't block streaming
       }
 
       if (isMountedRef.current) {
@@ -551,7 +592,6 @@ export default function BroadcasterScreen() {
         setTotalViewers(0);
         setTotalGifts(0);
         setLiveSeconds(0);
-        setShowSetup(false);
         setStreamTitle('');
       }
 
@@ -571,9 +611,22 @@ export default function BroadcasterScreen() {
     } catch (error) {
       console.error('❌ Error starting stream:', error);
       
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'Failed to start stream. Please try again.';
+      let errorMessage = 'Failed to start stream. Please try again.';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Provide more specific error messages
+        if (errorMessage.includes('Missing Cloudflare credentials')) {
+          errorMessage = 'Server configuration error. Please contact support.';
+        } else if (errorMessage.includes('Cloudflare API error')) {
+          errorMessage = 'Failed to create stream on Cloudflare. Please try again.';
+        } else if (errorMessage.includes('Failed to create stream record')) {
+          errorMessage = 'Database error. Please try again.';
+        }
+      }
+      
+      console.error('📝 Final error message:', errorMessage);
       
       // Re-throw the error so it can be caught by handleCreatorRulesConfirm
       throw new Error(errorMessage);
@@ -960,7 +1013,7 @@ export default function BroadcasterScreen() {
         onCancel={() => {
           if (isMountedRef.current) {
             setShowContentLabelModal(false);
-            setShowSetup(false);
+            setShowSetup(true);
           }
         }}
       />
@@ -972,7 +1025,7 @@ export default function BroadcasterScreen() {
         onCancel={() => {
           if (isMountedRef.current) {
             setShowCreatorRulesModal(false);
-            setShowSetup(false);
+            setShowSetup(true);
           }
         }}
         isLoading={loading}
@@ -1026,9 +1079,9 @@ export default function BroadcasterScreen() {
               </TouchableOpacity>
               <View style={styles.startButtonContainer}>
                 <GradientButton
-                  title={loading ? 'STARTING...' : 'START LIVE'}
+                  title={loading ? 'STARTING...' : 'NEXT'}
                   onPress={startStreamSetup}
-                  disabled={loading}
+                  disabled={loading || !streamTitle.trim()}
                   size="medium"
                 />
               </View>
