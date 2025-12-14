@@ -20,8 +20,8 @@ function TabLayoutContent() {
       >
         <Stack.Screen key="home" name="(home)" />
         <Stack.Screen key="explore" name="explore" />
-        <Stack.Screen key="broadcaster" name="broadcaster" />
-        <Stack.Screen key="broadcasterscreen" name="broadcasterscreen" />
+        <Stack.Screen key="go-live-modal" name="go-live-modal" options={{ presentation: 'transparentModal' }} />
+        <Stack.Screen key="broadcast" name="broadcast" />
         <Stack.Screen key="inbox" name="inbox" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>

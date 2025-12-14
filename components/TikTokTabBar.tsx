@@ -104,6 +104,11 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
     }
   };
 
+  const handleGoLive = () => {
+    console.log('🎬 Go Live button pressed - opening setup modal');
+    router.push('/(tabs)/go-live-modal');
+  };
+
   return (
     <Animated.View
       style={[
@@ -150,7 +155,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
 
             <TouchableOpacity
               style={styles.centerButton}
-              onPress={() => handleTabPress('/(tabs)/broadcaster')}
+              onPress={handleGoLive}
               activeOpacity={0.9}
             >
               <LinearGradient

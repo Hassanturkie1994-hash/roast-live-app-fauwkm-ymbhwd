@@ -125,8 +125,14 @@ export default function FloatingTabBar({
     }
   }, [isStreaming, slideAnim, opacityAnim]);
 
-  const handleTabPress = (route: Href) => {
-    router.push(route);
+  const handleTabPress = (tab: TabBarItem) => {
+    // Special handling for Go Live button
+    if (tab.name === 'broadcaster' || tab.isCenter) {
+      console.log('🎬 Go Live button pressed - opening setup modal');
+      router.push('/(tabs)/go-live-modal');
+    } else {
+      router.push(tab.route);
+    }
   };
 
   const tabWidthPercent = ((100 / tabs.length) - 1).toFixed(2);
@@ -209,7 +215,7 @@ export default function FloatingTabBar({
                   <React.Fragment key={index}>
                     <TouchableOpacity
                       style={styles.tab}
-                      onPress={() => handleTabPress(tab.route)}
+                      onPress={() => handleTabPress(tab)}
                       activeOpacity={0.7}
                     >
                       <View style={styles.tabContent}>

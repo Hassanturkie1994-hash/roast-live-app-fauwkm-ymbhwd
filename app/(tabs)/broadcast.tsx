@@ -44,7 +44,7 @@ interface GiftAnimation {
   tier: 'A' | 'B' | 'C';
 }
 
-export default function BroadcasterScreen() {
+export default function BroadcastScreen() {
   const { user } = useAuth();
   const { setIsStreaming, startStreamTimer, stopStreamTimer } = useStreaming();
   
@@ -110,25 +110,47 @@ export default function BroadcasterScreen() {
   /* ───────────────── MOUNT / AUTH GUARD ───────────────── */
   useEffect(() => {
     isMountedRef.current = true;
-    console.log('🎬 BroadcasterScreen mounted with params:', params);
+    console.log('🎬 BroadcastScreen mounted with params:', params);
 
     if (!user) {
       router.replace('/auth/login');
       return;
     }
 
-    // Start stream creation immediately on mount
-    if (params.streamTitle && params.contentLabel) {
-      createStreamOnMount();
-    } else {
-      console.error('❌ Missing required params:', { streamTitle: params.streamTitle, contentLabel: params.contentLabel });
-      setStreamCreationError('Missing stream information. Please try again.');
+    // Validate params
+    if (!params.streamTitle || !params.contentLabel) {
+      console.error('❌ Missing required params:', { 
+        streamTitle: params.streamTitle, 
+        contentLabel: params.contentLabel 
+      });
+      
+      Alert.alert(
+        'Missing Stream Information',
+        'Required stream information is missing. Please try again.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => router.back(),
+          },
+          {
+            text: 'Retry',
+            onPress: () => router.replace('/(tabs)/go-live-modal'),
+          },
+        ]
+      );
+      
+      setStreamCreationError('Missing stream information');
       setIsCreatingStream(false);
+      return;
     }
+
+    // Start stream creation immediately on mount
+    createStreamOnMount();
 
     return () => {
       isMountedRef.current = false;
-      console.log('🎬 BroadcasterScreen unmounted');
+      console.log('🎬 BroadcastScreen unmounted');
       // Deactivate keep awake when component unmounts
       try {
         deactivateKeepAwake();
