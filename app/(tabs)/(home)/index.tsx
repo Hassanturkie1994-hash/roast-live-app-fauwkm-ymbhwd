@@ -9,6 +9,9 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -16,10 +19,15 @@ import StreamPreviewCard from '@/components/StreamPreviewCard';
 import StoriesBar from '@/components/StoriesBar';
 import AppLogo from '@/components/AppLogo';
 import { IconSymbol } from '@/components/IconSymbol';
+import GradientButton from '@/components/GradientButton';
+import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
+import CreatorRulesModal from '@/components/CreatorRulesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { queryCache } from '@/app/services/queryCache';
 import { normalizeStreams, NormalizedStream, RawStreamData } from '@/utils/streamNormalizer';
+import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
+import { contentSafetyService } from '@/app/services/contentSafetyService';
 
 interface Post {
   id: string;
@@ -125,6 +133,13 @@ export default function HomeScreen() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'posts'>('live');
+
+  // Go Live modal states
+  const [showGoLiveModal, setShowGoLiveModal] = useState(false);
+  const [streamTitle, setStreamTitle] = useState('');
+  const [showContentLabelModal, setShowContentLabelModal] = useState(false);
+  const [contentLabel, setContentLabel] = useState<ContentLabel | null>(null);
+  const [showCreatorRulesModal, setShowCreatorRulesModal] = useState(false);
 
   // Memoize fetch streams function
   const fetchStreams = useCallback(async () => {
@@ -233,6 +248,119 @@ export default function HomeScreen() {
     console.log('Post pressed:', post.id);
   }, []);
 
+  // Go Live handlers
+  const handleGoLivePress = async () => {
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to start streaming');
+      return;
+    }
+
+    try {
+      // Check if user is under forced review lock
+      const isLocked = await enhancedContentSafetyService.isUserLockedForReview(user.id);
+      if (isLocked) {
+        Alert.alert('Cannot Start Stream', 'Your account is under review. Please contact support.');
+        return;
+      }
+
+      // Check if user has accepted safety guidelines
+      const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
+      if (!canStream.canStream) {
+        Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+        return;
+      }
+
+      setShowGoLiveModal(true);
+    } catch (error) {
+      console.error('Error in handleGoLivePress:', error);
+      Alert.alert('Error', 'Failed to start live setup. Please try again.');
+    }
+  };
+
+  const handleTitleNext = async () => {
+    if (!streamTitle.trim()) {
+      Alert.alert('Missing title', 'Please enter a stream title');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to start streaming');
+      return;
+    }
+
+    try {
+      // Validate stream start (check for suspensions and strikes)
+      const validation = await contentSafetyService.validateStreamStart(user.id);
+      if (!validation.canStream) {
+        Alert.alert(
+          'Cannot Start Stream',
+          validation.reason || 'You are not allowed to stream at this time.',
+          [{ text: 'OK' }]
+        );
+        setShowGoLiveModal(false);
+        return;
+      }
+
+      // Close title modal and show content label modal
+      setShowGoLiveModal(false);
+      setShowContentLabelModal(true);
+    } catch (error) {
+      console.error('Error in handleTitleNext:', error);
+      Alert.alert('Error', 'Failed to validate stream start. Please try again.');
+    }
+  };
+
+  const handleContentLabelSelected = (label: ContentLabel) => {
+    setContentLabel(label);
+    setShowContentLabelModal(false);
+    // Show creator rules modal
+    setShowCreatorRulesModal(true);
+  };
+
+  const handleCreatorRulesConfirm = async () => {
+    if (!user || !contentLabel || !streamTitle.trim()) {
+      Alert.alert('Error', 'Missing required information');
+      return;
+    }
+
+    console.log('✅ [CONFIRM] User confirmed creator rules');
+    console.log('📝 [CONFIRM] Stream title:', streamTitle);
+    console.log('🏷️ [CONFIRM] Content label:', contentLabel);
+
+    try {
+      // Log creator rules acceptance (non-blocking)
+      try {
+        await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
+        console.log('✅ [CONFIRM] Creator rules acceptance logged');
+      } catch (rulesError) {
+        console.warn('⚠️ [CONFIRM] Failed to log creator rules (continuing anyway):', rulesError);
+      }
+
+      // Close modal
+      setShowCreatorRulesModal(false);
+
+      // CRITICAL: Navigate IMMEDIATELY to broadcaster screen
+      // Pass title and content label as params
+      console.log('🚀 [CONFIRM] Navigating to broadcaster screen...');
+      router.push({
+        pathname: '/(tabs)/broadcaster',
+        params: {
+          streamTitle: streamTitle,
+          contentLabel: contentLabel,
+        },
+      });
+
+      // Reset state
+      setStreamTitle('');
+      setContentLabel(null);
+
+      console.log('✅ [CONFIRM] Navigation complete - stream creation will happen in broadcaster screen');
+    } catch (error) {
+      console.error('❌ [CONFIRM-ERROR] Error in handleCreatorRulesConfirm:', error);
+      Alert.alert('Error', 'Failed to start stream. Please try again.');
+    }
+  };
+
   // Memoize stream render function
   const renderStream = useCallback(({ item }: { item: NormalizedStream }) => (
     <StreamPreviewCard
@@ -271,6 +399,21 @@ export default function HomeScreen() {
       {/* Header with Logo */}
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <AppLogo size="small" alignment="center" withShadow />
+        
+        {/* Go Live Button */}
+        <TouchableOpacity
+          style={styles.goLiveButton}
+          onPress={handleGoLivePress}
+          activeOpacity={0.8}
+        >
+          <IconSymbol
+            ios_icon_name="video.fill"
+            android_material_icon_name="videocam"
+            size={20}
+            color={colors.text}
+          />
+          <Text style={[styles.goLiveText, { color: colors.text }]}>GO LIVE</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
@@ -348,6 +491,82 @@ export default function HomeScreen() {
           windowSize={5}
         />
       )}
+
+      {/* Go Live Title Modal */}
+      <Modal visible={showGoLiveModal} transparent animationType="slide">
+        <View style={styles.modal}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <AppLogo size="medium" alignment="center" style={styles.modalLogo} />
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Setup Your Stream</Text>
+            
+            <View style={styles.inputContainer}>
+              <Text style={[styles.label, { color: colors.text }]}>Stream Title</Text>
+              <TextInput
+                placeholder="What are you streaming?"
+                placeholderTextColor={colors.textSecondary}
+                value={streamTitle}
+                onChangeText={setStreamTitle}
+                style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
+                maxLength={100}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.infoBox}>
+              <IconSymbol
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
+                size={20}
+                color={colors.gradientEnd}
+              />
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                Your stream will be broadcast live to all viewers. Make sure you have a stable internet connection!
+              </Text>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.cancelButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
+                onPress={() => {
+                  setShowGoLiveModal(false);
+                  setStreamTitle('');
+                }}
+              >
+                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={styles.startButtonContainer}>
+                <GradientButton
+                  title="NEXT"
+                  onPress={handleTitleNext}
+                  disabled={!streamTitle.trim()}
+                  size="medium"
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Content Label Modal */}
+      <ContentLabelModal
+        visible={showContentLabelModal}
+        onSelect={handleContentLabelSelected}
+        onCancel={() => {
+          setShowContentLabelModal(false);
+          setShowGoLiveModal(true);
+        }}
+      />
+
+      {/* Creator Rules Modal */}
+      <CreatorRulesModal
+        visible={showCreatorRulesModal}
+        onConfirm={handleCreatorRulesConfirm}
+        onCancel={() => {
+          setShowCreatorRulesModal(false);
+          setShowGoLiveModal(true);
+        }}
+        isLoading={false}
+      />
     </View>
   );
 }
@@ -361,6 +580,24 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 12,
     borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  goLiveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderWidth: 1,
+    borderColor: '#A40028',
+  },
+  goLiveText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   tabBar: {
     flexDirection: 'row',
@@ -443,6 +680,74 @@ const styles = StyleSheet.create({
   postCaptionText: {
     fontSize: 14,
     fontWeight: '400',
+    flex: 1,
+  },
+  modal: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    borderRadius: 16,
+    padding: 24,
+  },
+  modalLogo: {
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 16,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: '#A40028',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 24,
+    gap: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 18,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 25,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  startButtonContainer: {
     flex: 1,
   },
 });
