@@ -76,57 +76,60 @@ export default function ImprovedFiltersPanel({
               contentContainerStyle={styles.filtersScrollContent}
             >
               {/* None Option */}
-              <TouchableOpacity
-                style={[
-                  styles.filterCard,
-                  !activeFilter && styles.filterCardActive,
-                ]}
-                onPress={handleClearFilter}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.filterPreview, styles.filterPreviewNone]}>
-                  <Text style={styles.filterIcon}>🚫</Text>
-                </View>
-                <Text style={[styles.filterName, !activeFilter && styles.filterNameActive]}>
-                  None
-                </Text>
-              </TouchableOpacity>
+              <React.Fragment key="filter-none">
+                <TouchableOpacity
+                  style={[
+                    styles.filterCard,
+                    !activeFilter && styles.filterCardActive,
+                  ]}
+                  onPress={handleClearFilter}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.filterPreview, styles.filterPreviewNone]}>
+                    <Text style={styles.filterIcon}>🚫</Text>
+                  </View>
+                  <Text style={[styles.filterName, !activeFilter && styles.filterNameActive]}>
+                    None
+                  </Text>
+                </TouchableOpacity>
+              </React.Fragment>
 
               {/* Filter Options */}
               {FILTER_PRESETS.map((filter) => {
                 const isSelected = activeFilter?.id === filter.id;
 
                 return (
-                  <TouchableOpacity
-                    key={filter.id}
-                    style={[styles.filterCard, isSelected && styles.filterCardActive]}
-                    onPress={() => handleSelectFilter(filter)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.filterPreview,
-                        {
-                          backgroundColor: filter.overlayColor || colors.backgroundAlt,
-                        },
-                      ]}
+                  <React.Fragment key={filter.id}>
+                    <TouchableOpacity
+                      style={[styles.filterCard, isSelected && styles.filterCardActive]}
+                      onPress={() => handleSelectFilter(filter)}
+                      activeOpacity={0.7}
                     >
-                      <Text style={styles.filterIcon}>{filter.icon}</Text>
-                    </View>
-                    <Text style={[styles.filterName, isSelected && styles.filterNameActive]}>
-                      {filter.name}
-                    </Text>
-                    {isSelected && (
-                      <View style={styles.activeIndicator}>
-                        <IconSymbol
-                          ios_icon_name="checkmark.circle.fill"
-                          android_material_icon_name="check_circle"
-                          size={16}
-                          color={colors.brandPrimary}
-                        />
+                      <View
+                        style={[
+                          styles.filterPreview,
+                          {
+                            backgroundColor: filter.overlayColor || colors.backgroundAlt,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.filterIcon}>{filter.icon}</Text>
                       </View>
-                    )}
-                  </TouchableOpacity>
+                      <Text style={[styles.filterName, isSelected && styles.filterNameActive]}>
+                        {filter.name}
+                      </Text>
+                      {isSelected && (
+                        <View style={styles.activeIndicator}>
+                          <IconSymbol
+                            ios_icon_name="checkmark.circle.fill"
+                            android_material_icon_name="check_circle"
+                            size={16}
+                            color={colors.brandPrimary}
+                          />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </React.Fragment>
                 );
               })}
             </ScrollView>
