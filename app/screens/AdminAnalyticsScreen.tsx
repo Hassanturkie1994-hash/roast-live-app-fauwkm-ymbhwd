@@ -25,6 +25,15 @@ export default function AdminAnalyticsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [analytics, setAnalytics] = useState<any>(null);
 
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const data = await analyticsService.getAdminAnalytics();
+      setAnalytics(data);
+    } catch (error) {
+      console.error('Error fetching admin analytics:', error);
+    }
+  }, []);
+
   const checkAdminAccess = useCallback(async () => {
     if (!user) {
       router.replace('/auth/login');
@@ -48,20 +57,11 @@ export default function AdminAnalyticsScreen() {
     setAdminRole(result.role);
     await fetchAnalytics();
     setIsLoading(false);
-  }, [user]);
+  }, [user, fetchAnalytics]);
 
   useEffect(() => {
     checkAdminAccess();
   }, [checkAdminAccess]);
-
-  const fetchAnalytics = async () => {
-    try {
-      const data = await analyticsService.getAdminAnalytics();
-      setAnalytics(data);
-    } catch (error) {
-      console.error('Error fetching admin analytics:', error);
-    }
-  };
 
   const formatDuration = (startedAt: string): string => {
     const started = new Date(startedAt).getTime();
