@@ -115,7 +115,6 @@ export default function PreLiveSetupScreen() {
     return () => {
       isMountedRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, permission]);
 
   // Update state machine when content label is selected

@@ -1,8 +1,4 @@
 
-// CRITICAL: Load polyfills FIRST before anything else
-import 'react-native-url-polyfill/auto';
-
-// Now load Expo Router entry
 import 'expo-router/entry';
 
 // Suppress WebRTC warning in Expo Go
@@ -69,5 +65,3 @@ if (__DEV__) {
     }
   };
 }
-
-console.log('✅ App entry point loaded with polyfills');

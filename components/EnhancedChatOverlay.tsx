@@ -55,7 +55,46 @@ export default function EnhancedChatOverlay({
   // Debug indicator
   const [debugVisible, setDebugVisible] = useState(true);
 
-  const loadRecentMessages = useCallback(async () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎨 EnhancedChatOverlay mounted for stream:', streamId);
+    
+    // Hide debug indicator after 3 seconds
+    const debugTimer = setTimeout(() => {
+      if (isMountedRef.current) {
+        setDebugVisible(false);
+      }
+    }, 3000);
+
+    loadRecentMessages();
+    subscribeToMessages();
+    subscribeToGuestEvents();
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(debugTimer);
+      
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      if (guestChannelRef.current) {
+        supabase.removeChannel(guestChannelRef.current);
+        guestChannelRef.current = null;
+      }
+    };
+  }, [streamId]);
+
+  useEffect(() => {
+    Animated.spring(expandAnim, {
+      toValue: isExpanded ? 1 : 0,
+      useNativeDriver: false,
+      tension: 50,
+      friction: 7,
+    }).start();
+  }, [isExpanded]);
+
+  const loadRecentMessages = async () => {
     if (!streamId || !isMountedRef.current) return;
 
     try {
@@ -92,9 +131,9 @@ export default function EnhancedChatOverlay({
     } catch (error) {
       console.error('❌ Error in loadRecentMessages:', error);
     }
-  }, [streamId]);
+  };
 
-  const subscribeToMessages = useCallback(() => {
+  const subscribeToMessages = () => {
     if (!streamId || !isMountedRef.current) return;
 
     console.log('🔌 Subscribing to enhanced chat channel:', `stream:${streamId}:chat_enhanced`);
@@ -139,9 +178,9 @@ export default function EnhancedChatOverlay({
       });
 
     channelRef.current = channel;
-  }, [streamId, isBroadcaster, streamDelay]);
+  };
 
-  const subscribeToGuestEvents = useCallback(() => {
+  const subscribeToGuestEvents = () => {
     if (!streamId || !isMountedRef.current) return;
 
     console.log('🔌 Subscribing to guest events channel');
@@ -170,46 +209,7 @@ export default function EnhancedChatOverlay({
     });
 
     guestChannelRef.current = channel;
-  }, [streamId]);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    console.log('🎨 EnhancedChatOverlay mounted for stream:', streamId);
-    
-    // Hide debug indicator after 3 seconds
-    const debugTimer = setTimeout(() => {
-      if (isMountedRef.current) {
-        setDebugVisible(false);
-      }
-    }, 3000);
-
-    loadRecentMessages();
-    subscribeToMessages();
-    subscribeToGuestEvents();
-
-    return () => {
-      isMountedRef.current = false;
-      clearTimeout(debugTimer);
-      
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-      if (guestChannelRef.current) {
-        supabase.removeChannel(guestChannelRef.current);
-        guestChannelRef.current = null;
-      }
-    };
-  }, [streamId, loadRecentMessages, subscribeToMessages, subscribeToGuestEvents]);
-
-  useEffect(() => {
-    Animated.spring(expandAnim, {
-      toValue: isExpanded ? 1 : 0,
-      useNativeDriver: false,
-      tension: 50,
-      friction: 7,
-    }).start();
-  }, [isExpanded, expandAnim]);
+  };
 
   const createSystemMessage = (event: GuestEvent, timestamp: string): ChatMessage => {
     let message = '';

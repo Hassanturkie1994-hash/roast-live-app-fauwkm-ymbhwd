@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,15 +25,20 @@ export default function AdminLiveStreamsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [adminRole, setAdminRole] = useState<string | null>(null);
 
-  const checkAdminRole = useCallback(async () => {
+  useEffect(() => {
+    checkAdminRole();
+    fetchLiveStreams();
+  }, []);
+
+  const checkAdminRole = async () => {
     if (!user) return;
     const result = await adminService.checkAdminRole(user.id);
     if (result.success && result.role) {
       setAdminRole(result.role);
     }
-  }, [user]);
+  };
 
-  const fetchLiveStreams = useCallback(async () => {
+  const fetchLiveStreams = async () => {
     const result = await adminService.getLiveStreams();
     
     if (result.success && result.streams) {
@@ -42,12 +47,7 @@ export default function AdminLiveStreamsScreen() {
     
     setIsLoading(false);
     setRefreshing(false);
-  }, []);
-
-  useEffect(() => {
-    checkAdminRole();
-    fetchLiveStreams();
-  }, [checkAdminRole, fetchLiveStreams]);
+  };
 
   const handleForceStopStream = async (stream: any) => {
     if (!user || adminRole !== 'HEAD_ADMIN') {
