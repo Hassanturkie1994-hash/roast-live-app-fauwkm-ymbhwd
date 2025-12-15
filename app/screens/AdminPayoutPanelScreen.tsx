@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,13 +33,7 @@ export default function AdminPayoutPanelScreen() {
   const [notes, setNotes] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      loadPayoutRequests();
-    }
-  }, [user, selectedStatus]);
-
-  const loadPayoutRequests = async () => {
+  const loadPayoutRequests = useCallback(async () => {
     try {
       setLoading(true);
       const status = selectedStatus === 'all' ? undefined : selectedStatus;
@@ -50,7 +44,13 @@ export default function AdminPayoutPanelScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedStatus]);
+
+  useEffect(() => {
+    if (user) {
+      loadPayoutRequests();
+    }
+  }, [user, loadPayoutRequests]);
 
   const onRefresh = async () => {
     setRefreshing(true);

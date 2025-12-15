@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -31,36 +31,7 @@ export default function AdminDashboardScreen() {
     dailyVolume: 0,
   });
 
-  useEffect(() => {
-    checkAdminAccess();
-  }, [user]);
-
-  const checkAdminAccess = async () => {
-    if (!user) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    const result = await adminService.checkAdminRole(user.id);
-    
-    if (!result.success || !result.role) {
-      Alert.alert('Access Denied', 'You do not have admin privileges.');
-      router.back();
-      return;
-    }
-
-    if (result.role === 'MODERATOR') {
-      Alert.alert('Access Denied', 'Moderators do not have access to the admin dashboard.');
-      router.back();
-      return;
-    }
-
-    setAdminRole(result.role);
-    await fetchDashboardStats();
-    setIsLoading(false);
-  };
-
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = useCallback(async () => {
     try {
       // Fetch open reports
       const reportsResult = await adminService.getReports({ status: 'open', limit: 1000 });
@@ -94,7 +65,36 @@ export default function AdminDashboardScreen() {
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     }
-  };
+  }, []);
+
+  const checkAdminAccess = useCallback(async () => {
+    if (!user) {
+      router.replace('/auth/login');
+      return;
+    }
+
+    const result = await adminService.checkAdminRole(user.id);
+    
+    if (!result.success || !result.role) {
+      Alert.alert('Access Denied', 'You do not have admin privileges.');
+      router.back();
+      return;
+    }
+
+    if (result.role === 'MODERATOR') {
+      Alert.alert('Access Denied', 'Moderators do not have access to the admin dashboard.');
+      router.back();
+      return;
+    }
+
+    setAdminRole(result.role);
+    await fetchDashboardStats();
+    setIsLoading(false);
+  }, [user, fetchDashboardStats]);
+
+  useEffect(() => {
+    checkAdminAccess();
+  }, [checkAdminAccess]);
 
   const getRoleColor = (role: AdminRole) => {
     switch (role) {

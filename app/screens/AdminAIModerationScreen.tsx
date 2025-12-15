@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -31,15 +31,7 @@ export default function AdminAIModerationScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    const init = async () => {
-      await checkAdminAccess();
-      await loadData();
-    };
-    init();
-  }, [activeTab]);
-
-  const checkAdminAccess = async () => {
+  const checkAdminAccess = useCallback(async () => {
     if (!user) return;
 
     const { role } = await adminService.checkAdminRole(user.id);
@@ -47,9 +39,9 @@ export default function AdminAIModerationScreen() {
       Alert.alert('Access Denied', 'You do not have permission to access this page.');
       router.back();
     }
-  };
+  }, [user, router]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'violations') {
@@ -69,7 +61,15 @@ export default function AdminAIModerationScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab]);
+
+  useEffect(() => {
+    const init = async () => {
+      await checkAdminAccess();
+      await loadData();
+    };
+    init();
+  }, [checkAdminAccess, loadData]);
 
   const onRefresh = async () => {
     setRefreshing(true);

@@ -3,45 +3,102 @@ import { Stack } from 'expo-router';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { StreamingProvider } from '@/contexts/StreamingContext';
-import { LiveStreamStateMachineProvider } from '@/contexts/LiveStreamStateMachine';
+import { LiveStreamStateProvider } from '@/contexts/LiveStreamStateMachine';
+import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
 import { VIPClubProvider } from '@/contexts/VIPClubContext';
 import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
-import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
-import { WidgetProvider } from '@/contexts/WidgetContext';
-import { StatusBar } from 'expo-status-bar';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import { testSupabaseConnection } from '@/app/integrations/supabase/client';
 
+/**
+ * RootLayout - Main app layout with provider hierarchy
+ * 
+ * CRITICAL FIX: Added Supabase connection test on startup
+ * All providers are correctly imported as named exports
+ */
 export default function RootLayout() {
+  useEffect(() => {
+    console.log('🚀 App initialized on platform:', Platform.OS);
+    
+    // Test Supabase connection
+    testSupabaseConnection().then((success) => {
+      if (success) {
+        console.log('✅ Supabase is ready');
+      } else {
+        console.error('❌ Supabase connection failed - check logs');
+      }
+    });
+    
+    // Validate all providers are defined
+    const providers = {
+      ThemeProvider,
+      AuthProvider,
+      StreamingProvider,
+      LiveStreamStateProvider,
+      CameraEffectsProvider,
+      VIPClubProvider,
+      ModeratorsProvider,
+    };
+    
+    Object.entries(providers).forEach(([name, provider]) => {
+      if (typeof provider === 'undefined') {
+        console.error(`❌ CRITICAL: ${name} is undefined!`);
+        throw new Error(`Provider ${name} is undefined. Check export/import syntax.`);
+      } else {
+        console.log(`✅ ${name} is defined`);
+      }
+    });
+  }, []);
+
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <StreamingProvider>
-          <LiveStreamStateMachineProvider>
-            <VIPClubProvider>
-              <ModeratorsProvider>
-                <CameraEffectsProvider>
-                  <WidgetProvider>
-                    <StatusBar style="light" />
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <StreamingProvider>
+            <LiveStreamStateProvider>
+              <CameraEffectsProvider>
+                <VIPClubProvider>
+                  <ModeratorsProvider>
                     <Stack
                       screenOptions={{
                         headerShown: false,
-                        animation: 'fade',
-                        contentStyle: { backgroundColor: '#000000' },
+                        animation: 'slide_from_right',
                       }}
                     >
                       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                      <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-                      <Stack.Screen name="auth/register" options={{ headerShown: false }} />
-                      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-                      <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
-                      <Stack.Screen name="transparent-modal" options={{ presentation: 'transparentModal' }} />
+                      <Stack.Screen name="auth" options={{ headerShown: false }} />
+                      <Stack.Screen name="screens" options={{ headerShown: false }} />
+                      <Stack.Screen
+                        name="modal"
+                        options={{
+                          presentation: 'modal',
+                          animation: 'slide_from_bottom',
+                        }}
+                      />
+                      <Stack.Screen
+                        name="formsheet"
+                        options={{
+                          presentation: 'formSheet',
+                          animation: 'slide_from_bottom',
+                        }}
+                      />
+                      <Stack.Screen
+                        name="transparent-modal"
+                        options={{
+                          presentation: 'transparentModal',
+                          animation: 'fade',
+                        }}
+                      />
                     </Stack>
-                  </WidgetProvider>
-                </CameraEffectsProvider>
-              </ModeratorsProvider>
-            </VIPClubProvider>
-          </LiveStreamStateMachineProvider>
-        </StreamingProvider>
-      </AuthProvider>
-    </ThemeProvider>
+                  </ModeratorsProvider>
+                </VIPClubProvider>
+              </CameraEffectsProvider>
+            </LiveStreamStateProvider>
+          </StreamingProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

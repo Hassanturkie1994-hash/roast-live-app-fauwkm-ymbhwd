@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useModerators } from '@/contexts/ModeratorsContext';
 import { followService } from '@/app/services/followService';
 import { moderationService } from '@/app/services/moderationService';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 interface LiveSettingsPanelProps {
   visible: boolean;
@@ -39,7 +40,7 @@ interface Follower {
   avatar_url?: string | null;
 }
 
-export default function LiveSettingsPanel({
+function LiveSettingsPanelContent({
   visible,
   onClose,
   aboutLive,
@@ -59,6 +60,7 @@ export default function LiveSettingsPanel({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Follower[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [addingModerator, setAddingModerator] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible && user) {
@@ -83,6 +85,13 @@ export default function LiveSettingsPanel({
           username: f.username || 'unknown',
           avatar_url: f.avatar_url,
         }));
+        
+        // Validate unique IDs
+        const uniqueIds = new Set(followersList.map((f: Follower) => f.id));
+        if (uniqueIds.size !== followersList.length) {
+          console.warn('⚠️ [LiveSettings] Duplicate follower IDs detected');
+        }
+        
         setFollowers(followersList);
         console.log('✅ [LiveSettings] Loaded', followersList.length, 'followers');
       } else {
@@ -142,11 +151,20 @@ export default function LiveSettingsPanel({
   const toggleModerator = async (userId: string) => {
     if (!user) return;
 
+    // DEFENSIVE: Prevent double-tap
+    if (addingModerator === userId) {
+      console.log('⏳ [LiveSettings] Already processing moderator action for:', userId);
+      return;
+    }
+
     const isCurrentlyModerator = selectedModerators.includes(userId);
 
     if (isCurrentlyModerator) {
       // Remove moderator
+      setAddingModerator(userId);
       const success = await removeModerator(userId);
+      setAddingModerator(null);
+      
       if (success) {
         setSelectedModerators(selectedModerators.filter((id) => id !== userId));
         console.log('➖ [LiveSettings] Removed moderator:', userId);
@@ -154,10 +172,16 @@ export default function LiveSettingsPanel({
         Alert.alert('Error', 'Failed to remove moderator');
       }
     } else {
-      // Add moderator
+      // Add moderator (idempotent)
+      setAddingModerator(userId);
       const success = await addModerator(userId);
+      setAddingModerator(null);
+      
       if (success) {
-        setSelectedModerators([...selectedModerators, userId]);
+        // Only add if not already in the list (prevent duplicates)
+        if (!selectedModerators.includes(userId)) {
+          setSelectedModerators([...selectedModerators, userId]);
+        }
         console.log('➕ [LiveSettings] Added moderator:', userId);
       } else {
         Alert.alert('Error', 'Failed to add moderator');
@@ -174,6 +198,24 @@ export default function LiveSettingsPanel({
   };
 
   const displayList = searchQuery.trim() ? searchResults : followers;
+
+  // Validate displayList for undefined or duplicate IDs
+  const validatedDisplayList = displayList.filter((item) => {
+    if (!item.id) {
+      console.warn('⚠️ [LiveSettings] Item with undefined ID detected:', item);
+      return false;
+    }
+    return true;
+  });
+
+  // Runtime guard: Check for duplicate IDs in dev mode
+  if (__DEV__ && validatedDisplayList.length > 0) {
+    const ids = validatedDisplayList.map(item => item.id);
+    const uniqueIds = new Set(ids);
+    if (uniqueIds.size !== ids.length) {
+      console.error('❌ [LiveSettings] DUPLICATE IDs DETECTED in displayList:', ids);
+    }
+  }
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -388,7 +430,7 @@ export default function LiveSettingsPanel({
                         {isSearching ? 'Searching...' : 'Loading followers...'}
                       </Text>
                     </View>
-                  ) : displayList.length === 0 ? (
+                  ) : validatedDisplayList.length === 0 ? (
                     <Text style={styles.emptyText}>
                       {searchQuery.trim() 
                         ? 'No users found' 
@@ -396,13 +438,17 @@ export default function LiveSettingsPanel({
                     </Text>
                   ) : (
                     <ScrollView style={styles.userScrollView} showsVerticalScrollIndicator={false}>
-                      {displayList.map((follower) => {
+                      {validatedDisplayList.map((follower, index) => {
                         const isSelected = selectedModerators.includes(follower.id);
+                        const isProcessing = addingModerator === follower.id;
+                        
+                        // Use compound key: id + index for guaranteed uniqueness
                         return (
                           <TouchableOpacity
-                            key={follower.id}
+                            key={`follower-${follower.id}-${index}`}
                             style={[styles.followerItem, isSelected && styles.followerItemActive]}
                             onPress={() => toggleModerator(follower.id)}
+                            disabled={isProcessing}
                           >
                             <View style={styles.followerAvatar}>
                               <IconSymbol
@@ -416,14 +462,16 @@ export default function LiveSettingsPanel({
                               <Text style={styles.followerName}>{follower.display_name}</Text>
                               <Text style={styles.followerUsername}>@{follower.username}</Text>
                             </View>
-                            {isSelected && (
+                            {isProcessing ? (
+                              <ActivityIndicator size="small" color={colors.brandPrimary} />
+                            ) : isSelected ? (
                               <IconSymbol
                                 ios_icon_name="checkmark.circle.fill"
                                 android_material_icon_name="check_circle"
                                 size={20}
                                 color={colors.brandPrimary}
                               />
-                            )}
+                            ) : null}
                           </TouchableOpacity>
                         );
                       })}
@@ -435,9 +483,9 @@ export default function LiveSettingsPanel({
               {selectedModerators.length > 0 && (
                 <View style={styles.moderatorPerks}>
                   <Text style={styles.perksTitle}>Moderator Permissions:</Text>
-                  <Text style={styles.perkItem}>• Pin chat messages</Text>
-                  <Text style={styles.perkItem}>• Timeout users</Text>
-                  <Text style={styles.perkItem}>• Ban users</Text>
+                  <Text style={styles.perkItem}>- Pin chat messages</Text>
+                  <Text style={styles.perkItem}>- Timeout users</Text>
+                  <Text style={styles.perkItem}>- Ban users</Text>
                 </View>
               )}
             </View>
@@ -446,11 +494,11 @@ export default function LiveSettingsPanel({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Safety & Community Rules</Text>
               <View style={styles.rulesBox}>
-                <Text style={styles.ruleItem}>• No harassment or hate speech</Text>
-                <Text style={styles.ruleItem}>• No revealing private information</Text>
-                <Text style={styles.ruleItem}>• Keep roasts entertaining, not harmful</Text>
-                <Text style={styles.ruleItem}>• Respect all community members</Text>
-                <Text style={styles.ruleItem}>• Follow content label guidelines</Text>
+                <Text style={styles.ruleItem}>- No harassment or hate speech</Text>
+                <Text style={styles.ruleItem}>- No revealing private information</Text>
+                <Text style={styles.ruleItem}>- Keep roasts entertaining, not harmful</Text>
+                <Text style={styles.ruleItem}>- Respect all community members</Text>
+                <Text style={styles.ruleItem}>- Follow content label guidelines</Text>
               </View>
             </View>
           </ScrollView>
@@ -461,6 +509,15 @@ export default function LiveSettingsPanel({
         </View>
       </View>
     </Modal>
+  );
+}
+
+// Wrap with ErrorBoundary
+export default function LiveSettingsPanel(props: LiveSettingsPanelProps) {
+  return (
+    <ErrorBoundary>
+      <LiveSettingsPanelContent {...props} />
+    </ErrorBoundary>
   );
 }
 

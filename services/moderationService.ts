@@ -1,5 +1,5 @@
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export interface Moderator {
   id: string;
@@ -75,6 +75,14 @@ export interface ModerationHistoryEntry {
     display_name: string;
     avatar_url: string | null;
   };
+}
+
+/**
+ * Helper function to validate if a string is a valid UUID
+ */
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
 }
 
 class ModerationService {
@@ -270,7 +278,7 @@ class ModerationService {
     }
   }
 
-  // Add a moderator
+  // Add a moderator (IDEMPOTENT)
   async addModerator(streamerId: string, userId: string, addedBy: string): Promise<{ success: boolean; error?: string }> {
     try {
       // Validate addedBy is not null
@@ -279,6 +287,25 @@ class ModerationService {
         return { success: false, error: 'Invalid moderator ID' };
       }
 
+      // Check if moderator already exists
+      const { data: existing, error: checkError } = await supabase
+        .from('moderators')
+        .select('id')
+        .eq('streamer_id', streamerId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('❌ Error checking existing moderator:', checkError);
+        return { success: false, error: checkError.message };
+      }
+
+      if (existing) {
+        console.log('ℹ️ Moderator already exists, returning success (idempotent)');
+        return { success: true };
+      }
+
+      // Insert new moderator
       const { error } = await supabase
         .from('moderators')
         .insert({
@@ -287,6 +314,12 @@ class ModerationService {
         });
 
       if (error) {
+        // Check if it's a duplicate key error (23505)
+        if (error.code === '23505') {
+          console.log('ℹ️ Duplicate key detected, returning success (idempotent)');
+          return { success: true };
+        }
+        
         console.error('Error adding moderator:', error);
         return { success: false, error: error.message };
       }
@@ -454,7 +487,7 @@ class ModerationService {
     }
   }
 
-  // Get all banned users for a streamer - Fixed: Fetch profiles separately to avoid recursion
+  // Get all banned users for a streamer - FIXED: Changed from 'bans' to 'banned_users'
   async getBannedUsers(streamerId: string): Promise<BannedUser[]> {
     try {
       // First fetch banned users
@@ -764,23 +797,58 @@ class ModerationService {
     }
   }
 
-  // Search users by username for adding moderators
+  // Search users by username
+  // FIXED: Added UUID validation to prevent "invalid input syntax for type uuid" errors
   async searchUsersByUsername(username: string): Promise<any[]> {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .ilike('username', `%${username}%`)
-        .limit(10);
+      console.log('🔍 [ModerationService] Searching users by username:', username);
 
-      if (error) {
-        console.error('Error searching users:', error);
+      // DEFENSIVE: Validate input
+      if (!username || username.trim().length === 0) {
+        console.log('⚠️ [ModerationService] Empty search query, returning empty array');
         return [];
       }
 
-      return data || [];
+      const trimmedUsername = username.trim();
+
+      // Check if input is a valid UUID
+      if (isValidUUID(trimmedUsername)) {
+        console.log('🔍 [ModerationService] Input is a UUID, searching by ID');
+        
+        // Query by ID
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .eq('id', trimmedUsername)
+          .limit(1);
+
+        if (error) {
+          console.error('❌ [ModerationService] Error searching by UUID:', error);
+          return [];
+        }
+
+        console.log('✅ [ModerationService] Found', data?.length || 0, 'users by UUID');
+        return data || [];
+      } else {
+        console.log('🔍 [ModerationService] Input is text, searching by username/display_name');
+        
+        // Query by username or display_name using ilike
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .or(`username.ilike.%${trimmedUsername}%,display_name.ilike.%${trimmedUsername}%`)
+          .limit(20);
+
+        if (error) {
+          console.error('❌ [ModerationService] Error searching by username:', error);
+          return [];
+        }
+
+        console.log('✅ [ModerationService] Found', data?.length || 0, 'users by username');
+        return data || [];
+      }
     } catch (error) {
-      console.error('Error in searchUsersByUsername:', error);
+      console.error('❌ [ModerationService] Exception in searchUsersByUsername:', error);
       return [];
     }
   }

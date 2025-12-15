@@ -12,12 +12,21 @@ interface StreamingContextType {
 
 const StreamingContext = createContext<StreamingContextType | undefined>(undefined);
 
+/**
+ * StreamingProvider - Manages global streaming state and timer
+ * 
+ * CRITICAL: This component MUST be exported as a named export
+ * and imported with curly braces: import { StreamingProvider } from '...'
+ */
 export function StreamingProvider({ children }: { children: ReactNode }) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamStartTime, setStreamStartTime] = useState<Date | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // FIX ISSUE 2: Use platform-safe timer type instead of NodeJS.Timeout
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startStreamTimer = () => {
+    console.log('⏱️ [StreamingProvider] Starting stream timer');
     setStreamStartTime(new Date());
   };
 
@@ -27,10 +36,15 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       const durationMs = endTime.getTime() - streamStartTime.getTime();
       const durationHours = durationMs / (1000 * 60 * 60); // Convert to hours
 
-      console.log(`Stream duration: ${durationHours.toFixed(2)} hours`);
+      console.log(`⏱️ [StreamingProvider] Stream duration: ${durationHours.toFixed(2)} hours`);
 
-      // Update streaming hours in database
-      await fanClubService.updateStreamingHours(userId, durationHours);
+      try {
+        // Update streaming hours in database
+        await fanClubService.updateStreamingHours(userId, durationHours);
+        console.log('✅ [StreamingProvider] Streaming hours updated successfully');
+      } catch (error) {
+        console.error('❌ [StreamingProvider] Failed to update streaming hours:', error);
+      }
 
       setStreamStartTime(null);
     }
@@ -46,6 +60,11 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Add console log to verify provider is rendering
+  useEffect(() => {
+    console.log('✅ [StreamingProvider] Mounted and ready');
+  }, []);
+
   return (
     <StreamingContext.Provider
       value={{
@@ -59,6 +78,11 @@ export function StreamingProvider({ children }: { children: ReactNode }) {
       {children}
     </StreamingContext.Provider>
   );
+}
+
+// Verify export is not undefined
+if (typeof StreamingProvider === 'undefined') {
+  console.error('❌ CRITICAL: StreamingProvider is undefined at export time!');
 }
 
 export function useStreaming() {

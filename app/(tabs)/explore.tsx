@@ -170,7 +170,7 @@ export default function ExploreScreen() {
       mounted = false;
       clearCache();
     };
-  }, []);
+  }, [loadExploreContent, clearCache]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);

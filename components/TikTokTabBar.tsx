@@ -55,10 +55,15 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
     }
   }, [user, fetchUnreadCount]);
 
+  // Check if we should hide the tab bar based on current route
+  const shouldHideTabBar = pathname.includes('/pre-live-setup') || 
+                           pathname.includes('/broadcast') || 
+                           isStreaming;
+
   useEffect(() => {
-    // Animate tab bar hiding/showing when streaming status changes
-    if (isStreaming) {
-      console.log('🚫 Hiding tab bar - user is streaming');
+    // Animate tab bar hiding/showing when streaming status changes or route changes
+    if (shouldHideTabBar) {
+      console.log('🚫 Hiding tab bar - user is in Go Live flow or streaming');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 100,
@@ -72,7 +77,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
         }),
       ]).start();
     } else {
-      console.log('✅ Showing tab bar - user stopped streaming');
+      console.log('✅ Showing tab bar');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
@@ -86,7 +91,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
         }),
       ]).start();
     }
-  }, [isStreaming, slideAnim, opacityAnim]);
+  }, [shouldHideTabBar, slideAnim, opacityAnim]);
 
   const isActive = (route: string) => {
     if (route === '/(tabs)/(home)/' || route === '/(tabs)/(home)') {
@@ -109,6 +114,11 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
     router.push('/(tabs)/pre-live-setup');
   };
 
+  // Don't render at all if should be hidden
+  if (shouldHideTabBar) {
+    return null;
+  }
+
   return (
     <Animated.View
       style={[
@@ -118,7 +128,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
           opacity: opacityAnim,
         },
       ]}
-      pointerEvents={isStreaming ? 'none' : 'auto'}
+      pointerEvents={shouldHideTabBar ? 'none' : 'auto'}
     >
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background, borderTopColor: colors.border }]} edges={['bottom']}>
         <Animated.View style={[styles.container, { opacity: themeOpacity }]}>

@@ -5,9 +5,9 @@ export interface Moderator {
   id: string;
   streamer_id: string;
   user_id: string;
+  added_by: string;
   created_at: string;
   profiles?: {
-    id: string;
     username: string;
     display_name: string;
     avatar_url: string | null;
@@ -19,153 +19,409 @@ export interface BannedUser {
   streamer_id: string;
   user_id: string;
   reason: string | null;
-  created_at: string;
+  banned_at: string;
+  banned_by: string;
   profiles?: {
-    id: string;
     username: string;
     display_name: string;
     avatar_url: string | null;
   };
 }
 
-export interface TimedOutUser {
+export interface TimeoutUser {
   id: string;
-  stream_id: string;
-  user_id: string;
-  end_time: string;
-  created_at: string;
-}
-
-export interface PinnedComment {
-  id: string;
-  stream_id: string;
-  message_id: string;
-  pinned_by: string;
-  pinned_until: string;
-  created_at: string;
-  chat_messages?: {
-    id: string;
-    message: string;
-    user_id: string;
-    users: {
-      display_name: string;
-      username: string;
-    };
-  };
-}
-
-export interface ModerationHistoryEntry {
-  id: string;
-  moderator_user_id: string;
-  target_user_id: string;
   streamer_id: string;
-  action_type: string;
+  user_id: string;
+  duration_minutes: number;
   reason: string | null;
-  duration_sec: number | null;
-  created_at: string;
-  moderator?: {
-    id: string;
-    username: string;
-    display_name: string;
-    avatar_url: string | null;
-  };
-  target?: {
-    id: string;
-    username: string;
-    display_name: string;
-    avatar_url: string | null;
-  };
+  timed_out_at: string;
+  timed_out_by: string;
+  expires_at: string;
+}
+
+/**
+ * Helper function to validate if a string is a valid UUID
+ */
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
 }
 
 class ModerationService {
-  // Log moderation action to history
-  private async logModerationAction(
-    moderatorUserId: string,
-    targetUserId: string,
-    streamerId: string,
-    actionType: string,
-    reason?: string,
-    durationSec?: number
-  ): Promise<void> {
+  /**
+   * Get all moderators for a streamer
+   * DEFENSIVE: Returns empty array on error
+   */
+  async getModerators(streamerId: string): Promise<Moderator[]> {
     try {
-      const { error } = await supabase
-        .from('moderation_history')
-        .insert({
-          moderator_user_id: moderatorUserId,
-          target_user_id: targetUserId,
-          streamer_id: streamerId,
-          action_type: actionType,
-          reason: reason || null,
-          duration_sec: durationSec || null,
-        });
+      console.log('📥 [ModerationService] Fetching moderators for streamer:', streamerId);
+
+      const { data, error } = await supabase
+        .from('moderators')
+        .select(`
+          *,
+          profiles:user_id(username, display_name, avatar_url)
+        `)
+        .eq('streamer_id', streamerId)
+        .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error logging moderation action:', error);
-      } else {
-        console.log(`📝 Logged moderation action: ${actionType}`);
-      }
-    } catch (error) {
-      console.error('Error in logModerationAction:', error);
-    }
-  }
-
-  // Get moderation history for a streamer
-  async getModerationHistory(streamerId: string, limit: number = 50): Promise<ModerationHistoryEntry[]> {
-    try {
-      // First fetch moderation history
-      const { data: history, error: historyError } = await supabase
-        .from('moderation_history')
-        .select('id, moderator_user_id, target_user_id, streamer_id, action_type, reason, duration_sec, created_at')
-        .eq('streamer_id', streamerId)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (historyError) {
-        console.error('❌ Error fetching moderation history:', historyError);
+        console.error('❌ [ModerationService] Error fetching moderators:', error);
         return [];
       }
 
-      if (!history || history.length === 0) {
-        return [];
-      }
-
-      // Fetch profile data separately for moderators and targets
-      const moderatorIds = [...new Set(history.map(h => h.moderator_user_id))];
-      const targetIds = [...new Set(history.map(h => h.target_user_id))];
-
-      const { data: moderatorProfiles } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .in('id', moderatorIds);
-
-      const { data: targetProfiles } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .in('id', targetIds);
-
-      // Create maps for quick lookup
-      const moderatorMap = new Map(
-        (moderatorProfiles || []).map(p => [p.id, p])
-      );
-      const targetMap = new Map(
-        (targetProfiles || []).map(p => [p.id, p])
-      );
-
-      // Merge profile data with history
-      const result = history.map(h => ({
-        ...h,
-        moderator: moderatorMap.get(h.moderator_user_id),
-        target: targetMap.get(h.target_user_id),
-      }));
-
-      return result as ModerationHistoryEntry[];
+      console.log('✅ [ModerationService] Fetched', data?.length || 0, 'moderators');
+      return data || [];
     } catch (error) {
-      console.error('❌ Error in getModerationHistory:', error);
+      console.error('❌ [ModerationService] Exception in getModerators:', error);
       return [];
     }
   }
 
-  // Check if user is a moderator for a streamer
+  /**
+   * Add a moderator (IDEMPOTENT - won't fail if already exists)
+   * FIXED: Now uses upsert to prevent duplicate key violations
+   */
+  async addModerator(
+    streamerId: string,
+    userId: string,
+    addedBy?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('➕ [ModerationService] Adding moderator:', { streamerId, userId });
+
+      // Check if moderator already exists
+      const { data: existing, error: checkError } = await supabase
+        .from('moderators')
+        .select('id')
+        .eq('streamer_id', streamerId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('❌ [ModerationService] Error checking existing moderator:', checkError);
+        return { success: false, error: checkError.message };
+      }
+
+      if (existing) {
+        console.log('ℹ️ [ModerationService] Moderator already exists, returning success');
+        return { success: true };
+      }
+
+      // Insert new moderator
+      const { error: insertError } = await supabase
+        .from('moderators')
+        .insert({
+          streamer_id: streamerId,
+          user_id: userId,
+        });
+
+      if (insertError) {
+        // Check if it's a duplicate key error (23505)
+        if (insertError.code === '23505') {
+          console.log('ℹ️ [ModerationService] Duplicate key detected, returning success');
+          return { success: true };
+        }
+
+        console.error('❌ [ModerationService] Error adding moderator:', insertError);
+        return { success: false, error: insertError.message };
+      }
+
+      console.log('✅ [ModerationService] Moderator added successfully');
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ [ModerationService] Exception in addModerator:', error);
+      return { success: false, error: error.message || 'Failed to add moderator' };
+    }
+  }
+
+  /**
+   * Remove a moderator
+   */
+  async removeModerator(
+    streamerId: string,
+    userId: string,
+    removedBy?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('➖ [ModerationService] Removing moderator:', { streamerId, userId });
+
+      const { error } = await supabase
+        .from('moderators')
+        .delete()
+        .eq('streamer_id', streamerId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('❌ [ModerationService] Error removing moderator:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('✅ [ModerationService] Moderator removed successfully');
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ [ModerationService] Exception in removeModerator:', error);
+      return { success: false, error: error.message || 'Failed to remove moderator' };
+    }
+  }
+
+  /**
+   * Get all banned users for a streamer
+   * FIXED: Changed from 'bans' to 'banned_users' table
+   * DEFENSIVE: Returns empty array on error instead of throwing
+   */
+  async getBannedUsers(streamerId: string): Promise<BannedUser[]> {
+    try {
+      console.log('📥 [ModerationService] Fetching banned users for streamer:', streamerId);
+
+      const { data, error } = await supabase
+        .from('banned_users')
+        .select(`
+          *,
+          profiles:user_id(username, display_name, avatar_url)
+        `)
+        .eq('streamer_id', streamerId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ [ModerationService] Error fetching banned users:', error);
+        console.error('Error details:', error);
+        return [];
+      }
+
+      console.log('✅ [ModerationService] Fetched', data?.length || 0, 'banned users');
+      
+      // Map the data to match the expected interface
+      const mappedData = (data || []).map(item => ({
+        id: item.id,
+        streamer_id: item.streamer_id,
+        user_id: item.user_id,
+        reason: item.reason,
+        banned_at: item.created_at,
+        banned_by: item.streamer_id,
+        profiles: item.profiles,
+      }));
+      
+      return mappedData;
+    } catch (error) {
+      console.error('❌ [ModerationService] Exception in getBannedUsers:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Ban a user
+   * FIXED: Changed from 'bans' to 'banned_users' table
+   */
+  async banUser(
+    streamerId: string,
+    userId: string,
+    reason: string,
+    bannedBy: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('🚫 [ModerationService] Banning user:', { streamerId, userId, reason });
+
+      const { error } = await supabase
+        .from('banned_users')
+        .insert({
+          streamer_id: streamerId,
+          user_id: userId,
+          reason,
+        });
+
+      if (error) {
+        console.error('❌ [ModerationService] Error banning user:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('✅ [ModerationService] User banned successfully');
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ [ModerationService] Exception in banUser:', error);
+      return { success: false, error: error.message || 'Failed to ban user' };
+    }
+  }
+
+  /**
+   * Unban a user
+   * FIXED: Changed from 'bans' to 'banned_users' table
+   */
+  async unbanUser(
+    streamerId: string,
+    userId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('✅ [ModerationService] Unbanning user:', { streamerId, userId });
+
+      const { error } = await supabase
+        .from('banned_users')
+        .delete()
+        .eq('streamer_id', streamerId)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('❌ [ModerationService] Error unbanning user:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('✅ [ModerationService] User unbanned successfully');
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ [ModerationService] Exception in unbanUser:', error);
+      return { success: false, error: error.message || 'Failed to unban user' };
+    }
+  }
+
+  /**
+   * Timeout a user
+   */
+  async timeoutUser(
+    streamerId: string,
+    userId: string,
+    durationMinutes: number,
+    reason: string,
+    timedOutBy: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('⏱️ [ModerationService] Timing out user:', { streamerId, userId, durationMinutes });
+
+      const expiresAt = new Date();
+      expiresAt.setMinutes(expiresAt.getMinutes() + durationMinutes);
+
+      const { error } = await supabase
+        .from('timed_out_users')
+        .insert({
+          user_id: userId,
+          end_time: expiresAt.toISOString(),
+        });
+
+      if (error) {
+        console.error('❌ [ModerationService] Error timing out user:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('✅ [ModerationService] User timed out successfully');
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ [ModerationService] Exception in timeoutUser:', error);
+      return { success: false, error: error.message || 'Failed to timeout user' };
+    }
+  }
+
+  /**
+   * Search users by username
+   * FIXED: Added UUID validation to prevent "invalid input syntax for type uuid" errors
+   */
+  async searchUsersByUsername(username: string): Promise<any[]> {
+    try {
+      console.log('🔍 [ModerationService] Searching users by username:', username);
+
+      // DEFENSIVE: Validate input
+      if (!username || username.trim().length === 0) {
+        console.log('⚠️ [ModerationService] Empty search query, returning empty array');
+        return [];
+      }
+
+      const trimmedUsername = username.trim();
+
+      // Check if input is a valid UUID
+      if (isValidUUID(trimmedUsername)) {
+        console.log('🔍 [ModerationService] Input is a UUID, searching by ID');
+        
+        // Query by ID
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .eq('id', trimmedUsername)
+          .limit(1);
+
+        if (error) {
+          console.error('❌ [ModerationService] Error searching by UUID:', error);
+          return [];
+        }
+
+        console.log('✅ [ModerationService] Found', data?.length || 0, 'users by UUID');
+        return data || [];
+      } else {
+        console.log('🔍 [ModerationService] Input is text, searching by username/display_name');
+        
+        // Query by username or display_name using ilike
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .or(`username.ilike.%${trimmedUsername}%,display_name.ilike.%${trimmedUsername}%`)
+          .limit(20);
+
+        if (error) {
+          console.error('❌ [ModerationService] Error searching by username:', error);
+          return [];
+        }
+
+        console.log('✅ [ModerationService] Found', data?.length || 0, 'users by username');
+        return data || [];
+      }
+    } catch (error) {
+      console.error('❌ [ModerationService] Exception in searchUsersByUsername:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if user is banned
+   * FIXED: Changed from 'bans' to 'banned_users' table
+   * DEFENSIVE: Returns false on error
+   */
+  async isUserBanned(streamerId: string, userId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('banned_users')
+        .select('id')
+        .eq('streamer_id', streamerId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ [ModerationService] Error checking ban status:', error);
+        return false;
+      }
+
+      return !!data;
+    } catch (error) {
+      console.error('❌ [ModerationService] Exception in isUserBanned:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if user is timed out
+   * DEFENSIVE: Returns false on error
+   */
+  async isUserTimedOut(streamerId: string, userId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('timed_out_users')
+        .select('id, end_time')
+        .eq('user_id', userId)
+        .gt('end_time', new Date().toISOString())
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ [ModerationService] Error checking timeout status:', error);
+        return false;
+      }
+
+      return !!data;
+    } catch (error) {
+      console.error('❌ [ModerationService] Exception in isUserTimedOut:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if user is a moderator
+   * DEFENSIVE: Returns false on error
+   */
   async isModerator(streamerId: string, userId: string): Promise<boolean> {
     try {
       const { data, error } = await supabase
@@ -175,543 +431,15 @@ class ModerationService {
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking moderator status:', error);
+      if (error) {
+        console.error('❌ [ModerationService] Error checking moderator status:', error);
         return false;
       }
 
       return !!data;
     } catch (error) {
-      console.error('Error in isModerator:', error);
+      console.error('❌ [ModerationService] Exception in isModerator:', error);
       return false;
-    }
-  }
-
-  // Check if user is banned by a streamer (persistent across all streams)
-  async isBanned(streamerId: string, userId: string): Promise<boolean> {
-    try {
-      const { data, error } = await supabase
-        .from('banned_users')
-        .select('id')
-        .eq('streamer_id', streamerId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking ban status:', error);
-        return false;
-      }
-
-      return !!data;
-    } catch (error) {
-      console.error('Error in isBanned:', error);
-      return false;
-    }
-  }
-
-  // Check if user is timed out (check against current time)
-  async isTimedOut(streamerId: string, userId: string): Promise<{ isTimedOut: boolean; endTime?: string }> {
-    try {
-      // Get the most recent timeout for this user from this streamer
-      const { data, error } = await supabase
-        .from('timed_out_users')
-        .select('end_time, stream_id')
-        .eq('user_id', userId)
-        .gte('end_time', new Date().toISOString())
-        .order('end_time', { ascending: false })
-        .limit(1);
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error checking timeout status:', error);
-        return { isTimedOut: false };
-      }
-
-      if (!data || data.length === 0) {
-        return { isTimedOut: false };
-      }
-
-      // Verify the timeout is for a stream from this streamer
-      const { data: streamData } = await supabase
-        .from('streams')
-        .select('broadcaster_id')
-        .eq('id', data[0].stream_id)
-        .maybeSingle();
-
-      if (streamData && streamData.broadcaster_id === streamerId) {
-        return { isTimedOut: true, endTime: data[0].end_time };
-      }
-
-      return { isTimedOut: false };
-    } catch (error) {
-      console.error('Error in isTimedOut:', error);
-      return { isTimedOut: false };
-    }
-  }
-
-  // Add a moderator
-  async addModerator(streamerId: string, userId: string, addedBy: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('moderators')
-        .insert({
-          streamer_id: streamerId,
-          user_id: userId,
-        });
-
-      if (error) {
-        console.error('Error adding moderator:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action
-      await this.logModerationAction(addedBy, userId, streamerId, 'add_moderator');
-
-      console.log('✅ Moderator added successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Error in addModerator:', error);
-      return { success: false, error: 'Failed to add moderator' };
-    }
-  }
-
-  // Remove a moderator
-  async removeModerator(streamerId: string, userId: string, removedBy: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('moderators')
-        .delete()
-        .eq('streamer_id', streamerId)
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error removing moderator:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action
-      await this.logModerationAction(removedBy, userId, streamerId, 'remove_moderator');
-
-      console.log('✅ Moderator removed successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Error in removeModerator:', error);
-      return { success: false, error: 'Failed to remove moderator' };
-    }
-  }
-
-  // Get all moderators for a streamer - Fixed: Fetch profiles separately to avoid recursion
-  async getModerators(streamerId: string): Promise<Moderator[]> {
-    try {
-      // First fetch moderators
-      const { data: moderators, error: moderatorsError } = await supabase
-        .from('moderators')
-        .select('id, streamer_id, user_id, created_at')
-        .eq('streamer_id', streamerId)
-        .order('created_at', { ascending: false });
-
-      if (moderatorsError) {
-        console.error('❌ Error fetching moderators:', moderatorsError);
-        return [];
-      }
-
-      if (!moderators || moderators.length === 0) {
-        return [];
-      }
-
-      // Fetch profile data separately
-      const userIds = moderators.map(m => m.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .in('id', userIds);
-
-      if (profilesError) {
-        console.error('❌ Error fetching profiles:', profilesError);
-        // Return moderators without profile data
-        return moderators as Moderator[];
-      }
-
-      // Map profiles to moderators
-      const profileMap = new Map(
-        (profiles || []).map(p => [p.id, p])
-      );
-
-      const result = moderators.map(m => ({
-        ...m,
-        profiles: profileMap.get(m.user_id),
-      }));
-
-      return result as Moderator[];
-    } catch (error) {
-      console.error('❌ Error in getModerators:', error);
-      return [];
-    }
-  }
-
-  // Ban a user (persistent across all future streams)
-  async banUser(streamerId: string, userId: string, bannedBy: string, reason?: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('banned_users')
-        .insert({
-          streamer_id: streamerId,
-          user_id: userId,
-          reason: reason || null,
-        });
-
-      if (error) {
-        console.error('Error banning user:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action
-      await this.logModerationAction(bannedBy, userId, streamerId, 'ban', reason);
-
-      console.log('✅ User banned successfully');
-      
-      // Broadcast ban event to remove user from stream
-      await supabase.channel(`streamer:${streamerId}:moderation`).send({
-        type: 'broadcast',
-        event: 'user_banned',
-        payload: { user_id: userId },
-      });
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error in banUser:', error);
-      return { success: false, error: 'Failed to ban user' };
-    }
-  }
-
-  // Unban a user
-  async unbanUser(streamerId: string, userId: string, unbannedBy: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('banned_users')
-        .delete()
-        .eq('streamer_id', streamerId)
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error unbanning user:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action
-      await this.logModerationAction(unbannedBy, userId, streamerId, 'unban');
-
-      console.log('✅ User unbanned successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Error in unbanUser:', error);
-      return { success: false, error: 'Failed to unban user' };
-    }
-  }
-
-  // Get all banned users for a streamer - Fixed: Fetch profiles separately to avoid recursion
-  async getBannedUsers(streamerId: string): Promise<BannedUser[]> {
-    try {
-      // First fetch banned users
-      const { data: bannedUsers, error: bannedError } = await supabase
-        .from('banned_users')
-        .select('id, streamer_id, user_id, reason, created_at')
-        .eq('streamer_id', streamerId)
-        .order('created_at', { ascending: false });
-
-      if (bannedError) {
-        console.error('❌ Error fetching banned users:', bannedError);
-        return [];
-      }
-
-      if (!bannedUsers || bannedUsers.length === 0) {
-        return [];
-      }
-
-      // Fetch profile data separately
-      const userIds = bannedUsers.map(b => b.user_id);
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .in('id', userIds);
-
-      if (profilesError) {
-        console.error('❌ Error fetching profiles:', profilesError);
-        // Return banned users without profile data
-        return bannedUsers as BannedUser[];
-      }
-
-      // Map profiles to banned users
-      const profileMap = new Map(
-        (profiles || []).map(p => [p.id, p])
-      );
-
-      const result = bannedUsers.map(b => ({
-        ...b,
-        profiles: profileMap.get(b.user_id),
-      }));
-
-      return result as BannedUser[];
-    } catch (error) {
-      console.error('❌ Error in getBannedUsers:', error);
-      return [];
-    }
-  }
-
-  // Timeout a user (persistent, expires automatically)
-  async timeoutUser(streamId: string, userId: string, streamerId: string, timedOutBy: string, durationMinutes: number): Promise<{ success: boolean; error?: string }> {
-    try {
-      if (durationMinutes < 1 || durationMinutes > 60) {
-        return { success: false, error: 'Timeout duration must be between 1 and 60 minutes' };
-      }
-
-      const endTime = new Date();
-      endTime.setMinutes(endTime.getMinutes() + durationMinutes);
-
-      // Delete existing timeout if any
-      await supabase
-        .from('timed_out_users')
-        .delete()
-        .eq('stream_id', streamId)
-        .eq('user_id', userId);
-
-      // Insert new timeout
-      const { error } = await supabase
-        .from('timed_out_users')
-        .insert({
-          stream_id: streamId,
-          user_id: userId,
-          end_time: endTime.toISOString(),
-        });
-
-      if (error) {
-        console.error('Error timing out user:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action
-      await this.logModerationAction(timedOutBy, userId, streamerId, 'timeout', undefined, durationMinutes * 60);
-
-      console.log(`✅ User timed out for ${durationMinutes} minutes`);
-      
-      // Broadcast timeout event
-      await supabase.channel(`stream:${streamId}:moderation`).send({
-        type: 'broadcast',
-        event: 'user_timed_out',
-        payload: { user_id: userId, duration_minutes: durationMinutes },
-      });
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error in timeoutUser:', error);
-      return { success: false, error: 'Failed to timeout user' };
-    }
-  }
-
-  // Remove a comment
-  async removeComment(messageId: string, removedBy: string, streamerId: string, targetUserId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('chat_messages')
-        .delete()
-        .eq('id', messageId);
-
-      if (error) {
-        console.error('Error removing comment:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action
-      await this.logModerationAction(removedBy, targetUserId, streamerId, 'remove_comment');
-
-      console.log('✅ Comment removed successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Error in removeComment:', error);
-      return { success: false, error: 'Failed to remove comment' };
-    }
-  }
-
-  // Pin a comment - Fixed: Use pinned_until instead of expires_at
-  async pinComment(streamId: string, messageId: string, pinnedBy: string, streamerId: string, targetUserId: string, durationMinutes: number): Promise<{ success: boolean; error?: string }> {
-    try {
-      if (durationMinutes < 1 || durationMinutes > 5) {
-        return { success: false, error: 'Pin duration must be between 1 and 5 minutes' };
-      }
-
-      const pinnedUntil = new Date();
-      pinnedUntil.setMinutes(pinnedUntil.getMinutes() + durationMinutes);
-
-      // Remove existing pinned comment if any
-      await supabase
-        .from('pinned_comments')
-        .delete()
-        .eq('stream_id', streamId);
-
-      // Insert new pinned comment
-      const { error } = await supabase
-        .from('pinned_comments')
-        .insert({
-          stream_id: streamId,
-          message_id: messageId,
-          pinned_by: pinnedBy,
-          pinned_until: pinnedUntil.toISOString(),
-        });
-
-      if (error) {
-        console.error('Error pinning comment:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action
-      await this.logModerationAction(pinnedBy, targetUserId, streamerId, 'pin_comment', undefined, durationMinutes * 60);
-
-      console.log(`✅ Comment pinned for ${durationMinutes} minutes`);
-      return { success: true };
-    } catch (error) {
-      console.error('Error in pinComment:', error);
-      return { success: false, error: 'Failed to pin comment' };
-    }
-  }
-
-  // Unpin a comment
-  async unpinComment(streamId: string, unpinnedBy: string, streamerId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('pinned_comments')
-        .delete()
-        .eq('stream_id', streamId);
-
-      if (error) {
-        console.error('Error unpinning comment:', error);
-        return { success: false, error: error.message };
-      }
-
-      // Log the action (use streamer as target for unpin)
-      await this.logModerationAction(unpinnedBy, streamerId, streamerId, 'unpin_comment');
-
-      console.log('✅ Comment unpinned successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Error in unpinComment:', error);
-      return { success: false, error: 'Failed to unpin comment' };
-    }
-  }
-
-  // Get pinned comment for a stream - Fixed: Use pinned_until instead of expires_at
-  async getPinnedComment(streamId: string): Promise<PinnedComment | null> {
-    try {
-      const { data, error } = await supabase
-        .from('pinned_comments')
-        .select('*, chat_messages(*, users(display_name, username))')
-        .eq('stream_id', streamId)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching pinned comment:', error);
-        return null;
-      }
-
-      if (!data) return null;
-
-      // Check if pin has expired
-      const pinnedUntil = new Date(data.pinned_until);
-      const now = new Date();
-      if (now > pinnedUntil) {
-        // Auto-remove expired pin
-        await this.unpinComment(streamId, data.pinned_by, data.pinned_by);
-        return null;
-      }
-
-      return data as PinnedComment;
-    } catch (error) {
-      console.error('Error in getPinnedComment:', error);
-      return null;
-    }
-  }
-
-  // Like a comment
-  async likeComment(messageId: string, userId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('comment_likes')
-        .insert({
-          message_id: messageId,
-          user_id: userId,
-        });
-
-      if (error) {
-        console.error('Error liking comment:', error);
-        return { success: false, error: error.message };
-      }
-
-      console.log('✅ Comment liked successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Error in likeComment:', error);
-      return { success: false, error: 'Failed to like comment' };
-    }
-  }
-
-  // Unlike a comment
-  async unlikeComment(messageId: string, userId: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const { error } = await supabase
-        .from('comment_likes')
-        .delete()
-        .eq('message_id', messageId)
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Error unliking comment:', error);
-        return { success: false, error: error.message };
-      }
-
-      console.log('✅ Comment unliked successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Error in unlikeComment:', error);
-      return { success: false, error: 'Failed to unlike comment' };
-    }
-  }
-
-  // Get comment likes count
-  async getCommentLikesCount(messageId: string): Promise<number> {
-    try {
-      const { count, error } = await supabase
-        .from('comment_likes')
-        .select('*', { count: 'exact', head: true })
-        .eq('message_id', messageId);
-
-      if (error) {
-        console.error('Error fetching comment likes count:', error);
-        return 0;
-      }
-
-      return count || 0;
-    } catch (error) {
-      console.error('Error in getCommentLikesCount:', error);
-      return 0;
-    }
-  }
-
-  // Search users by username for adding moderators
-  async searchUsersByUsername(username: string): Promise<any[]> {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .ilike('username', `%${username}%`)
-        .limit(10);
-
-      if (error) {
-        console.error('Error searching users:', error);
-        return [];
-      }
-
-      return data || [];
-    } catch (error) {
-      console.error('Error in searchUsersByUsername:', error);
-      return [];
     }
   }
 }

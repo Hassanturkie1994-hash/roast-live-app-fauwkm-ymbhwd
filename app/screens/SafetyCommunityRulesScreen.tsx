@@ -17,43 +17,43 @@ export default function SafetyCommunityRulesScreen() {
   const [showFAQModal, setShowFAQModal] = useState(false);
 
   const allowedContent = [
-    { icon: '😂', title: 'Comedy', description: 'Humorous content and jokes' },
-    { icon: '🔥', title: 'Roast Humor', description: 'Playful roasting and banter' },
-    { icon: '🎭', title: 'Satire', description: 'Satirical commentary' },
-    { icon: '😄', title: 'Jokes', description: 'Light-hearted jokes' },
-    { icon: '🎬', title: 'Drama', description: 'Dramatic content' },
-    { icon: '⚔️', title: 'Competitive Roast Sessions', description: 'Friendly roast battles' },
-    { icon: '🎯', title: 'Challenge Content', description: 'Fun challenges' },
+    { id: 'comedy', icon: '😂', title: 'Comedy', description: 'Humorous content and jokes' },
+    { id: 'roast', icon: '🔥', title: 'Roast Humor', description: 'Playful roasting and banter' },
+    { id: 'satire', icon: '🎭', title: 'Satire', description: 'Satirical commentary' },
+    { id: 'jokes', icon: '😄', title: 'Jokes', description: 'Light-hearted jokes' },
+    { id: 'drama', icon: '🎬', title: 'Drama', description: 'Dramatic content' },
+    { id: 'competitive', icon: '⚔️', title: 'Competitive Roast Sessions', description: 'Friendly roast battles' },
+    { id: 'challenge', icon: '🎯', title: 'Challenge Content', description: 'Fun challenges' },
   ];
 
   const notAllowedContent = [
-    { icon: '❌', title: 'Hate Speech', description: 'Discriminatory language based on race, religion, gender, etc.' },
-    { icon: '❌', title: 'Sexual Targeting', description: 'Unwanted sexual advances or harassment' },
-    { icon: '❌', title: 'Violence or Threats', description: 'Threats of physical harm or violence' },
-    { icon: '❌', title: 'Revealing Private Data', description: 'Sharing personal information without consent' },
-    { icon: '❌', title: 'Encouraging Self-Harm', description: 'Content promoting self-injury or suicide' },
-    { icon: '❌', title: 'Exploitation of Minors', description: 'Any content involving minors inappropriately' },
-    { icon: '❌', title: 'Harassment Targeting Identity', description: 'Attacks based on personal characteristics' },
-    { icon: '❌', title: 'Non-Consensual Content', description: 'Content shared without permission' },
+    { id: 'hate-speech', icon: '❌', title: 'Hate Speech', description: 'Discriminatory language based on race, religion, gender, etc.' },
+    { id: 'sexual', icon: '❌', title: 'Sexual Targeting', description: 'Unwanted sexual advances or harassment' },
+    { id: 'violence', icon: '❌', title: 'Violence or Threats', description: 'Threats of physical harm or violence' },
+    { id: 'private-data', icon: '❌', title: 'Revealing Private Data', description: 'Sharing personal information without consent' },
+    { id: 'self-harm', icon: '❌', title: 'Encouraging Self-Harm', description: 'Content promoting self-injury or suicide' },
+    { id: 'minors', icon: '❌', title: 'Exploitation of Minors', description: 'Any content involving minors inappropriately' },
+    { id: 'identity-harassment', icon: '❌', title: 'Harassment Targeting Identity', description: 'Attacks based on personal characteristics' },
+    { id: 'non-consensual', icon: '❌', title: 'Non-Consensual Content', description: 'Content shared without permission' },
   ];
 
   const chatRules = [
-    { title: 'Spam Detection', description: '5 spam messages in 3 seconds triggers auto-warning' },
-    { title: 'Hate Keywords', description: 'Messages with hate speech are automatically blocked' },
-    { title: 'Bullying Repetition', description: 'Repeated harassment results in timeout' },
+    { id: 'spam', title: 'Spam Detection', description: '5 spam messages in 3 seconds triggers auto-warning' },
+    { id: 'hate', title: 'Hate Keywords', description: 'Messages with hate speech are automatically blocked' },
+    { id: 'bullying', title: 'Bullying Repetition', description: 'Repeated harassment results in timeout' },
   ];
 
   const giftRules = [
-    { title: 'No Refunds', description: 'Gifts are non-refundable unless fraud is detected' },
-    { title: 'Platform Commission', description: 'Platform takes a commission from all gifts' },
-    { title: 'Support, Not Ownership', description: 'Gifting shows support but doesn\'t grant special privileges' },
+    { id: 'no-refunds', title: 'No Refunds', description: 'Gifts are non-refundable unless fraud is detected' },
+    { id: 'commission', title: 'Platform Commission', description: 'Platform takes a commission from all gifts' },
+    { id: 'support', title: 'Support, Not Ownership', description: 'Gifting shows support but doesn\'t grant special privileges' },
   ];
 
   const suspensionLevels = [
-    { level: 'Warning', color: '#FFA500', description: 'First offense - warning issued' },
-    { level: 'Timeout', color: '#FF6B6B', description: 'Temporary chat restriction (1-60 minutes)' },
-    { level: 'Suspension', color: '#DC143C', description: 'Account suspended (7-30 days)' },
-    { level: 'Ban from Livestream', color: '#8B0000', description: 'Permanent streaming ban' },
+    { id: 'warning', level: 'Warning', color: '#FFA500', description: 'First offense - warning issued' },
+    { id: 'timeout', level: 'Timeout', color: '#FF6B6B', description: 'Temporary chat restriction (1-60 minutes)' },
+    { id: 'suspension', level: 'Suspension', color: '#DC143C', description: 'Account suspended (7-30 days)' },
+    { id: 'ban', level: 'Ban from Livestream', color: '#8B0000', description: 'Permanent streaming ban' },
   ];
 
   return (
@@ -79,9 +79,9 @@ export default function SafetyCommunityRulesScreen() {
             We encourage creative and entertaining content that brings joy to our community.
           </Text>
           <View style={styles.itemsContainer}>
-            {allowedContent.map((item, index) => (
+            {allowedContent.map((item) => (
               <View
-                key={index}
+                key={item.id}
                 style={[styles.contentCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <Text style={styles.contentIcon}>{item.icon}</Text>
@@ -103,9 +103,9 @@ export default function SafetyCommunityRulesScreen() {
             The following content is prohibited and will result in immediate action.
           </Text>
           <View style={styles.itemsContainer}>
-            {notAllowedContent.map((item, index) => (
+            {notAllowedContent.map((item) => (
               <View
-                key={index}
+                key={item.id}
                 style={[styles.contentCard, styles.notAllowedCard, { backgroundColor: colors.card, borderColor: '#DC143C' }]}
               >
                 <Text style={styles.contentIcon}>{item.icon}</Text>
@@ -127,9 +127,9 @@ export default function SafetyCommunityRulesScreen() {
             Automated systems monitor chat for violations.
           </Text>
           <View style={styles.itemsContainer}>
-            {chatRules.map((item, index) => (
+            {chatRules.map((item) => (
               <View
-                key={index}
+                key={item.id}
                 style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.ruleBullet, { backgroundColor: colors.brandPrimary }]} />
@@ -151,9 +151,9 @@ export default function SafetyCommunityRulesScreen() {
             Important information about gifting on the platform.
           </Text>
           <View style={styles.itemsContainer}>
-            {giftRules.map((item, index) => (
+            {giftRules.map((item) => (
               <View
-                key={index}
+                key={item.id}
                 style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.ruleBullet, { backgroundColor: '#FFD700' }]} />
@@ -175,9 +175,9 @@ export default function SafetyCommunityRulesScreen() {
             Violations are handled progressively based on severity.
           </Text>
           <View style={styles.itemsContainer}>
-            {suspensionLevels.map((item, index) => (
+            {suspensionLevels.map((item) => (
               <View
-                key={index}
+                key={item.id}
                 style={[styles.suspensionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.suspensionLevel, { backgroundColor: item.color }]}>

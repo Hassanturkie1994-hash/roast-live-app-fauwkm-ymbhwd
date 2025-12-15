@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, BackHandler, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, FlashMode } from 'expo-camera';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, Stack, useNavigation } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { colors, commonStyles } from '@/styles/commonStyles';
 import GradientButton from '@/components/GradientButton';
@@ -51,6 +52,7 @@ interface GiftAnimation {
 
 export default function BroadcastScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const { setIsStreaming, startStreamTimer, stopStreamTimer } = useStreaming();
   const liveStreamState = useLiveStreamState();
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
@@ -106,7 +108,7 @@ export default function BroadcastScreen() {
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const streamStartTime = useRef<string | null>(null);
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeRef = useRef<any>(null);
   const giftChannelRef = useRef<any>(null);
   const likesChannelRef = useRef<any>(null);
@@ -130,71 +132,34 @@ export default function BroadcastScreen() {
     },
   });
 
-  /* ───────────────── MOUNT / AUTH GUARD ───────────────── */
-  useEffect(() => {
-    isMountedRef.current = true;
-    console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
-    console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
-    console.log('🎯 [BROADCAST] Practice Mode:', isPracticeMode);
-    console.log('🎨 [BROADCAST] Active filter:', activeFilter?.name || 'None');
-    console.log('✨ [BROADCAST] Active effect:', activeEffect?.name || 'None');
-
-    if (!user) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    // Validate params
-    if (!params.streamTitle || !params.contentLabel) {
-      console.error('❌ [BROADCAST] Missing required params:', { 
-        streamTitle: params.streamTitle, 
-        contentLabel: params.contentLabel 
-      });
+  // CRITICAL: Hide bottom tab bar when this screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🎬 [BROADCAST] Screen focused - hiding bottom tab bar');
       
-      Alert.alert(
-        'Missing Stream Information',
-        'Required stream information is missing. Please try again.',
-        [
-          {
-            text: 'Go Back',
-            style: 'cancel',
-            onPress: () => {
-              liveStreamState.setError('Missing stream information');
-              router.back();
-            },
-          },
-        ]
-      );
-      
-      setStreamCreationError('Missing stream information');
-      setIsCreatingStream(false);
-      return;
-    }
-
-    // PRACTICE MODE: Skip stream creation entirely
-    if (isPracticeMode) {
-      console.log('🎯 [BROADCAST] Practice Mode enabled - skipping Cloudflare stream creation');
-      startPracticeMode();
-    } else {
-      // REAL LIVE: Create stream on mount
-      createStreamOnMount();
-    }
-
-    return () => {
-      isMountedRef.current = false;
-      console.log('🎬 [BROADCAST] BroadcastScreen unmounted');
-      // Deactivate keep awake when component unmounts
-      try {
-        deactivateKeepAwake();
-        console.log('💤 [BROADCAST] Keep awake deactivated on unmount');
-      } catch (error) {
-        console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake on unmount:', error);
+      // Hide the tab bar
+      const parent = navigation.getParent();
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
       }
-    };
-  }, [user]);
+
+      // Cleanup: Restore tab bar when screen loses focus
+      return () => {
+        console.log('🎬 [BROADCAST] Screen blurred - restoring bottom tab bar');
+        const parent = navigation.getParent();
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: undefined,
+          });
+        }
+      };
+    }, [navigation])
+  );
 
   /* ───────────────── PRACTICE MODE SETUP ───────────────── */
-  const startPracticeMode = async () => {
+  const startPracticeMode = useCallback(async () => {
     try {
       console.log('🎯 [PRACTICE] Starting Practice Mode');
 
@@ -232,10 +197,10 @@ export default function BroadcastScreen() {
         setIsCreatingStream(false);
       }
     }
-  };
+  }, [liveStreamState, setIsStreaming]);
 
   /* ───────────────── STREAM CREATION ON MOUNT ───────────────── */
-  const createStreamOnMount = async () => {
+  const createStreamOnMount = useCallback(async () => {
     if (!user || !params.streamTitle || !params.contentLabel) {
       console.error('❌ [BROADCAST] Cannot create stream: missing required data');
       liveStreamState.setError('Missing required information');
@@ -366,12 +331,77 @@ export default function BroadcastScreen() {
         setIsCreatingStream(false);
       }
     }
-  };
+  }, [user, params.streamTitle, params.contentLabel, liveStreamState, setIsStreaming, startStreamTimer]);
+
+  /* ───────────────── MOUNT / AUTH GUARD ───────────────── */
+  useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
+    console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
+    console.log('🎯 [BROADCAST] Practice Mode:', isPracticeMode);
+    console.log('🎨 [BROADCAST] Active filter:', activeFilter?.name || 'None');
+    console.log('✨ [BROADCAST] Active effect:', activeEffect?.name || 'None');
+
+    if (!user) {
+      router.replace('/auth/login');
+      return;
+    }
+
+    // Validate params
+    if (!params.streamTitle || !params.contentLabel) {
+      console.error('❌ [BROADCAST] Missing required params:', { 
+        streamTitle: params.streamTitle, 
+        contentLabel: params.contentLabel 
+      });
+      
+      Alert.alert(
+        'Missing Stream Information',
+        'Required stream information is missing. Please try again.',
+        [
+          {
+            text: 'Go Back',
+            style: 'cancel',
+            onPress: () => {
+              liveStreamState.setError('Missing stream information');
+              router.back();
+            },
+          },
+        ]
+      );
+      
+      setStreamCreationError('Missing stream information');
+      setIsCreatingStream(false);
+      return;
+    }
+
+    // PRACTICE MODE: Skip stream creation entirely
+    if (isPracticeMode) {
+      console.log('🎯 [BROADCAST] Practice Mode enabled - skipping Cloudflare stream creation');
+      startPracticeMode();
+    } else {
+      // REAL LIVE: Create stream on mount
+      createStreamOnMount();
+    }
+
+    return () => {
+      isMountedRef.current = false;
+      console.log('🎬 [BROADCAST] BroadcastScreen unmounted');
+      // Deactivate keep awake when component unmounts
+      try {
+        deactivateKeepAwake();
+        console.log('💤 [BROADCAST] Keep awake deactivated on unmount');
+      } catch (error) {
+        console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake on unmount:', error);
+      }
+    };
+  }, [user, params, isPracticeMode, createStreamOnMount, startPracticeMode, liveStreamState, activeFilter, activeEffect]);
 
   /* ───────────────── PERMISSIONS ───────────────── */
   useEffect(() => {
-    if (!permission?.granted) requestPermission();
-  }, [permission]);
+    if (!permission?.granted) {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
 
   /* ───────────────── BACK BUTTON HANDLER ───────────────── */
   useEffect(() => {
@@ -534,6 +564,20 @@ export default function BroadcastScreen() {
     console.log('🛑 [BROADCAST] Ending stream (Practice Mode:', isPracticeMode, ')');
 
     try {
+      // CRITICAL FIX: Reset ALL streaming state BEFORE any other operations
+      console.log('🔄 [BROADCAST] Resetting streaming state...');
+      if (isMountedRef.current) {
+        setIsLive(false);
+        setIsStreaming(false);
+        setViewerCount(0);
+        setPeakViewers(0);
+        setTotalViewers(0);
+        setTotalGifts(0);
+        setTotalLikes(0);
+        setLiveSeconds(0);
+        setGiftAnimations([]);
+      }
+
       // Update state machine
       liveStreamState.endStream();
       
@@ -551,13 +595,17 @@ export default function BroadcastScreen() {
       // PRACTICE MODE: Just clean up and exit
       if (isPracticeMode) {
         console.log('🎯 [PRACTICE] Ending practice mode - no Cloudflare cleanup needed');
-        
-        if (isMountedRef.current) {
-          setIsLive(false);
-          setIsStreaming(false);
+
+        // CRITICAL: Explicitly restore tab bar BEFORE navigation
+        const parent = navigation.getParent();
+        if (parent) {
+          console.log('🔄 [PRACTICE] Explicitly restoring tab bar before navigation');
+          parent.setOptions({
+            tabBarStyle: undefined,
+          });
         }
 
-        // Reset state machine
+        // Reset state machine to IDLE
         liveStreamState.resetToIdle();
 
         Alert.alert(
@@ -631,21 +679,21 @@ export default function BroadcastScreen() {
       cleanupRealtime();
 
       if (isMountedRef.current) {
-        setIsLive(false);
-        setIsStreaming(false);
-        setViewerCount(0);
-        setPeakViewers(0);
-        setTotalViewers(0);
-        setTotalGifts(0);
-        setTotalLikes(0);
-        setLiveSeconds(0);
         setCurrentStream(null);
-        setGiftAnimations([]);
         setArchiveId(null);
         streamStartTime.current = null;
       }
 
-      // Reset state machine
+      // CRITICAL: Explicitly restore tab bar BEFORE navigation
+      const parent = navigation.getParent();
+      if (parent) {
+        console.log('🔄 [BROADCAST] Explicitly restoring tab bar before navigation');
+        parent.setOptions({
+          tabBarStyle: undefined,
+        });
+      }
+
+      // Reset state machine to IDLE
       liveStreamState.resetToIdle();
 
       Alert.alert(
@@ -725,8 +773,28 @@ export default function BroadcastScreen() {
 
   const handleCancel = () => {
     console.log('❌ [BROADCAST] Cancelling stream creation...');
-    setIsStreaming(false);
+    
+    // Reset streaming state
+    if (isMountedRef.current) {
+      setIsStreaming(false);
+      setIsLive(false);
+      setIsCreatingStream(false);
+      setStreamCreationError(null);
+    }
+    
+    // CRITICAL: Explicitly restore tab bar BEFORE navigation
+    const parent = navigation.getParent();
+    if (parent) {
+      console.log('🔄 [BROADCAST] Explicitly restoring tab bar before navigation');
+      parent.setOptions({
+        tabBarStyle: undefined,
+      });
+    }
+    
+    // Reset state machine to IDLE
     liveStreamState.resetToIdle();
+    
+    // Navigate back
     router.back();
   };
 
@@ -739,444 +807,457 @@ export default function BroadcastScreen() {
 
   if (!permission?.granted) {
     return (
-      <View style={commonStyles.container}>
-        <View style={styles.permissionContainer}>
-          <IconSymbol
-            ios_icon_name="video.fill"
-            android_material_icon_name="videocam"
-            size={64}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.permissionText}>We need your permission to use the camera</Text>
-          <GradientButton title="Grant Permission" onPress={requestPermission} />
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={commonStyles.container}>
+          <View style={styles.permissionContainer}>
+            <IconSymbol
+              ios_icon_name="video.fill"
+              android_material_icon_name="videocam"
+              size={64}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.permissionText}>We need your permission to use the camera</Text>
+            <GradientButton title="Grant Permission" onPress={requestPermission} />
+          </View>
         </View>
-      </View>
+      </>
     );
   }
 
   // Show loading state while creating stream (NOT for practice mode)
   if (isCreatingStream && !isPracticeMode) {
     return (
-      <View style={commonStyles.container}>
-        {/* Camera preview in background */}
-        <CameraView 
-          style={StyleSheet.absoluteFill} 
-          facing={facing}
-        />
-        
-        {/* Loading overlay */}
-        <View style={styles.loadingOverlay}>
-          <AppLogo size="large" alignment="center" />
-          <ActivityIndicator size="large" color={colors.gradientEnd} style={styles.loadingSpinner} />
-          <Text style={styles.loadingTitle}>Connecting to LIVE...</Text>
-          <Text style={styles.loadingSubtitle}>Setting up your stream</Text>
-          <View style={styles.loadingSteps}>
-            <Text style={styles.loadingStep}>✓ Camera ready</Text>
-            <Text style={styles.loadingStep}>⏳ Creating stream...</Text>
-            <Text style={styles.loadingStep}>⏳ Connecting to server...</Text>
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={commonStyles.container}>
+          {/* Camera preview in background */}
+          <CameraView 
+            style={StyleSheet.absoluteFill} 
+            facing={facing}
+          />
+          
+          {/* Loading overlay */}
+          <View style={styles.loadingOverlay}>
+            <AppLogo size="large" alignment="center" />
+            <ActivityIndicator size="large" color={colors.gradientEnd} style={styles.loadingSpinner} />
+            <Text style={styles.loadingTitle}>Connecting to LIVE...</Text>
+            <Text style={styles.loadingSubtitle}>Setting up your stream</Text>
+            <View style={styles.loadingSteps}>
+              <Text style={styles.loadingStep}>✓ Camera ready</Text>
+              <Text style={styles.loadingStep}>⏳ Creating stream...</Text>
+              <Text style={styles.loadingStep}>⏳ Connecting to server...</Text>
+            </View>
+            {__DEV__ && (
+              <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+            )}
           </View>
-          {__DEV__ && (
-            <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-          )}
         </View>
-      </View>
+      </>
     );
   }
 
   // Show error state if stream creation failed
   if (streamCreationError) {
     return (
-      <View style={commonStyles.container}>
-        {/* Camera preview in background */}
-        <CameraView 
-          style={StyleSheet.absoluteFill} 
-          facing={facing}
-        />
-        
-        {/* Error overlay */}
-        <View style={styles.errorOverlay}>
-          <IconSymbol
-            ios_icon_name="exclamationmark.triangle.fill"
-            android_material_icon_name="error"
-            size={64}
-            color={colors.gradientEnd}
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={commonStyles.container}>
+          {/* Camera preview in background */}
+          <CameraView 
+            style={StyleSheet.absoluteFill} 
+            facing={facing}
           />
-          <Text style={styles.errorTitle}>Failed to Start Stream</Text>
-          <Text style={styles.errorMessage}>{streamCreationError}</Text>
-          {__DEV__ && (
-            <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-          )}
-          <View style={styles.errorButtons}>
-            <TouchableOpacity
-              style={styles.errorCancelButton}
-              onPress={handleCancel}
-            >
-              <Text style={styles.errorCancelText}>Exit</Text>
-            </TouchableOpacity>
-            <View style={styles.errorRetryButton}>
-              <GradientButton
-                title="Retry"
-                onPress={handleRetry}
-                size="medium"
-              />
-            </View>
-          </View>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={commonStyles.container}>
-      {/* CAMERA LAYER */}
-      {isCameraOn ? (
-        <CameraView 
-          style={StyleSheet.absoluteFill} 
-          facing={facing}
-          flash={flashMode}
-        />
-      ) : (
-        <View style={styles.cameraOffContainer}>
-          <IconSymbol
-            ios_icon_name="video.slash.fill"
-            android_material_icon_name="videocam_off"
-            size={64}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.cameraOffText}>Camera Off — Stream Still Active</Text>
-        </View>
-      )}
-
-      {/* CAMERA FILTER OVERLAY - Using improved component with context */}
-      <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
-
-      {/* VISUAL EFFECTS OVERLAY - Using improved component with context */}
-      <ImprovedVisualEffectsOverlay effect={activeEffect} />
-
-      {/* OVERLAY LAYER */}
-      <View style={styles.overlay} pointerEvents="box-none">
-        {isLive && (
-          <>
-            {/* Connection Status (only for real streams) */}
-            {!isPracticeMode && (
-              <ConnectionStatusIndicator
-                status={connectionStatus}
-                attemptNumber={reconnectAttempt}
-                maxAttempts={6}
-              />
-            )}
-
-            {/* TOP BAR - TikTok Style */}
-            <View style={styles.topBar}>
-              <View style={styles.topLeft}>
-                {/* Host Avatar & Name */}
-                <View style={styles.hostInfo}>
-                  <View style={styles.hostAvatar}>
-                    <IconSymbol
-                      ios_icon_name="person.fill"
-                      android_material_icon_name="person"
-                      size={20}
-                      color="#FFFFFF"
-                    />
-                  </View>
-                  <Text style={styles.hostName}>{user?.display_name || 'Host'}</Text>
-                </View>
-
-                {/* Live Badge or Practice Badge */}
-                {isPracticeMode ? (
-                  <View style={styles.practiceBadge}>
-                    <Text style={styles.practiceBadgeText}>PRACTICE</Text>
-                  </View>
-                ) : (
-                  <LiveBadge size="small" />
-                )}
-
-                {/* Viewer Count (0 for practice mode) */}
-                <TouchableOpacity 
-                  style={styles.viewerCountButton}
-                  onPress={() => !isPracticeMode && setShowViewerList(true)}
-                  activeOpacity={0.7}
-                  disabled={isPracticeMode}
-                >
-                  <IconSymbol
-                    ios_icon_name="eye.fill"
-                    android_material_icon_name="visibility"
-                    size={14}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.viewerCountText}>{isPracticeMode ? 0 : viewerCount}</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Close (End Live) Button */}
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowExitConfirmation(true)}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Content Label Badge */}
-            {params.contentLabel && (
-              <View style={styles.contentLabelContainer}>
-                <ContentLabelBadge label={params.contentLabel} size="small" />
-              </View>
-            )}
-
-            {/* RIGHT SIDE OVERLAYS - TikTok Style */}
-            <View style={styles.rightSideControls}>
-              {/* Likes Animation */}
-              <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
-                <IconSymbol
-                  ios_icon_name="heart.fill"
-                  android_material_icon_name="favorite"
-                  size={32}
-                  color="#FF1744"
-                />
-                <Text style={styles.rightSideButtonText}>{totalLikes}</Text>
-              </TouchableOpacity>
-
-              {/* Gifts */}
-              <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
-                <IconSymbol
-                  ios_icon_name="gift.fill"
-                  android_material_icon_name="card_giftcard"
-                  size={32}
-                  color="#FFD700"
-                />
-                <Text style={styles.rightSideButtonText}>{totalGifts}</Text>
-              </TouchableOpacity>
-
-              {/* Effects */}
-              <TouchableOpacity 
-                style={styles.rightSideButton} 
-                onPress={() => setShowEffectsPanel(true)}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="sparkles"
-                  android_material_icon_name="auto_awesome"
-                  size={32}
-                  color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
-                />
-                <Text style={styles.rightSideButtonText}>Effects</Text>
-              </TouchableOpacity>
-
-              {/* Filters */}
-              <TouchableOpacity 
-                style={styles.rightSideButton} 
-                onPress={() => setShowFiltersPanel(true)}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="camera.filters"
-                  android_material_icon_name="filter"
-                  size={32}
-                  color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
-                />
-                <Text style={styles.rightSideButtonText}>Filters</Text>
-              </TouchableOpacity>
-
-              {/* Share (disabled in practice mode) */}
-              {!isPracticeMode && (
-                <TouchableOpacity 
-                  style={styles.rightSideButton} 
-                  onPress={handleShare}
-                  activeOpacity={0.7}
-                >
-                  <IconSymbol
-                    ios_icon_name="square.and.arrow.up.fill"
-                    android_material_icon_name="share"
-                    size={32}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.rightSideButtonText}>Share</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* BOTTOM LEFT - Chat Overlay (simulated for practice mode) */}
-            {isPracticeMode ? (
-              <View style={styles.practiceChatOverlay}>
-                <Text style={styles.practiceChatText}>💬 Chat Preview</Text>
-                <Text style={styles.practiceChatSubtext}>
-                  This is how chat will appear during your live stream
-                </Text>
-              </View>
-            ) : currentStream ? (
-              <ChatOverlay
-                streamId={currentStream.id}
-                isBroadcaster={true}
-                streamDelay={0}
-              />
-            ) : null}
-
-            {/* BOTTOM CENTER - Controls */}
-            <View style={styles.bottomCenterControls}>
-              {/* Mic Control */}
-              <TouchableOpacity
-                style={[styles.bottomControlButton, !isMicOn && styles.bottomControlButtonOff]}
-                onPress={toggleMic}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name={isMicOn ? 'mic.fill' : 'mic.slash.fill'}
-                  android_material_icon_name={isMicOn ? 'mic' : 'mic_off'}
-                  size={24}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-
-              {/* Camera Flip */}
-              <TouchableOpacity
-                style={styles.bottomControlButton}
-                onPress={toggleCameraFacing}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
-                  android_material_icon_name="flip_camera_ios"
-                  size={24}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-
-              {/* Settings */}
-              <TouchableOpacity
-                style={styles.bottomControlButton}
-                onPress={() => setShowLiveSettings(true)}
-                activeOpacity={0.7}
-              >
-                <IconSymbol
-                  ios_icon_name="gearshape.fill"
-                  android_material_icon_name="settings"
-                  size={24}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* STATE MACHINE DEBUG (Remove in production) */}
-            {__DEV__ && (
-              <View style={styles.debugContainer}>
-                <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-                <Text style={styles.debugText}>Mode: {isPracticeMode ? 'PRACTICE' : 'LIVE'}</Text>
-                <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
-                <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
-              </View>
-            )}
-          </>
-        )}
-      </View>
-
-      {/* GIFT ANIMATIONS */}
-      {giftAnimations.map((animation) => (
-        <GiftAnimationOverlay
-          key={animation.id}
-          giftName={animation.giftName}
-          giftEmoji={animation.giftEmoji}
-          senderUsername={animation.senderUsername}
-          amount={animation.amount}
-          tier={animation.tier}
-          onAnimationComplete={() => handleAnimationComplete(animation.id)}
-        />
-      ))}
-
-      {/* VIEWER LIST MODAL (disabled in practice mode) */}
-      {currentStream && user && !isPracticeMode && (
-        <ViewerListModal
-          visible={showViewerList}
-          onClose={() => setShowViewerList(false)}
-          streamId={currentStream.id}
-          viewerCount={viewerCount}
-          streamerId={user.id}
-          currentUserId={user.id}
-          isStreamer={true}
-          isModerator={false}
-        />
-      )}
-
-      {/* EFFECTS PANEL - Using improved component with context */}
-      <ImprovedEffectsPanel
-        visible={showEffectsPanel}
-        onClose={() => setShowEffectsPanel(false)}
-      />
-
-      {/* FILTERS PANEL - Using improved component with context */}
-      <ImprovedFiltersPanel
-        visible={showFiltersPanel}
-        onClose={() => setShowFiltersPanel(false)}
-      />
-
-      {/* LIVE SETTINGS MODAL */}
-      <LiveSettingsModal
-        visible={showLiveSettings}
-        onClose={() => setShowLiveSettings(false)}
-        streamTitle={params.streamTitle || ''}
-        liveSeconds={liveSeconds}
-        viewerCount={viewerCount}
-        peakViewers={peakViewers}
-        totalGifts={totalGifts}
-        totalLikes={totalLikes}
-        isPracticeMode={isPracticeMode}
-      />
-
-      {/* SHARE MODAL (disabled in practice mode) */}
-      {!isPracticeMode && (
-        <ShareModal
-          visible={showShareModal}
-          onClose={() => setShowShareModal(false)}
-          streamTitle={params.streamTitle || ''}
-        />
-      )}
-
-      {/* EXIT CONFIRMATION MODAL */}
-      {showExitConfirmation && (
-        <View style={styles.modal}>
-          <View style={styles.confirmationModal}>
+          
+          {/* Error overlay */}
+          <View style={styles.errorOverlay}>
             <IconSymbol
               ios_icon_name="exclamationmark.triangle.fill"
-              android_material_icon_name="warning"
-              size={48}
+              android_material_icon_name="error"
+              size={64}
               color={colors.gradientEnd}
             />
-            <Text style={styles.confirmationTitle}>
-              {isPracticeMode ? 'End Practice?' : 'End Livestream?'}
-            </Text>
-            <Text style={styles.confirmationText}>
-              {isPracticeMode 
-                ? 'Are you sure you want to end the practice session?\n\nYour settings will be saved for when you go live.'
-                : 'Are you sure you want to end the stream?\n\nYour viewers will be disconnected.'}
-            </Text>
-            <View style={styles.confirmationButtons}>
+            <Text style={styles.errorTitle}>Failed to Start Stream</Text>
+            <Text style={styles.errorMessage}>{streamCreationError}</Text>
+            {__DEV__ && (
+              <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+            )}
+            <View style={styles.errorButtons}>
               <TouchableOpacity
-                style={styles.confirmationCancelButton}
-                onPress={() => setShowExitConfirmation(false)}
+                style={styles.errorCancelButton}
+                onPress={handleCancel}
               >
-                <Text style={styles.confirmationCancelText}>Cancel</Text>
+                <Text style={styles.errorCancelText}>Exit</Text>
               </TouchableOpacity>
-              <View style={styles.confirmationEndButton}>
+              <View style={styles.errorRetryButton}>
                 <GradientButton
-                  title={isPracticeMode ? 'End Practice' : 'End Stream'}
-                  onPress={() => {
-                    setShowExitConfirmation(false);
-                    endLive();
-                  }}
+                  title="Retry"
+                  onPress={handleRetry}
                   size="medium"
                 />
               </View>
             </View>
           </View>
         </View>
-      )}
-    </View>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      
+      <View style={commonStyles.container}>
+        {/* CAMERA LAYER */}
+        {isCameraOn ? (
+          <CameraView 
+            style={StyleSheet.absoluteFill} 
+            facing={facing}
+            flash={flashMode}
+          />
+        ) : (
+          <View style={styles.cameraOffContainer}>
+            <IconSymbol
+              ios_icon_name="video.slash.fill"
+              android_material_icon_name="videocam_off"
+              size={64}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.cameraOffText}>Camera Off — Stream Still Active</Text>
+          </View>
+        )}
+
+        {/* CAMERA FILTER OVERLAY - Using improved component with context */}
+        <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
+
+        {/* VISUAL EFFECTS OVERLAY - Using improved component with context */}
+        <ImprovedVisualEffectsOverlay effect={activeEffect} />
+
+        {/* OVERLAY LAYER */}
+        <View style={styles.overlay} pointerEvents="box-none">
+          {isLive && (
+            <>
+              {/* Connection Status (only for real streams) */}
+              {!isPracticeMode && (
+                <ConnectionStatusIndicator
+                  status={connectionStatus}
+                  attemptNumber={reconnectAttempt}
+                  maxAttempts={6}
+                />
+              )}
+
+              {/* TOP BAR - TikTok Style */}
+              <View style={styles.topBar}>
+                <View style={styles.topLeft}>
+                  {/* Host Avatar & Name */}
+                  <View style={styles.hostInfo}>
+                    <View style={styles.hostAvatar}>
+                      <IconSymbol
+                        ios_icon_name="person.fill"
+                        android_material_icon_name="person"
+                        size={20}
+                        color="#FFFFFF"
+                      />
+                    </View>
+                    <Text style={styles.hostName}>{user?.display_name || 'Host'}</Text>
+                  </View>
+
+                  {/* Live Badge or Practice Badge */}
+                  {isPracticeMode ? (
+                    <View style={styles.practiceBadge}>
+                      <Text style={styles.practiceBadgeText}>PRACTICE</Text>
+                    </View>
+                  ) : (
+                    <LiveBadge size="small" />
+                  )}
+
+                  {/* Viewer Count (0 for practice mode) */}
+                  <TouchableOpacity 
+                    style={styles.viewerCountButton}
+                    onPress={() => !isPracticeMode && setShowViewerList(true)}
+                    activeOpacity={0.7}
+                    disabled={isPracticeMode}
+                  >
+                    <IconSymbol
+                      ios_icon_name="eye.fill"
+                      android_material_icon_name="visibility"
+                      size={14}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.viewerCountText}>{isPracticeMode ? 0 : viewerCount}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Close (End Live) Button */}
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setShowExitConfirmation(true)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="xmark"
+                    android_material_icon_name="close"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Content Label Badge */}
+              {params.contentLabel && (
+                <View style={styles.contentLabelContainer}>
+                  <ContentLabelBadge label={params.contentLabel} size="small" />
+                </View>
+              )}
+
+              {/* RIGHT SIDE OVERLAYS - TikTok Style */}
+              <View style={styles.rightSideControls}>
+                {/* Likes Animation */}
+                <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
+                  <IconSymbol
+                    ios_icon_name="heart.fill"
+                    android_material_icon_name="favorite"
+                    size={32}
+                    color="#FF1744"
+                  />
+                  <Text style={styles.rightSideButtonText}>{totalLikes}</Text>
+                </TouchableOpacity>
+
+                {/* Gifts */}
+                <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
+                  <IconSymbol
+                    ios_icon_name="gift.fill"
+                    android_material_icon_name="card_giftcard"
+                    size={32}
+                    color="#FFD700"
+                  />
+                  <Text style={styles.rightSideButtonText}>{totalGifts}</Text>
+                </TouchableOpacity>
+
+                {/* Effects */}
+                <TouchableOpacity 
+                  style={styles.rightSideButton} 
+                  onPress={() => setShowEffectsPanel(true)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="sparkles"
+                    android_material_icon_name="auto_awesome"
+                    size={32}
+                    color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
+                  />
+                  <Text style={styles.rightSideButtonText}>Effects</Text>
+                </TouchableOpacity>
+
+                {/* Filters */}
+                <TouchableOpacity 
+                  style={styles.rightSideButton} 
+                  onPress={() => setShowFiltersPanel(true)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="camera.filters"
+                    android_material_icon_name="filter"
+                    size={32}
+                    color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
+                  />
+                  <Text style={styles.rightSideButtonText}>Filters</Text>
+                </TouchableOpacity>
+
+                {/* Share (disabled in practice mode) */}
+                {!isPracticeMode && (
+                  <TouchableOpacity 
+                    style={styles.rightSideButton} 
+                    onPress={handleShare}
+                    activeOpacity={0.7}
+                  >
+                    <IconSymbol
+                      ios_icon_name="square.and.arrow.up.fill"
+                      android_material_icon_name="share"
+                      size={32}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.rightSideButtonText}>Share</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* BOTTOM LEFT - Chat Overlay (simulated for practice mode) */}
+              {isPracticeMode ? (
+                <View style={styles.practiceChatOverlay}>
+                  <Text style={styles.practiceChatText}>💬 Chat Preview</Text>
+                  <Text style={styles.practiceChatSubtext}>
+                    This is how chat will appear during your live stream
+                  </Text>
+                </View>
+              ) : currentStream ? (
+                <ChatOverlay
+                  streamId={currentStream.id}
+                  isBroadcaster={true}
+                  streamDelay={0}
+                />
+              ) : null}
+
+              {/* BOTTOM CENTER - Controls */}
+              <View style={styles.bottomCenterControls}>
+                {/* Mic Control */}
+                <TouchableOpacity
+                  style={[styles.bottomControlButton, !isMicOn && styles.bottomControlButtonOff]}
+                  onPress={toggleMic}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name={isMicOn ? 'mic.fill' : 'mic.slash.fill'}
+                    android_material_icon_name={isMicOn ? 'mic' : 'mic_off'}
+                    size={24}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+
+                {/* Camera Flip */}
+                <TouchableOpacity
+                  style={styles.bottomControlButton}
+                  onPress={toggleCameraFacing}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
+                    android_material_icon_name="flip_camera_ios"
+                    size={24}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+
+                {/* Settings */}
+                <TouchableOpacity
+                  style={styles.bottomControlButton}
+                  onPress={() => setShowLiveSettings(true)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="gearshape.fill"
+                    android_material_icon_name="settings"
+                    size={24}
+                    color="#FFFFFF"
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* STATE MACHINE DEBUG (Remove in production) */}
+              {__DEV__ && (
+                <View style={styles.debugContainer}>
+                  <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+                  <Text style={styles.debugText}>Mode: {isPracticeMode ? 'PRACTICE' : 'LIVE'}</Text>
+                  <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
+                  <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+
+        {/* GIFT ANIMATIONS */}
+        {giftAnimations.map((animation) => (
+          <GiftAnimationOverlay
+            key={animation.id}
+            giftName={animation.giftName}
+            giftEmoji={animation.giftEmoji}
+            senderUsername={animation.senderUsername}
+            amount={animation.amount}
+            tier={animation.tier}
+            onAnimationComplete={() => handleAnimationComplete(animation.id)}
+          />
+        ))}
+
+        {/* VIEWER LIST MODAL (disabled in practice mode) */}
+        {currentStream && user && !isPracticeMode && (
+          <ViewerListModal
+            visible={showViewerList}
+            onClose={() => setShowViewerList(false)}
+            streamId={currentStream.id}
+            viewerCount={viewerCount}
+            streamerId={user.id}
+            currentUserId={user.id}
+            isStreamer={true}
+            isModerator={false}
+          />
+        )}
+
+        {/* EFFECTS PANEL - Using improved component with context */}
+        <ImprovedEffectsPanel
+          visible={showEffectsPanel}
+          onClose={() => setShowEffectsPanel(false)}
+        />
+
+        {/* FILTERS PANEL - Using improved component with context */}
+        <ImprovedFiltersPanel
+          visible={showFiltersPanel}
+          onClose={() => setShowFiltersPanel(false)}
+        />
+
+        {/* LIVE SETTINGS MODAL */}
+        <LiveSettingsModal
+          visible={showLiveSettings}
+          onClose={() => setShowLiveSettings(false)}
+          streamTitle={params.streamTitle || ''}
+          liveSeconds={liveSeconds}
+          viewerCount={viewerCount}
+          peakViewers={peakViewers}
+          totalGifts={totalGifts}
+          totalLikes={totalLikes}
+          isPracticeMode={isPracticeMode}
+        />
+
+        {/* SHARE MODAL (disabled in practice mode) */}
+        {!isPracticeMode && (
+          <ShareModal
+            visible={showShareModal}
+            onClose={() => setShowShareModal(false)}
+            streamTitle={params.streamTitle || ''}
+          />
+        )}
+
+        {/* EXIT CONFIRMATION MODAL */}
+        {showExitConfirmation && (
+          <View style={styles.modal}>
+            <View style={styles.confirmationModal}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle.fill"
+                android_material_icon_name="warning"
+                size={48}
+                color={colors.gradientEnd}
+              />
+              <Text style={styles.confirmationTitle}>
+                {isPracticeMode ? 'End Practice?' : 'End Livestream?'}
+              </Text>
+              <Text style={styles.confirmationText}>
+                {isPracticeMode 
+                  ? 'Are you sure you want to end the practice session?\n\nYour settings will be saved for when you go live.'
+                  : 'Are you sure you want to end the stream?\n\nYour viewers will be disconnected.'}
+              </Text>
+              <View style={styles.confirmationButtons}>
+                <TouchableOpacity
+                  style={styles.confirmationCancelButton}
+                  onPress={() => setShowExitConfirmation(false)}
+                >
+                  <Text style={styles.confirmationCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <View style={styles.confirmationEndButton}>
+                  <GradientButton
+                    title={isPracticeMode ? 'End Practice' : 'End Stream'}
+                    onPress={() => {
+                      setShowExitConfirmation(false);
+                      endLive();
+                    }}
+                    size="medium"
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+    </>
   );
 }
 

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -25,11 +25,16 @@ export default function AdminAnalyticsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [analytics, setAnalytics] = useState<any>(null);
 
-  useEffect(() => {
-    checkAdminAccess();
-  }, [user]);
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const data = await analyticsService.getAdminAnalytics();
+      setAnalytics(data);
+    } catch (error) {
+      console.error('Error fetching admin analytics:', error);
+    }
+  }, []);
 
-  const checkAdminAccess = async () => {
+  const checkAdminAccess = useCallback(async () => {
     if (!user) {
       router.replace('/auth/login');
       return;
@@ -52,16 +57,11 @@ export default function AdminAnalyticsScreen() {
     setAdminRole(result.role);
     await fetchAnalytics();
     setIsLoading(false);
-  };
+  }, [user, fetchAnalytics]);
 
-  const fetchAnalytics = async () => {
-    try {
-      const data = await analyticsService.getAdminAnalytics();
-      setAnalytics(data);
-    } catch (error) {
-      console.error('Error fetching admin analytics:', error);
-    }
-  };
+  useEffect(() => {
+    checkAdminAccess();
+  }, [checkAdminAccess]);
 
   const formatDuration = (startedAt: string): string => {
     const started = new Date(startedAt).getTime();
