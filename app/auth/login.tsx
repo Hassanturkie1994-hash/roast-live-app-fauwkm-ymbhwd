@@ -31,13 +31,21 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    const { error } = await signIn(email, password);
-    setLoading(false);
-
-    if (error) {
-      Alert.alert('Login Failed', error.message || 'An error occurred during login');
-    } else {
-      router.replace('/(tabs)/(home)');
+    
+    try {
+      const { error } = await signIn(email, password);
+      
+      if (error) {
+        Alert.alert('Login Failed', error.message || 'An error occurred during login');
+      } else {
+        // Navigation will be handled by NavigationGuard in _layout.tsx
+        console.log('✅ Login successful, navigation guard will redirect');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      Alert.alert('Login Failed', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 

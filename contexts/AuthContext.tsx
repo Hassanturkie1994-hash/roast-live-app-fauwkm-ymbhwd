@@ -1,10 +1,9 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
-import { Session, User, AuthError } from '@supabase/supabase-js';
+import { Session, User } from '@supabase/supabase-js';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceBanService } from '@/app/services/deviceBanService';
-import { useRouter } from 'expo-router';
 
 interface Profile {
   id: string;
@@ -39,7 +38,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [profileFetched, setProfileFetched] = useState(false);
 
   usePushNotifications(user?.id || null);
 
@@ -87,7 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error fetching profile:', error);
-        setProfileFetched(true);
         return null;
       }
 
@@ -112,7 +109,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (createError) {
           console.error('Error creating profile:', createError);
-          setProfileFetched(true);
           return null;
         }
 
@@ -120,7 +116,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         await ensureWalletExists(userId);
         await deviceBanService.storeDeviceFingerprint(userId);
-        setProfileFetched(true);
         
         return newProfile;
       }
@@ -129,12 +124,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       await ensureWalletExists(userId);
       await deviceBanService.storeDeviceFingerprint(userId);
-      setProfileFetched(true);
       
       return data;
     } catch (error) {
       console.error('Error in fetchProfile:', error);
-      setProfileFetched(true);
       return null;
     }
   }, [ensureWalletExists]);
@@ -146,50 +139,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, fetchProfile]);
 
-  const handleAuthError = useCallback(async (error: AuthError) => {
-    console.error('Auth error:', error);
-    
-    if (error.message?.includes('Invalid Refresh Token') || 
-        error.message?.includes('Refresh Token Not Found')) {
-      console.log('🔄 Invalid or missing refresh token, logging out user');
-      
-      try {
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-      } catch (signOutError) {
-        console.error('Error during forced sign out:', signOutError);
-      }
-    }
-  }, []);
-
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
       try {
+        console.log('🔐 Initializing auth...');
+        
+        // Check device ban first
         const isBanned = await checkDeviceBan();
         if (isBanned) {
+          console.log('🚫 Device is banned');
           if (mounted) {
             setLoading(false);
           }
           return;
         }
 
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // Get current session
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
         
         if (error) {
-          handleAuthError(error);
+          console.error('❌ Error getting session:', error);
         }
         
         if (!mounted) return;
         
-        setSession(session);
-        setUser(session?.user ?? null);
+        console.log('📱 Session status:', currentSession ? 'Active' : 'None');
         
-        if (session?.user && !profileFetched) {
-          const profileData = await fetchProfile(session.user.id, session.user.email);
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        
+        // Fetch profile if user exists
+        if (currentSession?.user) {
+          const profileData = await fetchProfile(currentSession.user.id, currentSession.user.email);
           if (mounted) {
             setProfile(profileData);
           }
@@ -199,7 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
+        console.error('❌ Error initializing auth:', error);
         if (mounted) {
           setLoading(false);
         }
@@ -208,45 +191,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initAuth();
 
+    // Listen to auth state changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted) return;
       
-      console.log('Auth state changed:', event);
+      console.log('🔄 Auth state changed:', event);
+      
+      if (event === 'SIGNED_OUT') {
+        console.log('👋 User signed out');
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        return;
+      }
       
       if (event === 'TOKEN_REFRESHED') {
         console.log('✅ Token refreshed successfully');
       }
       
-      if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setUser(null);
-        setProfile(null);
-        setProfileFetched(false);
-        return;
-      }
-      
+      // Check device ban
       const isBanned = await checkDeviceBan();
       if (isBanned) {
+        console.log('🚫 Device is banned');
         setSession(null);
         setUser(null);
         setProfile(null);
         return;
       }
 
-      setSession(session);
-      setUser(session?.user ?? null);
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
       
-      if (session?.user) {
-        setProfileFetched(false);
-        const profileData = await fetchProfile(session.user.id, session.user.email);
+      // Fetch profile for new user
+      if (newSession?.user) {
+        const profileData = await fetchProfile(newSession.user.id, newSession.user.email);
         if (mounted) {
           setProfile(profileData);
         }
       } else {
         setProfile(null);
-        setProfileFetched(false);
       }
     });
 
@@ -254,73 +239,103 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, profileFetched, checkDeviceBan, handleAuthError]);
+  }, [fetchProfile, checkDeviceBan]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const isBanned = await checkDeviceBan();
-    if (isBanned) {
-      return { error: { message: 'This device is banned from accessing Roast Live' } };
-    }
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    if (error) {
-      handleAuthError(error);
-    }
-    
-    return { error };
-  }, [checkDeviceBan, handleAuthError]);
-
-  const signUp = useCallback(async (email: string, password: string, displayName: string) => {
-    const isBanned = await checkDeviceBan();
-    if (isBanned) {
-      return { error: { message: 'This device is banned from accessing Roast Live' } };
-    }
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: 'https://natively.dev/email-confirmed',
-        data: {
-          display_name: displayName,
-        },
-      },
-    });
-
-    if (error) {
-      return { error };
-    }
-
-    if (data.user) {
-      const username = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || email.split('@')[0];
+    try {
+      console.log('🔐 Attempting sign in...');
       
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        username: username,
-        display_name: displayName,
-        avatar_url: null,
-        unique_profile_link: `roastlive.com/@${username}`,
-        followers_count: 0,
-        following_count: 0,
-      });
-
-      if (profileError) {
-        console.error('Error creating profile:', profileError);
-        return { error: profileError };
+      // Check device ban
+      const isBanned = await checkDeviceBan();
+      if (isBanned) {
+        return { error: { message: 'This device is banned from accessing Roast Live' } };
       }
 
-      await deviceBanService.storeDeviceFingerprint(data.user.id);
-    }
+      // Sign in with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('❌ Sign in error:', error);
+        return { error };
+      }
 
-    return { error: null };
+      console.log('✅ Sign in successful');
+      
+      // Auth state change listener will handle the rest
+      return { error: null };
+    } catch (error) {
+      console.error('❌ Sign in exception:', error);
+      return { error };
+    }
+  }, [checkDeviceBan]);
+
+  const signUp = useCallback(async (email: string, password: string, displayName: string) => {
+    try {
+      console.log('📝 Attempting sign up...');
+      
+      // Check device ban
+      const isBanned = await checkDeviceBan();
+      if (isBanned) {
+        return { error: { message: 'This device is banned from accessing Roast Live' } };
+      }
+
+      // Sign up with Supabase
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: 'https://natively.dev/email-confirmed',
+          data: {
+            display_name: displayName,
+          },
+        },
+      });
+
+      if (error) {
+        console.error('❌ Sign up error:', error);
+        return { error };
+      }
+
+      if (data.user) {
+        const username = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || email.split('@')[0];
+        
+        const { error: profileError } = await supabase.from('profiles').insert({
+          id: data.user.id,
+          username: username,
+          display_name: displayName,
+          avatar_url: null,
+          unique_profile_link: `roastlive.com/@${username}`,
+          followers_count: 0,
+          following_count: 0,
+        });
+
+        if (profileError) {
+          console.error('❌ Error creating profile:', profileError);
+          return { error: profileError };
+        }
+
+        await deviceBanService.storeDeviceFingerprint(data.user.id);
+        console.log('✅ Sign up successful');
+      }
+
+      return { error: null };
+    } catch (error) {
+      console.error('❌ Sign up exception:', error);
+      return { error };
+    }
   }, [checkDeviceBan]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    try {
+      console.log('👋 Signing out...');
+      await supabase.auth.signOut();
+      console.log('✅ Sign out successful');
+    } catch (error) {
+      console.error('❌ Sign out error:', error);
+    }
   }, []);
 
   return (

@@ -1,161 +1,133 @@
 
-import "react-native-reanimated";
-import React, { useEffect } from "react";
-import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import { SystemBars } from "react-native-edge-to-edge";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { Alert } from "react-native";
-import { useNetworkState } from "expo-network";
-import {
-  DarkTheme,
-  DefaultTheme,
-  Theme,
-  ThemeProvider as NavigationThemeProvider,
-} from "@react-navigation/native";
-import { StatusBar } from "expo-status-bar";
-import { WidgetProvider } from "@/contexts/WidgetContext";
-import { AuthProvider } from "@/contexts/AuthContext";
-import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
-import { StreamingProvider } from "@/contexts/StreamingContext";
-import { LiveStreamStateProvider } from "@/contexts/LiveStreamStateMachine";
-import { VIPClubProvider } from "@/contexts/VIPClubContext";
-import { ModeratorsProvider } from "@/contexts/ModeratorsContext";
-import { CameraEffectsProvider } from "@/contexts/CameraEffectsContext";
-import ErrorBoundary from "@/components/ErrorBoundary";
+import { Stack, useRouter, useSegments } from 'expo-router';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { StreamingProvider } from '@/contexts/StreamingContext';
+import { LiveStreamStateProvider } from '@/contexts/LiveStreamStateMachine';
+import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
+import { VIPClubProvider } from '@/contexts/VIPClubContext';
+import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import { useEffect, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
-SplashScreen.preventAutoHideAsync();
-
-export const unstable_settings = {
-  initialRouteName: "(tabs)",
-};
-
-function RootLayoutContent() {
-  const { colors, theme } = useTheme();
-  const networkState = useNetworkState();
-  const [loaded] = useFonts({
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-  });
+/**
+ * Navigation Guard Component
+ * Enforces authentication rules and handles navigation based on auth state
+ */
+function NavigationGuard({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+  const [isNavigating, setIsNavigating] = useState(false);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    if (loading || isNavigating) {
+      return;
     }
-  }, [loaded]);
 
-  React.useEffect(() => {
-    if (
-      !networkState.isConnected &&
-      networkState.isInternetReachable === false
-    ) {
-      Alert.alert(
-        "🔌 You are offline",
-        "You can keep using the app! Your changes will be saved locally and synced when you are back online."
-      );
-    }
-  }, [networkState.isConnected, networkState.isInternetReachable]);
+    const inAuthGroup = segments[0] === 'auth';
+    const inTabsGroup = segments[0] === '(tabs)';
 
-  // FIX ISSUE 1: Validate all providers are defined
-  useEffect(() => {
-    console.log('🚀 iOS App initialized');
-    
-    const providers = {
-      AuthProvider,
-      StreamingProvider,
-      LiveStreamStateProvider,
-      VIPClubProvider,
-      ModeratorsProvider,
-      CameraEffectsProvider,
-      WidgetProvider,
-    };
-    
-    Object.entries(providers).forEach(([name, provider]) => {
-      if (typeof provider === 'undefined') {
-        console.error(`❌ CRITICAL: ${name} is undefined!`);
-        throw new Error(`Provider ${name} is undefined. Check export/import syntax.`);
-      } else {
-        console.log(`✅ ${name} is defined`);
-      }
+    console.log('🔐 Navigation Guard:', {
+      user: user?.id,
+      loading,
+      segments,
+      inAuthGroup,
+      inTabsGroup,
     });
-  }, []);
 
-  if (!loaded) {
-    return null;
+    if (!user && !inAuthGroup) {
+      // User is not authenticated and not in auth screens
+      // Redirect to login
+      console.log('🚫 User not authenticated, redirecting to login');
+      setIsNavigating(true);
+      router.replace('/auth/login');
+      setTimeout(() => setIsNavigating(false), 100);
+    } else if (user && inAuthGroup) {
+      // User is authenticated but still in auth screens
+      // Redirect to main app
+      console.log('✅ User authenticated, redirecting to home');
+      setIsNavigating(true);
+      router.replace('/(tabs)/(home)');
+      setTimeout(() => setIsNavigating(false), 100);
+    }
+  }, [user, loading, segments, isNavigating]);
+
+  // Show loading screen while checking auth state
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#A40028" />
+      </View>
+    );
   }
 
-  const navigationTheme: Theme = theme === 'dark' ? {
-    ...DarkTheme,
-    colors: {
-      primary: colors.brandPrimary,
-      background: colors.background,
-      card: colors.card,
-      text: colors.text,
-      border: colors.border,
-      notification: colors.brandPrimary,
-    },
-  } : {
-    ...DefaultTheme,
-    colors: {
-      primary: colors.brandPrimary,
-      background: colors.background,
-      card: colors.card,
-      text: colors.text,
-      border: colors.border,
-      notification: colors.brandPrimary,
-    },
-  };
+  return <>{children}</>;
+}
 
+/**
+ * RootLayout - Main app layout with provider hierarchy (iOS)
+ */
+export default function RootLayout() {
   return (
     <ErrorBoundary>
-      <StatusBar style={colors.statusBarStyle === 'light' ? 'light' : 'dark'} animated />
-      <NavigationThemeProvider value={navigationTheme}>
+      <ThemeProvider>
         <AuthProvider>
-          <StreamingProvider>
-            <LiveStreamStateProvider>
-              <VIPClubProvider>
-                <ModeratorsProvider>
-                  <CameraEffectsProvider>
-                    <WidgetProvider>
-                      <GestureHandlerRootView>
-                        <Stack
-                          screenOptions={{
-                            headerShown: false,
-                            contentStyle: { backgroundColor: colors.background },
+          <NavigationGuard>
+            <StreamingProvider>
+              <LiveStreamStateProvider>
+                <CameraEffectsProvider>
+                  <VIPClubProvider>
+                    <ModeratorsProvider>
+                      <Stack
+                        screenOptions={{
+                          headerShown: false,
+                          animation: 'slide_from_right',
+                        }}
+                      >
+                        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                        <Stack.Screen name="auth" options={{ headerShown: false }} />
+                        <Stack.Screen name="screens" options={{ headerShown: false }} />
+                        <Stack.Screen
+                          name="modal"
+                          options={{
+                            presentation: 'modal',
+                            animation: 'slide_from_bottom',
                           }}
-                        >
-                          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                          <Stack.Screen name="auth/login" options={{ headerShown: false }} />
-                          <Stack.Screen name="auth/register" options={{ headerShown: false }} />
-                          <Stack.Screen
-                            name="live-player"
-                            options={{
-                              presentation: "fullScreenModal",
-                              animation: "slide_from_bottom",
-                            }}
-                          />
-                          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-                          <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
-                          <Stack.Screen name="transparent-modal" options={{ presentation: 'transparentModal' }} />
-                        </Stack>
-                        <SystemBars style={colors.statusBarStyle === 'light' ? 'light' : 'dark'} />
-                      </GestureHandlerRootView>
-                    </WidgetProvider>
-                  </CameraEffectsProvider>
-                </ModeratorsProvider>
-              </VIPClubProvider>
-            </LiveStreamStateProvider>
-          </StreamingProvider>
+                        />
+                        <Stack.Screen
+                          name="formsheet"
+                          options={{
+                            presentation: 'formSheet',
+                            animation: 'slide_from_bottom',
+                          }}
+                        />
+                        <Stack.Screen
+                          name="transparent-modal"
+                          options={{
+                            presentation: 'transparentModal',
+                            animation: 'fade',
+                          }}
+                        />
+                      </Stack>
+                    </ModeratorsProvider>
+                  </VIPClubProvider>
+                </CameraEffectsProvider>
+              </LiveStreamStateProvider>
+            </StreamingProvider>
+          </NavigationGuard>
         </AuthProvider>
-      </NavigationThemeProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
 
-export default function RootLayout() {
-  return (
-    <ThemeProvider>
-      <RootLayoutContent />
-    </ThemeProvider>
-  );
-}
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

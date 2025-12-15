@@ -43,22 +43,29 @@ export default function RegisterScreen() {
     }
 
     setLoading(true);
-    const { error } = await signUp(email, password, displayName);
-    setLoading(false);
-
-    if (error) {
-      Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
-    } else {
-      Alert.alert(
-        'Success!',
-        'Your account has been created. Please check your email to verify your account before signing in.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/auth/login'),
-          },
-        ]
-      );
+    
+    try {
+      const { error } = await signUp(email, password, displayName);
+      
+      if (error) {
+        Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
+      } else {
+        Alert.alert(
+          'Success!',
+          'Your account has been created. Please check your email to verify your account before signing in.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/auth/login'),
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      Alert.alert('Registration Failed', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
