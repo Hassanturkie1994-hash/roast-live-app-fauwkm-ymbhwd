@@ -3,92 +3,45 @@ import { Stack } from 'expo-router';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { StreamingProvider } from '@/contexts/StreamingContext';
-import { LiveStreamStateProvider } from '@/contexts/LiveStreamStateMachine';
-import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
+import { LiveStreamStateMachineProvider } from '@/contexts/LiveStreamStateMachine';
 import { VIPClubProvider } from '@/contexts/VIPClubContext';
 import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
-import ErrorBoundary from '@/components/ErrorBoundary';
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
+import { WidgetProvider } from '@/contexts/WidgetContext';
+import { StatusBar } from 'expo-status-bar';
 
-/**
- * RootLayout - Main app layout with provider hierarchy
- * 
- * FIX ISSUE 1: Added provider validation guards to fail fast with readable errors
- * All providers are correctly imported as named exports
- */
 export default function RootLayout() {
-  useEffect(() => {
-    console.log('🚀 App initialized on platform:', Platform.OS);
-    
-    // FIX ISSUE 1: Validate all providers are defined
-    const providers = {
-      ThemeProvider,
-      AuthProvider,
-      StreamingProvider,
-      LiveStreamStateProvider,
-      CameraEffectsProvider,
-      VIPClubProvider,
-      ModeratorsProvider,
-    };
-    
-    Object.entries(providers).forEach(([name, provider]) => {
-      if (typeof provider === 'undefined') {
-        console.error(`❌ CRITICAL: ${name} is undefined!`);
-        throw new Error(`Provider ${name} is undefined. Check export/import syntax.`);
-      } else {
-        console.log(`✅ ${name} is defined`);
-      }
-    });
-  }, []);
-
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
-          <StreamingProvider>
-            <LiveStreamStateProvider>
-              <CameraEffectsProvider>
-                <VIPClubProvider>
-                  <ModeratorsProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <StreamingProvider>
+          <LiveStreamStateMachineProvider>
+            <VIPClubProvider>
+              <ModeratorsProvider>
+                <CameraEffectsProvider>
+                  <WidgetProvider>
+                    <StatusBar style="light" />
                     <Stack
                       screenOptions={{
                         headerShown: false,
-                        animation: 'slide_from_right',
+                        animation: 'fade',
+                        contentStyle: { backgroundColor: '#000000' },
                       }}
                     >
                       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                      <Stack.Screen name="auth" options={{ headerShown: false }} />
-                      <Stack.Screen name="screens" options={{ headerShown: false }} />
-                      <Stack.Screen
-                        name="modal"
-                        options={{
-                          presentation: 'modal',
-                          animation: 'slide_from_bottom',
-                        }}
-                      />
-                      <Stack.Screen
-                        name="formsheet"
-                        options={{
-                          presentation: 'formSheet',
-                          animation: 'slide_from_bottom',
-                        }}
-                      />
-                      <Stack.Screen
-                        name="transparent-modal"
-                        options={{
-                          presentation: 'transparentModal',
-                          animation: 'fade',
-                        }}
-                      />
+                      <Stack.Screen name="auth/login" options={{ headerShown: false }} />
+                      <Stack.Screen name="auth/register" options={{ headerShown: false }} />
+                      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+                      <Stack.Screen name="formsheet" options={{ presentation: 'formSheet' }} />
+                      <Stack.Screen name="transparent-modal" options={{ presentation: 'transparentModal' }} />
                     </Stack>
-                  </ModeratorsProvider>
-                </VIPClubProvider>
-              </CameraEffectsProvider>
-            </LiveStreamStateProvider>
-          </StreamingProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+                  </WidgetProvider>
+                </CameraEffectsProvider>
+              </ModeratorsProvider>
+            </VIPClubProvider>
+          </LiveStreamStateMachineProvider>
+        </StreamingProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

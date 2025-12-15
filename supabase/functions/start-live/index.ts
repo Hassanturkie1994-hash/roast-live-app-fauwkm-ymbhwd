@@ -2,58 +2,19 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-/**
- * start-live Edge Function
- * 
- * FIX ISSUE 3: Enhanced error handling and response structure
- * - Always returns JSON with explicit status codes
- * - Validates all inputs before processing
- * - Surfaces detailed error messages for debugging
- */
-
 Deno.serve(async (req) => {
   try {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🎬 [start-live] Edge Function invoked');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    const { title, user_id } = await req.json();
 
-    // Parse request body
-    let body;
-    try {
-      body = await req.json();
-    } catch (parseError) {
-      console.error('❌ [start-live] Failed to parse request body:', parseError);
+    console.log('🎬 start-live called with:', { title, user_id });
+
+    // Validate required fields
+    if (!title || !user_id) {
+      console.error('❌ Missing required fields');
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Invalid request body: must be valid JSON",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const { title, user_id } = body;
-
-    console.log('📋 [start-live] Request payload:', { title, user_id });
-
-    // FIX ISSUE 3: Validate required fields
-    if (!title || typeof title !== 'string' || !title.trim()) {
-      console.error('❌ [start-live] Invalid or missing title');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Invalid or missing title: must be a non-empty string",
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!user_id || typeof user_id !== 'string' || !user_id.trim()) {
-      console.error('❌ [start-live] Invalid or missing user_id');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Invalid or missing user_id: must be a non-empty string",
+          error: "Missing required fields: title and user_id are required",
         }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
@@ -63,102 +24,64 @@ Deno.serve(async (req) => {
     const CF_ACCOUNT_ID = Deno.env.get("CF_ACCOUNT_ID") || Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
     const CF_API_TOKEN = Deno.env.get("CF_API_TOKEN") || Deno.env.get("CLOUDFLARE_API_TOKEN");
 
-    console.log('🔑 [start-live] Cloudflare credentials check:', {
+    console.log('🔑 Cloudflare credentials check:', {
       hasAccountId: !!CF_ACCOUNT_ID,
       hasApiToken: !!CF_API_TOKEN,
     });
 
     if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
-      console.error('❌ [start-live] Missing Cloudflare credentials');
+      console.error('❌ Missing Cloudflare credentials');
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Server configuration error: Missing Cloudflare credentials. Please contact support.",
+          error: "Missing Cloudflare credentials. Please configure CF_ACCOUNT_ID and CF_API_TOKEN in Supabase Edge Function secrets.",
         }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('❌ [start-live] Missing Supabase credentials');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Server configuration error: Missing Supabase credentials",
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('📡 [start-live] Creating Cloudflare live input...');
+    console.log('📡 Creating Cloudflare live input...');
 
     // Create Cloudflare live input
-    let createInput;
-    try {
-      createInput = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${CF_API_TOKEN}`,
-            "Content-Type": "application/json",
+    const createInput = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CF_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          meta: { title, user_id },
+          recording: {
+            mode: "automatic",
+            timeoutSeconds: 10,
           },
-          body: JSON.stringify({
-            meta: { title, user_id },
-            recording: {
-              mode: "automatic",
-              timeoutSeconds: 10,
-            },
-          }),
-        }
-      );
-    } catch (fetchError) {
-      console.error('❌ [start-live] Cloudflare API request failed:', fetchError);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Failed to connect to Cloudflare: ${fetchError.message}`,
         }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
+      }
+    );
 
-    let cloudflareResponse;
-    try {
-      cloudflareResponse = await createInput.json();
-    } catch (jsonError) {
-      console.error('❌ [start-live] Failed to parse Cloudflare response:', jsonError);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Invalid response from Cloudflare API",
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
+    const cloudflareResponse = await createInput.json();
 
-    console.log('☁️ [start-live] Cloudflare response:', {
+    console.log('☁️ Cloudflare response:', {
       success: cloudflareResponse.success,
       hasResult: !!cloudflareResponse.result,
       errors: cloudflareResponse.errors,
     });
 
     if (!cloudflareResponse.success || !cloudflareResponse.result) {
-      console.error('❌ [start-live] Cloudflare API error:', cloudflareResponse.errors);
-      const errorMessage = cloudflareResponse.errors 
-        ? JSON.stringify(cloudflareResponse.errors) 
-        : "Cloudflare API returned an error";
-      
+      console.error('❌ Cloudflare API error:', cloudflareResponse.errors);
       return new Response(
         JSON.stringify({
           success: false,
-          error: `Cloudflare error: ${errorMessage}`,
+          error: cloudflareResponse.errors 
+            ? JSON.stringify(cloudflareResponse.errors) 
+            : "Cloudflare API error",
         }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
@@ -166,15 +89,15 @@ Deno.serve(async (req) => {
 
     const { uid, rtmps, webRTC } = cloudflareResponse.result;
 
-    console.log('✅ [start-live] Cloudflare live input created:', { uid });
+    console.log('✅ Cloudflare live input created:', { uid });
 
     // Validate required fields from Cloudflare
     if (!uid) {
-      console.error('❌ [start-live] Missing uid in Cloudflare response');
+      console.error('❌ Missing uid in Cloudflare response');
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Invalid Cloudflare response: missing stream ID",
+          error: "Missing uid in Cloudflare response",
         }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
@@ -183,7 +106,7 @@ Deno.serve(async (req) => {
     // Build playback URL
     const playback_url = `https://customer-${CF_ACCOUNT_ID}.cloudflarestream.com/${uid}/manifest/video.m3u8`;
 
-    console.log('📝 [start-live] Creating stream record in database...');
+    console.log('📝 Creating stream record in database...');
 
     // Create stream record in database with live_input_id
     const { data: streamData, error: streamError } = await supabase
@@ -192,7 +115,7 @@ Deno.serve(async (req) => {
         id: uid,
         broadcaster_id: user_id,
         cloudflare_stream_id: uid,
-        live_input_id: uid,
+        live_input_id: uid, // THIS IS THE KEY FIX
         playback_url: playback_url,
         ingest_url: rtmps?.url || null,
         stream_key: rtmps?.streamKey || null,
@@ -205,17 +128,17 @@ Deno.serve(async (req) => {
       .single();
 
     if (streamError) {
-      console.error('❌ [start-live] Error creating stream record:', streamError);
+      console.error('❌ Error creating stream record:', streamError);
       return new Response(
         JSON.stringify({
           success: false,
-          error: `Database error: ${streamError.message}`,
+          error: `Failed to create stream record: ${streamError.message}`,
         }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    console.log('✅ [start-live] Stream record created successfully');
+    console.log('✅ Stream record created successfully');
 
     // Fetch moderators for this creator
     const { data: moderators, error: modError } = await supabase
@@ -224,7 +147,7 @@ Deno.serve(async (req) => {
       .eq('streamer_id', user_id);
 
     if (modError) {
-      console.error('⚠️ [start-live] Error fetching moderators:', modError);
+      console.error('⚠️ Error fetching moderators:', modError);
     }
 
     // Format moderators array
@@ -235,7 +158,7 @@ Deno.serve(async (req) => {
       avatar_url: mod.profiles?.avatar_url,
     })) || [];
 
-    // Build response
+    // Return response with moderators included
     const response = {
       success: true,
       stream: {
@@ -253,9 +176,9 @@ Deno.serve(async (req) => {
       },
     };
 
-    console.log(`✅ [start-live] Stream started successfully with ${moderatorsArray.length} moderators`);
+    console.log(`✅ Stream started successfully with ${moderatorsArray.length} moderators`);
 
-    // Send push notifications to followers (non-blocking)
+    // Send push notifications to followers when creator goes live
     try {
       // Get creator info
       const { data: creatorProfile } = await supabase
@@ -273,7 +196,7 @@ Deno.serve(async (req) => {
         .eq('following_id', user_id);
 
       if (!followersError && followers && followers.length > 0) {
-        console.log(`📢 [start-live] Sending live notifications to ${followers.length} followers`);
+        console.log(`📢 Sending live notifications to ${followers.length} followers`);
 
         // Send notification to each follower
         for (const follower of followers) {
@@ -327,16 +250,12 @@ Deno.serve(async (req) => {
           });
         }
 
-        console.log(`✅ [start-live] Sent live notifications to ${followers.length} followers`);
+        console.log(`✅ Sent live notifications to ${followers.length} followers`);
       }
     } catch (notifError) {
-      console.error('⚠️ [start-live] Error sending live notifications:', notifError);
+      console.error('⚠️ Error sending live notifications:', notifError);
       // Don't fail the stream start if notifications fail
     }
-
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ [start-live] Returning success response');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return new Response(
       JSON.stringify(response),
@@ -346,18 +265,11 @@ Deno.serve(async (req) => {
       }
     );
   } catch (e) {
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('❌ [start-live] CRITICAL ERROR');
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('Error:', e);
-    console.error('Error message:', e instanceof Error ? e.message : 'Unknown error');
-    console.error('Error stack:', e instanceof Error ? e.stack : 'No stack trace');
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
+    console.error('❌ Critical error in start-live function:', e);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: e instanceof Error ? e.message : "An unexpected error occurred. Please try again." 
+        error: e instanceof Error ? e.message : "Unknown error occurred" 
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );

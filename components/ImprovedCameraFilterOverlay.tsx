@@ -69,7 +69,7 @@ export default function ImprovedCameraFilterOverlay({
             inputRange: [0, 1],
             outputRange: [0, finalOpacity],
           }),
-          // @ts-expect-error mixBlendMode is supported on web and some native platforms
+          // @ts-ignore - mixBlendMode is supported on web and some native platforms
           mixBlendMode: filter.blendMode || 'overlay',
         },
       ]}

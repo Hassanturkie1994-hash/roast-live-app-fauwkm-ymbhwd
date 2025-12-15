@@ -57,23 +57,6 @@ export default function FiltersPanel({
     }
   };
 
-  // Validate FILTERS for duplicate IDs in dev mode
-  React.useEffect(() => {
-    if (__DEV__) {
-      const filterIds = FILTERS.map(f => f.id);
-      const uniqueIds = new Set(filterIds);
-      if (uniqueIds.size !== filterIds.length) {
-        console.error('❌ [FiltersPanel] Duplicate filter IDs detected in FILTERS array');
-      }
-      
-      const faceFilterIds = FACE_FILTERS.map(f => f.id);
-      const uniqueFaceIds = new Set(faceFilterIds);
-      if (uniqueFaceIds.size !== faceFilterIds.length) {
-        console.error('❌ [FiltersPanel] Duplicate filter IDs detected in FACE_FILTERS array');
-      }
-    }
-  }, []);
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -102,15 +85,14 @@ export default function FiltersPanel({
                 showsHorizontalScrollIndicator={false}
                 style={styles.horizontalScroll}
               >
-                {FILTERS.map((filter, index) => {
+                {FILTERS.map((filter) => {
                   const isSelected = filter.id === 'none' 
                     ? selectedFilter === null 
                     : selectedFilter === filter.id;
 
-                  // Use compound key: id + index for guaranteed uniqueness
                   return (
                     <TouchableOpacity
-                      key={`filter-${filter.id}-${index}`}
+                      key={filter.id}
                       style={[styles.filterCard, isSelected && styles.filterCardActive]}
                       onPress={() => handleSelectFilter(filter.id)}
                       activeOpacity={0.7}
@@ -150,9 +132,9 @@ export default function FiltersPanel({
                 Real-time face tracking and geometry modification (Coming Soon)
               </Text>
               <View style={styles.faceFiltersGrid}>
-                {FACE_FILTERS.map((filter, index) => (
+                {FACE_FILTERS.map((filter) => (
                   <TouchableOpacity
-                    key={`face-filter-${filter.id}-${index}`}
+                    key={filter.id}
                     style={[styles.faceFilterCard, styles.faceFilterCardDisabled]}
                     onPress={() => console.log('Face filter coming soon:', filter.id)}
                     activeOpacity={0.7}

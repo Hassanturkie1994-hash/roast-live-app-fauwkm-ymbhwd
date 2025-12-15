@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { router, Stack, useNavigation } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
@@ -30,7 +29,6 @@ import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOver
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
-  const navigation = useNavigation();
   const liveStreamState = useLiveStreamState();
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   const [permission, requestPermission] = useCameraPermissions();
@@ -58,41 +56,6 @@ export default function PreLiveSetupScreen() {
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
-
-  // CRITICAL: Hide bottom tab bar when this screen is focused
-  // This uses useFocusEffect to ensure cleanup runs on blur
-  // ALSO: Reset streaming state when returning to this screen
-  useFocusEffect(
-    useCallback(() => {
-      console.log('🎬 [PRE-LIVE] Screen focused - hiding bottom tab bar');
-      
-      // Hide the tab bar
-      const parent = navigation.getParent();
-      if (parent) {
-        parent.setOptions({
-          tabBarStyle: { display: 'none' },
-        });
-      }
-
-      // CRITICAL FIX: Reset state machine to PRE_LIVE_SETUP when screen gains focus
-      // This ensures buttons are enabled after returning from a stream
-      if (liveStreamState.currentState === 'IDLE' || liveStreamState.currentState === 'STREAM_ENDED') {
-        console.log('🔄 [PRE-LIVE] Resetting state machine to PRE_LIVE_SETUP on focus');
-        liveStreamState.enterPreLiveSetup();
-      }
-
-      // Cleanup: Restore tab bar when screen loses focus
-      return () => {
-        console.log('🎬 [PRE-LIVE] Screen blurred - restoring bottom tab bar');
-        const parent = navigation.getParent();
-        if (parent) {
-          parent.setOptions({
-            tabBarStyle: undefined,
-          });
-        }
-      };
-    }, [navigation, liveStreamState])
-  );
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -123,7 +86,7 @@ export default function PreLiveSetupScreen() {
       liveStreamState.selectContentLabel();
       console.log('🏷️ [PRE-LIVE] Content label selected, state updated');
     }
-  }, [contentLabel, liveStreamState]);
+  }, [contentLabel]);
 
   // Update state machine when practice mode changes
   useEffect(() => {
@@ -134,24 +97,11 @@ export default function PreLiveSetupScreen() {
       liveStreamState.disablePracticeMode();
       console.log('🎯 [PRE-LIVE] Practice mode disabled');
     }
-  }, [practiceMode, liveStreamState]);
+  }, [practiceMode]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
-    
-    // CRITICAL: Explicitly restore tab bar BEFORE navigation
-    const parent = navigation.getParent();
-    if (parent) {
-      console.log('🔄 [PRE-LIVE] Explicitly restoring tab bar before navigation');
-      parent.setOptions({
-        tabBarStyle: undefined,
-      });
-    }
-    
-    // Reset state machine to IDLE
     liveStreamState.resetToIdle();
-    
-    // Navigate back
     router.back();
   };
 
@@ -159,7 +109,7 @@ export default function PreLiveSetupScreen() {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
-  const handleGoLive = useCallback(async () => {
+  const handleGoLive = async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
     console.log('📊 [PRE-LIVE] Current state:', liveStreamState.currentState);
     console.log('🎯 [PRE-LIVE] Practice Mode:', practiceMode);
@@ -244,7 +194,7 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, hasActiveFilter, hasActiveEffect, activeFilter, activeEffect]);
+  };
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -254,261 +204,254 @@ export default function PreLiveSetupScreen() {
 
   if (!permission?.granted) {
     return (
-      <>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.container}>
-          <View style={styles.permissionContainer}>
-            <IconSymbol
-              ios_icon_name="video.fill"
-              android_material_icon_name="videocam"
-              size={64}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.permissionText}>We need your permission to use the camera</Text>
-            <GradientButton title="Grant Permission" onPress={requestPermission} />
-          </View>
+      <View style={styles.container}>
+        <View style={styles.permissionContainer}>
+          <IconSymbol
+            ios_icon_name="video.fill"
+            android_material_icon_name="videocam"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={styles.permissionText}>We need your permission to use the camera</Text>
+          <GradientButton title="Grant Permission" onPress={requestPermission} />
         </View>
-      </>
+      </View>
     );
   }
 
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
-      
-      <View style={styles.container}>
-        {/* CAMERA PREVIEW BACKGROUND */}
-        <CameraView style={StyleSheet.absoluteFill} facing={facing} />
+    <View style={styles.container}>
+      {/* CAMERA PREVIEW BACKGROUND */}
+      <CameraView style={StyleSheet.absoluteFill} facing={facing} />
 
-        {/* CAMERA FILTER OVERLAY - Using improved component */}
-        <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
+      {/* CAMERA FILTER OVERLAY - Using improved component */}
+      <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
 
-        {/* VISUAL EFFECTS OVERLAY - Using improved component */}
-        <ImprovedVisualEffectsOverlay effect={activeEffect} />
+      {/* VISUAL EFFECTS OVERLAY - Using improved component */}
+      <ImprovedVisualEffectsOverlay effect={activeEffect} />
 
-        {/* DARK OVERLAY */}
-        <View style={styles.overlay} />
+      {/* DARK OVERLAY */}
+      <View style={styles.overlay} />
 
-        {/* TOP BAR */}
-        <View style={styles.topBar}>
-          <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-            <IconSymbol
-              ios_icon_name="xmark"
-              android_material_icon_name="close"
-              size={28}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-
-          <View style={styles.topRight}>
-            <AppLogo size={80} opacity={0.8} alignment="right" />
-          </View>
-        </View>
-
-        {/* ESTIMATED EARNINGS & ROAST GOALS */}
-        <View style={styles.goalsContainer}>
-          <View style={styles.goalCard}>
-            <Text style={styles.goalIcon}>💎</Text>
-            <View style={styles.goalTextContainer}>
-              <Text style={styles.goalLabel}>Est. Earnings</Text>
-              <Text style={styles.goalValue}>$0.00</Text>
-            </View>
-          </View>
-          <View style={styles.goalCard}>
-            <Text style={styles.goalIcon}>🔥</Text>
-            <View style={styles.goalTextContainer}>
-              <Text style={styles.goalLabel}>Roast Goal</Text>
-              <Text style={styles.goalValue}>100 viewers</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* STREAM TITLE INPUT */}
-        <View style={styles.titleContainer}>
-          <TextInput
-            style={styles.titleInput}
-            placeholder="What are you streaming?"
-            placeholderTextColor="rgba(255, 255, 255, 0.6)"
-            value={streamTitle}
-            onChangeText={setStreamTitle}
-            maxLength={100}
-            editable={!isLoading}
-          />
-        </View>
-
-        {/* CONTENT LABEL DISPLAY */}
-        {contentLabel && (
-          <TouchableOpacity
-            style={styles.contentLabelDisplay}
-            onPress={() => setShowContentLabelModal(true)}
-          >
-            <Text style={styles.contentLabelText}>
-              {contentLabel === 'family_friendly' && '⭐ Family Friendly'}
-              {contentLabel === 'roast_mode' && '🔥 Roast Mode'}
-              {contentLabel === 'adult_only' && '🔞 18+ Only'}
-            </Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={16}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-        )}
-
-        {/* BOTTOM ACTION BAR */}
-        <View style={styles.bottomBar}>
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={() => setShowEffectsPanel(true)}
-          >
-            <IconSymbol
-              ios_icon_name="sparkles"
-              android_material_icon_name="auto_awesome"
-              size={28}
-              color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
-            />
-            <Text style={styles.actionButtonText}>Effects</Text>
-            {hasActiveEffect() && <View style={styles.activeDot} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={() => setShowFiltersPanel(true)}
-          >
-            <IconSymbol
-              ios_icon_name="camera.filters"
-              android_material_icon_name="filter"
-              size={28}
-              color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
-            />
-            <Text style={styles.actionButtonText}>Filters</Text>
-            {hasActiveFilter() && <View style={styles.activeDot} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={() => setShowVIPClubPanel(true)}
-          >
-            <IconSymbol
-              ios_icon_name="star.circle.fill"
-              android_material_icon_name="workspace_premium"
-              size={28}
-              color="#FFD700"
-            />
-            <Text style={styles.actionButtonText}>VIP Club</Text>
-            {selectedVIPClub && <View style={styles.activeDot} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={() => setShowSettingsPanel(true)}
-          >
-            <IconSymbol
-              ios_icon_name="gearshape.fill"
-              android_material_icon_name="settings"
-              size={28}
-              color="#FFFFFF"
-            />
-            <Text style={styles.actionButtonText}>Settings</Text>
-            {(selectedModerators.length > 0 || practiceMode) && <View style={styles.activeDot} />}
-          </TouchableOpacity>
-        </View>
-
-        {/* CAMERA FLIP BUTTON */}
-        <TouchableOpacity style={styles.flipButton} onPress={toggleCamera}>
+      {/* TOP BAR */}
+      <View style={styles.topBar}>
+        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
           <IconSymbol
-            ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
-            android_material_icon_name="flip_camera_ios"
-            size={32}
+            ios_icon_name="xmark"
+            android_material_icon_name="close"
+            size={28}
             color="#FFFFFF"
           />
         </TouchableOpacity>
 
-        {/* GO LIVE BUTTON */}
-        <View style={styles.goLiveContainer}>
-          {!contentLabel ? (
-            <TouchableOpacity
-              style={styles.selectLabelButton}
-              onPress={() => setShowContentLabelModal(true)}
-            >
-              <Text style={styles.selectLabelText}>Select Content Label First</Text>
-            </TouchableOpacity>
-          ) : (
-            <GradientButton
-              title={isLoading ? 'LOADING...' : practiceMode ? 'START PRACTICE' : 'GO LIVE'}
-              onPress={handleGoLive}
-              size="large"
-              disabled={isLoading || !liveStreamState.canGoLive()}
-            />
-          )}
+        <View style={styles.topRight}>
+          <AppLogo size={80} opacity={0.8} alignment="right" />
         </View>
+      </View>
 
-        {/* PRACTICE MODE INDICATOR */}
-        {practiceMode && (
-          <View style={styles.practiceModeIndicator}>
-            <IconSymbol
-              ios_icon_name="eye.slash.fill"
-              android_material_icon_name="visibility_off"
-              size={16}
-              color="#FFA500"
-            />
-            <Text style={styles.practiceModeText}>Practice Mode Enabled</Text>
+      {/* ESTIMATED EARNINGS & ROAST GOALS */}
+      <View style={styles.goalsContainer}>
+        <View style={styles.goalCard}>
+          <Text style={styles.goalIcon}>💎</Text>
+          <View style={styles.goalTextContainer}>
+            <Text style={styles.goalLabel}>Est. Earnings</Text>
+            <Text style={styles.goalValue}>$0.00</Text>
           </View>
-        )}
-
-        {/* STATE MACHINE DEBUG (Remove in production) */}
-        {__DEV__ && (
-          <View style={styles.debugContainer}>
-            <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-            <Text style={styles.debugText}>Practice: {practiceMode ? 'YES' : 'NO'}</Text>
-            <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
-            <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
+        </View>
+        <View style={styles.goalCard}>
+          <Text style={styles.goalIcon}>🔥</Text>
+          <View style={styles.goalTextContainer}>
+            <Text style={styles.goalLabel}>Roast Goal</Text>
+            <Text style={styles.goalValue}>100 viewers</Text>
           </View>
-        )}
+        </View>
+      </View>
 
-        {/* CONTENT LABEL MODAL */}
-        <ContentLabelModal
-          visible={showContentLabelModal}
-          onSelect={handleContentLabelSelected}
-          onCancel={() => setShowContentLabelModal(false)}
-        />
-
-        {/* EFFECTS PANEL - Using improved component */}
-        <ImprovedEffectsPanel
-          visible={showEffectsPanel}
-          onClose={() => setShowEffectsPanel(false)}
-        />
-
-        {/* FILTERS PANEL - Using improved component */}
-        <ImprovedFiltersPanel
-          visible={showFiltersPanel}
-          onClose={() => setShowFiltersPanel(false)}
-        />
-
-        {/* VIP CLUB PANEL */}
-        <VIPClubPanel
-          visible={showVIPClubPanel}
-          onClose={() => setShowVIPClubPanel(false)}
-          selectedClub={selectedVIPClub}
-          onSelectClub={setSelectedVIPClub}
-        />
-
-        {/* SETTINGS PANEL */}
-        <LiveSettingsPanel
-          visible={showSettingsPanel}
-          onClose={() => setShowSettingsPanel(false)}
-          aboutLive={aboutLive}
-          setAboutLive={setAboutLive}
-          practiceMode={practiceMode}
-          setPracticeMode={setPracticeMode}
-          whoCanWatch={whoCanWatch}
-          setWhoCanWatch={setWhoCanWatch}
-          selectedModerators={selectedModerators}
-          setSelectedModerators={setSelectedModerators}
+      {/* STREAM TITLE INPUT */}
+      <View style={styles.titleContainer}>
+        <TextInput
+          style={styles.titleInput}
+          placeholder="What are you streaming?"
+          placeholderTextColor="rgba(255, 255, 255, 0.6)"
+          value={streamTitle}
+          onChangeText={setStreamTitle}
+          maxLength={100}
+          editable={!isLoading}
         />
       </View>
-    </>
+
+      {/* CONTENT LABEL DISPLAY */}
+      {contentLabel && (
+        <TouchableOpacity
+          style={styles.contentLabelDisplay}
+          onPress={() => setShowContentLabelModal(true)}
+        >
+          <Text style={styles.contentLabelText}>
+            {contentLabel === 'family_friendly' && '⭐ Family Friendly'}
+            {contentLabel === 'roast_mode' && '🔥 Roast Mode'}
+            {contentLabel === 'adult_only' && '🔞 18+ Only'}
+          </Text>
+          <IconSymbol
+            ios_icon_name="chevron.right"
+            android_material_icon_name="chevron_right"
+            size={16}
+            color="#FFFFFF"
+          />
+        </TouchableOpacity>
+      )}
+
+      {/* BOTTOM ACTION BAR */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowEffectsPanel(true)}
+        >
+          <IconSymbol
+            ios_icon_name="sparkles"
+            android_material_icon_name="auto_awesome"
+            size={28}
+            color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
+          />
+          <Text style={styles.actionButtonText}>Effects</Text>
+          {hasActiveEffect() && <View style={styles.activeDot} />}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowFiltersPanel(true)}
+        >
+          <IconSymbol
+            ios_icon_name="camera.filters"
+            android_material_icon_name="filter"
+            size={28}
+            color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
+          />
+          <Text style={styles.actionButtonText}>Filters</Text>
+          {hasActiveFilter() && <View style={styles.activeDot} />}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowVIPClubPanel(true)}
+        >
+          <IconSymbol
+            ios_icon_name="star.circle.fill"
+            android_material_icon_name="workspace_premium"
+            size={28}
+            color="#FFD700"
+          />
+          <Text style={styles.actionButtonText}>VIP Club</Text>
+          {selectedVIPClub && <View style={styles.activeDot} />}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => setShowSettingsPanel(true)}
+        >
+          <IconSymbol
+            ios_icon_name="gearshape.fill"
+            android_material_icon_name="settings"
+            size={28}
+            color="#FFFFFF"
+          />
+          <Text style={styles.actionButtonText}>Settings</Text>
+          {(selectedModerators.length > 0 || practiceMode) && <View style={styles.activeDot} />}
+        </TouchableOpacity>
+      </View>
+
+      {/* CAMERA FLIP BUTTON */}
+      <TouchableOpacity style={styles.flipButton} onPress={toggleCamera}>
+        <IconSymbol
+          ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
+          android_material_icon_name="flip_camera_ios"
+          size={32}
+          color="#FFFFFF"
+        />
+      </TouchableOpacity>
+
+      {/* GO LIVE BUTTON */}
+      <View style={styles.goLiveContainer}>
+        {!contentLabel ? (
+          <TouchableOpacity
+            style={styles.selectLabelButton}
+            onPress={() => setShowContentLabelModal(true)}
+          >
+            <Text style={styles.selectLabelText}>Select Content Label First</Text>
+          </TouchableOpacity>
+        ) : (
+          <GradientButton
+            title={isLoading ? 'LOADING...' : practiceMode ? 'START PRACTICE' : 'GO LIVE'}
+            onPress={handleGoLive}
+            size="large"
+            disabled={isLoading || !liveStreamState.canGoLive()}
+          />
+        )}
+      </View>
+
+      {/* PRACTICE MODE INDICATOR */}
+      {practiceMode && (
+        <View style={styles.practiceModeIndicator}>
+          <IconSymbol
+            ios_icon_name="eye.slash.fill"
+            android_material_icon_name="visibility_off"
+            size={16}
+            color="#FFA500"
+          />
+          <Text style={styles.practiceModeText}>Practice Mode Enabled</Text>
+        </View>
+      )}
+
+      {/* STATE MACHINE DEBUG (Remove in production) */}
+      {__DEV__ && (
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+          <Text style={styles.debugText}>Practice: {practiceMode ? 'YES' : 'NO'}</Text>
+          <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
+          <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
+        </View>
+      )}
+
+      {/* CONTENT LABEL MODAL */}
+      <ContentLabelModal
+        visible={showContentLabelModal}
+        onSelect={handleContentLabelSelected}
+        onCancel={() => setShowContentLabelModal(false)}
+      />
+
+      {/* EFFECTS PANEL - Using improved component */}
+      <ImprovedEffectsPanel
+        visible={showEffectsPanel}
+        onClose={() => setShowEffectsPanel(false)}
+      />
+
+      {/* FILTERS PANEL - Using improved component */}
+      <ImprovedFiltersPanel
+        visible={showFiltersPanel}
+        onClose={() => setShowFiltersPanel(false)}
+      />
+
+      {/* VIP CLUB PANEL */}
+      <VIPClubPanel
+        visible={showVIPClubPanel}
+        onClose={() => setShowVIPClubPanel(false)}
+        selectedClub={selectedVIPClub}
+        onSelectClub={setSelectedVIPClub}
+      />
+
+      {/* SETTINGS PANEL */}
+      <LiveSettingsPanel
+        visible={showSettingsPanel}
+        onClose={() => setShowSettingsPanel(false)}
+        aboutLive={aboutLive}
+        setAboutLive={setAboutLive}
+        practiceMode={practiceMode}
+        setPracticeMode={setPracticeMode}
+        whoCanWatch={whoCanWatch}
+        setWhoCanWatch={setWhoCanWatch}
+        selectedModerators={selectedModerators}
+        setSelectedModerators={setSelectedModerators}
+      />
+    </View>
   );
 }
 

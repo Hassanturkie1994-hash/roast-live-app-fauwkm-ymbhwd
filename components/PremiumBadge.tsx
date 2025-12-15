@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -23,22 +23,9 @@ export default function PremiumBadge({ userId, size = 'medium', showAnimation = 
   const [isLoading, setIsLoading] = useState(true);
   const glowOpacity = useSharedValue(0.5);
 
-  const checkPremiumStatus = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const premium = await premiumSubscriptionService.isPremiumMember(userId);
-      setIsPremium(premium);
-    } catch (error) {
-      console.error('Error checking premium status:', error);
-      setIsPremium(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [userId]);
-
   useEffect(() => {
     checkPremiumStatus();
-  }, [checkPremiumStatus]);
+  }, [userId]);
 
   useEffect(() => {
     if (showAnimation && isPremium) {
@@ -51,7 +38,20 @@ export default function PremiumBadge({ userId, size = 'medium', showAnimation = 
         true
       );
     }
-  }, [isPremium, showAnimation, glowOpacity]);
+  }, [isPremium, showAnimation]);
+
+  const checkPremiumStatus = async () => {
+    setIsLoading(true);
+    try {
+      const premium = await premiumSubscriptionService.isPremiumMember(userId);
+      setIsPremium(premium);
+    } catch (error) {
+      console.error('Error checking premium status:', error);
+      setIsPremium(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const animatedGlowStyle = useAnimatedStyle(() => {
     return {

@@ -92,15 +92,10 @@ export default function FloatingTabBar({
     }
   }, [activeTabIndex, animatedValue]);
 
-  // Check if we should hide the tab bar based on current route
-  const shouldHideTabBar = pathname.includes('/pre-live-setup') || 
-                           pathname.includes('/broadcast') || 
-                           isStreaming;
-
   useEffect(() => {
-    // Animate tab bar hiding/showing when streaming status changes or route changes
-    if (shouldHideTabBar) {
-      console.log('🚫 Hiding tab bar - user is in Go Live flow or streaming (iOS)');
+    // Animate tab bar hiding/showing when streaming status changes
+    if (isStreaming) {
+      console.log('🚫 Hiding tab bar - user is streaming (iOS)');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 150,
@@ -114,7 +109,7 @@ export default function FloatingTabBar({
         }),
       ]).start();
     } else {
-      console.log('✅ Showing tab bar (iOS)');
+      console.log('✅ Showing tab bar - user stopped streaming (iOS)');
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
@@ -128,7 +123,7 @@ export default function FloatingTabBar({
         }),
       ]).start();
     }
-  }, [shouldHideTabBar, slideAnim, opacityAnim]);
+  }, [isStreaming, slideAnim, opacityAnim]);
 
   const handleTabPress = (tab: TabBarItem) => {
     // Special handling for Go Live button
@@ -187,11 +182,6 @@ export default function FloatingTabBar({
     width: `${tabWidthPercent}%` as `${number}%`,
   };
 
-  // Don't render at all if should be hidden
-  if (shouldHideTabBar) {
-    return null;
-  }
-
   return (
     <Animated.View
       style={[
@@ -201,7 +191,7 @@ export default function FloatingTabBar({
           opacity: opacityAnim,
         },
       ]}
-      pointerEvents={shouldHideTabBar ? 'none' : 'auto'}
+      pointerEvents={isStreaming ? 'none' : 'auto'}
     >
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <View style={[

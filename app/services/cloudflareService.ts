@@ -1,4 +1,3 @@
-
 import { supabase } from '@/app/integrations/supabase/client';
 
 /* =========================
@@ -51,50 +50,12 @@ class CloudflareService {
   ========================= */
 
   async startLive({ title, userId }: StartLiveParams): Promise<StartLiveResponse> {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📡 [CloudflareService] START LIVE REQUEST');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Title:', title);
-    console.log('User ID:', userId);
-
-    // FIX ISSUE 3: Validate payload before sending
-    if (!title || !title.trim()) {
-      const error = 'Stream title is required and cannot be empty';
-      console.error('❌ [CloudflareService] Validation failed:', error);
-      return {
-        success: false,
-        error,
-      };
-    }
-
-    if (!userId || !userId.trim()) {
-      const error = 'User ID is required and cannot be empty';
-      console.error('❌ [CloudflareService] Validation failed:', error);
-      return {
-        success: false,
-        error,
-      };
-    }
+    console.log('📡 startLive → invoking edge function', { title, userId });
 
     let lastError: any = null;
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`📡 [CloudflareService] Attempt ${attempt}/${this.maxRetries}`);
-
-        // FIX ISSUE 3: Get current session to ensure Authorization header is included
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          console.error('❌ [CloudflareService] No active session found');
-          return {
-            success: false,
-            error: 'Authentication required. Please log in again.',
-          };
-        }
-
-        console.log('✅ [CloudflareService] Session validated, invoking Edge Function...');
-
         const { data, error } =
           await supabase.functions.invoke<StartLiveResponse>('start-live', {
             body: {
@@ -103,92 +64,54 @@ class CloudflareService {
             },
           });
 
-        // FIX ISSUE 3: Log exact HTTP response for debugging
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`📡 [CloudflareService] Edge Function Response (attempt ${attempt})`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('Data:', JSON.stringify(data, null, 2));
-        console.log('Error:', JSON.stringify(error, null, 2));
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log(`📡 start-live response (attempt ${attempt})`, { data, error });
 
         if (error) {
           lastError = error;
-          
-          // FIX ISSUE 3: Surface exact error details
-          console.error('❌ [CloudflareService] Edge Function error:', {
-            message: error.message,
-            status: error.status,
-            statusText: error.statusText,
-            context: error.context,
-          });
 
           if (attempt < this.maxRetries) {
-            console.log(`⏳ [CloudflareService] Retrying in ${this.retryDelay * attempt}ms...`);
             await this.wait(attempt);
             continue;
           }
 
-          // FIX ISSUE 3: Return user-friendly error message
-          return {
-            success: false,
-            error: `Failed to start stream: ${error.message || 'Edge Function returned an error'}`,
-          };
+          throw new Error(error.message || 'start-live failed');
         }
 
         if (!data) {
-          lastError = new Error('No response from start-live Edge Function');
-          console.error('❌ [CloudflareService] No data received from Edge Function');
+          lastError = new Error('No response from start-live');
 
           if (attempt < this.maxRetries) {
-            console.log(`⏳ [CloudflareService] Retrying in ${this.retryDelay * attempt}ms...`);
             await this.wait(attempt);
             continue;
           }
 
-          return {
-            success: false,
-            error: 'No response from server. Please try again.',
-          };
+          throw lastError;
         }
 
         if (!data.success) {
-          console.error('❌ [CloudflareService] Edge Function returned success=false:', data.error);
-          return {
-            success: false,
-            error: data.error || 'Failed to create stream. Please try again.',
-          };
+          throw new Error(data.error || 'start-live returned success=false');
         }
 
-        // FIX ISSUE 3: Validate response structure
+        // Defensive: backend might still be under development
         if (!data.stream || !data.stream.live_input_id) {
-          console.warn('⚠️ [CloudflareService] Edge Function returned success but missing stream data');
-          console.warn('Response data:', JSON.stringify(data, null, 2));
+          console.warn('⚠️ start-live returned success but missing stream data');
         }
 
-        console.log('✅ [CloudflareService] Live stream started successfully');
-        console.log('Stream ID:', data.stream?.id);
-        console.log('Live Input ID:', data.stream?.live_input_id);
-        
+        console.log('✅ Live stream started');
         return data;
       } catch (err) {
-        console.error(`❌ [CloudflareService] Exception on attempt ${attempt}:`, err);
+        console.error(`❌ startLive error (attempt ${attempt})`, err);
         lastError = err;
 
         if (attempt < this.maxRetries) {
-          console.log(`⏳ [CloudflareService] Retrying in ${this.retryDelay * attempt}ms...`);
           await this.wait(attempt);
         }
       }
     }
 
-    // FIX ISSUE 3: Return graceful error after all retries exhausted
-    const errorMessage = lastError?.message || 'Failed to start live stream after multiple attempts';
-    console.error('❌ [CloudflareService] All retry attempts exhausted:', errorMessage);
-    
-    return {
-      success: false,
-      error: errorMessage,
-    };
+    throw new Error(
+      lastError?.message || 'Failed to start live stream after retries'
+    );
   }
 
   /* =========================
@@ -198,16 +121,12 @@ class CloudflareService {
   async stopLive({ liveInputId, streamId }: StopLiveParams): Promise<StopLiveResponse> {
     const idToUse = liveInputId || streamId;
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📡 [CloudflareService] STOP LIVE REQUEST');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Live Input ID:', idToUse);
+    console.log('📡 stopLive → invoking edge function', { idToUse });
 
     if (!idToUse) {
-      console.error('❌ [CloudflareService] Missing liveInputId / streamId');
       return {
         success: false,
-        error: 'Missing stream identifier',
+        error: 'Missing liveInputId / streamId',
       };
     }
 
@@ -215,8 +134,6 @@ class CloudflareService {
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`📡 [CloudflareService] Attempt ${attempt}/${this.maxRetries}`);
-
         const { data, error } =
           await supabase.functions.invoke<StopLiveResponse>('stop-live', {
             body: {
@@ -224,11 +141,10 @@ class CloudflareService {
             },
           });
 
-        console.log(`📡 [CloudflareService] stop-live response (attempt ${attempt})`, { data, error });
+        console.log(`📡 stop-live response (attempt ${attempt})`, { data, error });
 
         if (error) {
           lastError = error;
-          console.error('❌ [CloudflareService] Edge Function error:', error);
 
           if (attempt < this.maxRetries) {
             await this.wait(attempt);
@@ -237,13 +153,12 @@ class CloudflareService {
 
           return {
             success: false,
-            error: error.message || 'Failed to stop stream',
+            error: error.message || 'stop-live failed',
           };
         }
 
         if (!data) {
           lastError = new Error('No response from stop-live');
-          console.error('❌ [CloudflareService] No data received');
 
           if (attempt < this.maxRetries) {
             await this.wait(attempt);
@@ -252,23 +167,22 @@ class CloudflareService {
 
           return {
             success: false,
-            error: 'No response from server',
+            error: 'No response from stop-live',
           };
         }
 
         if (data.warning) {
-          console.warn('⚠️ [CloudflareService] stop-live warning:', data.warning);
+          console.warn('⚠️ stop-live warning:', data.warning);
         }
 
         if (!data.success) {
-          console.error('❌ [CloudflareService] stop-live returned success=false');
           return data;
         }
 
-        console.log('✅ [CloudflareService] Live stream stopped successfully');
+        console.log('✅ Live stream stopped');
         return data;
       } catch (err) {
-        console.error(`❌ [CloudflareService] Exception on attempt ${attempt}:`, err);
+        console.error(`❌ stopLive error (attempt ${attempt})`, err);
         lastError = err;
 
         if (attempt < this.maxRetries) {
@@ -289,7 +203,7 @@ class CloudflareService {
 
   private async wait(attempt: number) {
     const delay = this.retryDelay * attempt;
-    console.log(`⏳ [CloudflareService] Waiting ${delay}ms before retry...`);
+    console.log(`⏳ retrying in ${delay}ms`);
     await new Promise((res) => setTimeout(res, delay));
   }
 }

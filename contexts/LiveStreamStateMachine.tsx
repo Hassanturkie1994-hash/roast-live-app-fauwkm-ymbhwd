@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 
 /**
  * Live Stream State Machine
@@ -27,7 +27,7 @@ export type LiveStreamState =
   | 'STREAM_ENDED'
   | 'ERROR';
 
-interface LiveStreamStateContextType {
+interface LiveStreamStateContext {
   currentState: LiveStreamState;
   previousState: LiveStreamState | null;
   error: string | null;
@@ -52,16 +52,9 @@ interface LiveStreamStateContextType {
   hasError: () => boolean;
 }
 
-const LiveStreamStateContext = createContext<LiveStreamStateContextType | undefined>(undefined);
+const LiveStreamStateContext = createContext<LiveStreamStateContext | undefined>(undefined);
 
-/**
- * LiveStreamStateProvider - Manages the live stream state machine
- * 
- * CRITICAL: This component MUST be exported as a named export
- * FIX ISSUE 1: Renamed from LiveStreamStateMachineProvider to LiveStreamStateProvider
- * to match the import in _layout.tsx
- */
-export function LiveStreamStateProvider({ children }: { children: ReactNode }) {
+export function LiveStreamStateMachineProvider({ children }: { children: ReactNode }) {
   const [currentState, setCurrentState] = useState<LiveStreamState>('IDLE');
   const [previousState, setPreviousState] = useState<LiveStreamState | null>(null);
   const [error, setErrorState] = useState<string | null>(null);
@@ -172,11 +165,6 @@ export function LiveStreamStateProvider({ children }: { children: ReactNode }) {
     return currentState === 'ERROR';
   }, [currentState]);
 
-  // Add console log to verify provider is rendering
-  useEffect(() => {
-    console.log('✅ [LiveStreamStateProvider] Mounted and ready');
-  }, []);
-
   return (
     <LiveStreamStateContext.Provider
       value={{
@@ -205,15 +193,10 @@ export function LiveStreamStateProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Verify export is not undefined
-if (typeof LiveStreamStateProvider === 'undefined') {
-  console.error('❌ CRITICAL: LiveStreamStateProvider is undefined at export time!');
-}
-
 export function useLiveStreamState() {
   const context = useContext(LiveStreamStateContext);
   if (context === undefined) {
-    throw new Error('useLiveStreamState must be used within a LiveStreamStateProvider');
+    throw new Error('useLiveStreamState must be used within a LiveStreamStateMachineProvider');
   }
   return context;
 }
