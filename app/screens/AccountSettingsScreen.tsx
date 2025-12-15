@@ -642,6 +642,38 @@ export default function AccountSettingsScreen() {
           </View>
         </View>
 
+        {/* System & Diagnostics Section */}
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <View style={styles.sectionTitleRow}>
+            <RoastIcon name="settings" size={20} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>System & Diagnostics</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
+            onPress={() => router.push('/diagnostic')}
+          >
+            <View style={styles.settingLeft}>
+              <RoastIcon
+                name="settings"
+                size={20}
+                color={colors.brandPrimary}
+              />
+              <View>
+                <Text style={[styles.settingText, { color: colors.text }]}>System Diagnostics</Text>
+                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
+                  Test app configuration & troubleshoot issues
+                </Text>
+              </View>
+            </View>
+            <RoastIcon
+              name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
+
         {/* Logout Section */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <TouchableOpacity 

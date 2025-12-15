@@ -10,18 +10,28 @@ import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { testSupabaseConnection } from '@/app/integrations/supabase/client';
 
 /**
  * RootLayout - Main app layout with provider hierarchy
  * 
- * FIX ISSUE 1: Added provider validation guards to fail fast with readable errors
+ * CRITICAL FIX: Added Supabase connection test on startup
  * All providers are correctly imported as named exports
  */
 export default function RootLayout() {
   useEffect(() => {
     console.log('🚀 App initialized on platform:', Platform.OS);
     
-    // FIX ISSUE 1: Validate all providers are defined
+    // Test Supabase connection
+    testSupabaseConnection().then((success) => {
+      if (success) {
+        console.log('✅ Supabase is ready');
+      } else {
+        console.error('❌ Supabase connection failed - check logs');
+      }
+    });
+    
+    // Validate all providers are defined
     const providers = {
       ThemeProvider,
       AuthProvider,
