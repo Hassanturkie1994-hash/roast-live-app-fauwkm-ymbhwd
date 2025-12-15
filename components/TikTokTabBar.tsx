@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import RoastIcon from '@/components/Icons/RoastIcon';
+import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,7 +27,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
-  const { colors, themeOpacity } = useTheme();
+  const { colors, themeOpacity, theme } = useTheme();
   const [unreadCount, setUnreadCount] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
@@ -133,36 +133,41 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background, borderTopColor: colors.border }]} edges={['bottom']}>
         <Animated.View style={[styles.container, { opacity: themeOpacity }]}>
           <View style={styles.tabsContainer}>
+            {/* Home Tab */}
             <TouchableOpacity
               style={styles.tab}
               onPress={() => handleTabPress('/(tabs)/(home)/')}
               activeOpacity={0.7}
             >
-              <RoastIcon
+              <UnifiedRoastIcon
                 name="flame-home"
-                size={32}
-                color={isActive('/(tabs)/(home)') ? colors.tabIconActiveColor : colors.tabIconColor}
+                size={28}
+                color={isActive('/(tabs)/(home)') ? colors.brandPrimary : colors.tabIconColor}
+                forceTheme={theme}
               />
-              <Text style={[styles.tabLabel, { color: isActive('/(tabs)/(home)') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
+              <Text style={[styles.tabLabel, { color: isActive('/(tabs)/(home)') ? colors.brandPrimary : colors.tabIconColor }]}>
                 Home
               </Text>
             </TouchableOpacity>
 
+            {/* Explore Tab */}
             <TouchableOpacity
               style={styles.tab}
               onPress={() => handleTabPress('/(tabs)/explore')}
               activeOpacity={0.7}
             >
-              <RoastIcon
+              <UnifiedRoastIcon
                 name="roast-compass"
-                size={32}
-                color={isActive('/explore') ? colors.tabIconActiveColor : colors.tabIconColor}
+                size={28}
+                color={isActive('/explore') ? colors.brandPrimary : colors.tabIconColor}
+                forceTheme={theme}
               />
-              <Text style={[styles.tabLabel, { color: isActive('/explore') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
+              <Text style={[styles.tabLabel, { color: isActive('/explore') ? colors.brandPrimary : colors.tabIconColor }]}>
                 Explore
               </Text>
             </TouchableOpacity>
 
+            {/* Go Live Button */}
             <TouchableOpacity
               style={styles.centerButton}
               onPress={handleGoLive}
@@ -174,25 +179,28 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 end={{ x: 1, y: 0 }}
                 style={styles.centerButtonGradient}
               >
-                <RoastIcon
+                <UnifiedRoastIcon
                   name="fire-camera"
-                  size={28}
+                  size={24}
                   color="#FFFFFF"
+                  forceTheme="dark"
                 />
                 <Text style={styles.centerButtonText}>Go Live</Text>
               </LinearGradient>
             </TouchableOpacity>
 
+            {/* Inbox Tab */}
             <TouchableOpacity
               style={styles.tab}
               onPress={() => handleTabPress('/(tabs)/inbox')}
               activeOpacity={0.7}
             >
               <View style={styles.iconContainer}>
-                <RoastIcon
+                <UnifiedRoastIcon
                   name="smoke-message"
-                  size={32}
-                  color={isActive('/inbox') ? colors.tabIconActiveColor : colors.tabIconColor}
+                  size={28}
+                  color={isActive('/inbox') ? colors.brandPrimary : colors.tabIconColor}
+                  forceTheme={theme}
                 />
                 {unreadCount > 0 && (
                   <View style={[styles.badge, { backgroundColor: colors.brandPrimary, borderColor: colors.background }]}>
@@ -200,22 +208,24 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                   </View>
                 )}
               </View>
-              <Text style={[styles.tabLabel, { color: isActive('/inbox') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
+              <Text style={[styles.tabLabel, { color: isActive('/inbox') ? colors.brandPrimary : colors.tabIconColor }]}>
                 Inbox
               </Text>
             </TouchableOpacity>
 
+            {/* Profile Tab */}
             <TouchableOpacity
               style={styles.tab}
               onPress={() => handleTabPress('/(tabs)/profile')}
               activeOpacity={0.7}
             >
-              <RoastIcon
+              <UnifiedRoastIcon
                 name="roast-badge"
-                size={32}
-                color={isActive('/profile') ? colors.tabIconActiveColor : colors.tabIconColor}
+                size={28}
+                color={isActive('/profile') ? colors.brandPrimary : colors.tabIconColor}
+                forceTheme={theme}
               />
-              <Text style={[styles.tabLabel, { color: isActive('/profile') ? colors.tabIconActiveColor : colors.tabIconColor }]}>
+              <Text style={[styles.tabLabel, { color: isActive('/profile') ? colors.brandPrimary : colors.tabIconColor }]}>
                 Profile
               </Text>
             </TouchableOpacity>

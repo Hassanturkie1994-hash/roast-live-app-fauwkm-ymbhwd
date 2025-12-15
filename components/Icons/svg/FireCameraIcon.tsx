@@ -1,6 +1,6 @@
 
 import React from 'react';
-import Svg, { Path, Circle, Defs, LinearGradient, Stop, Filter, FeGaussianBlur, FeMerge, FeMergeNode } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 interface IconProps {
   size: number;
@@ -9,49 +9,41 @@ interface IconProps {
 }
 
 export default function FireCameraIcon({ size, color, theme = 'dark' }: IconProps) {
-  const glowColor = theme === 'dark' ? '#FF6B35' : '#A40028';
+  const gradientStart = theme === 'dark' ? '#FF6B35' : '#E03052';
+  const gradientEnd = theme === 'dark' ? '#FDC830' : '#A40028';
   
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
       <Defs>
-        <LinearGradient id="cameraGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <Stop offset="0%" stopColor="#FF6B35" stopOpacity="1" />
-          <Stop offset="50%" stopColor="#F7931E" stopOpacity="1" />
-          <Stop offset="100%" stopColor="#FDC830" stopOpacity="1" />
+        <LinearGradient id={`cameraGradient-${theme}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <Stop offset="0%" stopColor={gradientStart} stopOpacity="1" />
+          <Stop offset="100%" stopColor={gradientEnd} stopOpacity="1" />
         </LinearGradient>
-        <Filter id="cameraGlow">
-          <FeGaussianBlur stdDeviation="2" result="coloredBlur"/>
-          <FeMerge>
-            <FeMergeNode in="coloredBlur"/>
-            <FeMergeNode in="SourceGraphic"/>
-          </FeMerge>
-        </Filter>
       </Defs>
       
       {/* Camera body */}
       <Path
-        d="M12 4L10 7H5C3.9 7 3 7.9 3 9V25C3 26.1 3.9 27 5 27H27C28.1 27 29 26.1 29 25V9C29 7.9 28.1 7 27 7H22L20 4H12Z"
-        fill="url(#cameraGradient)"
-        filter="url(#cameraGlow)"
+        d="M9 8L11 5H21L23 8H28C29.1 8 30 8.9 30 10V26C30 27.1 29.1 28 28 28H4C2.9 28 2 27.1 2 26V10C2 8.9 2.9 8 4 8H9Z"
+        fill={`url(#cameraGradient-${theme})`}
         strokeWidth="1.5"
-        stroke={glowColor}
-        strokeLinejoin="round"
+        stroke={color}
+        strokeOpacity="0.3"
       />
       
-      {/* Lens */}
+      {/* Camera lens */}
       <Circle
         cx="16"
-        cy="17"
+        cy="18"
         r="6"
         fill="none"
-        stroke="#FDC830"
+        stroke={color}
         strokeWidth="2"
       />
       
       {/* Flame accent */}
       <Path
-        d="M26 10C26 10 25 12 25 13C25 13.6 25.4 14 26 14C26.6 14 27 13.6 27 13C27 12 26 10 26 10Z"
-        fill="#FDC830"
+        d="M16 12C16 12 15 14 15 15C15 15.6 15.4 16 16 16C16.6 16 17 15.6 17 15C17 14 16 12 16 12Z"
+        fill={gradientEnd}
         opacity="0.9"
       />
     </Svg>
