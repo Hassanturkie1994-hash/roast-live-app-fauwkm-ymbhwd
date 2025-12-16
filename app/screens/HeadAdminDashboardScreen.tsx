@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -15,7 +15,7 @@ import { router } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { adminService, AdminRole } from '@/app/services/adminService';
+import { adminService } from '@/app/services/adminService';
 import { supabase } from '@/app/integrations/supabase/client';
 import GradientButton from '@/components/GradientButton';
 
@@ -57,413 +57,46 @@ export default function HeadAdminDashboardScreen() {
   const [timeoutDuration, setTimeoutDuration] = useState(60);
   const [searching, setSearching] = useState(false);
 
-  useEffect(() => {
-    checkAccess();
-  }, [user]);
-
-  const checkAccess = async () => {
-    if (!user) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    const result = await adminService.checkAdminRole(user.id);
-    
-    console.log('Head Admin Dashboard - Access check result:', result);
-    
-    if (!result.isAdmin || result.role !== 'HEAD_ADMIN') {
-      Alert.alert('Access Denied', 'You do not have head admin privileges.');
-      router.back();
-      return;
-    }
-
-    await fetchStats();
-    setLoading(false);
-  };
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
-      // Fetch total users
       const { count: totalUsersCount } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
-      // Fetch open reports
       const { data: reportsData } = await supabase
         .from('user_reports')
         .select('id, type')
         .eq('status', 'open');
 
-      const openReports = reportsData?.filter(r => r.type !== 'stream').length || 0;
-      const streamReports = reportsData?.filter(r => r.type === 'stream').length || 0;
-
-      // Fetch users under penalty
-      const { data: penaltiesData } = await supabase
+      const { count: bannedCount } = await supabase
         .from('admin_penalties')
-        .select('id')
+        .select('*', { count: 'exact', head: true })
         .eq('is_active', true);
 
-      // Fetch admin counts
-      const { data: adminData } = await supabase
+      const { data: staffData } = await supabase
         .from('profiles')
         .select('role')
         .in('role', ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'LIVE_MODERATOR']);
 
-      const admins = adminData?.filter(u => u.role === 'ADMIN' || u.role === 'HEAD_ADMIN').length || 0;
-      const support = adminData?.filter(u => u.role === 'SUPPORT').length || 0;
+      const admins = staffData?.filter(s => s.role === 'ADMIN' || s.role === 'HEAD_ADMIN').length || 0;
+      const support = staffData?.filter(s => s.role === 'SUPPORT').length || 0;
 
       setStats({
         totalUsers: totalUsersCount || 0,
-        activeUsers: 0, // TODO: Implement active users logic
-        bannedUsers: penaltiesData?.length || 0,
-        timedOutUsers: 0, // TODO: Implement
-        openReports,
-        streamReports,
+        activeUsers: 0,
+        bannedUsers: bannedCount || 0,
+        timedOutUsers: 0,
+        openReports: reportsData?.filter(r => r.type !== 'stream').length || 0,
+        streamReports: reportsData?.filter(r => r.type === 'stream').length || 0,
         admins,
         support,
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
-  };
+  }, []);
 
-  const handleSearchUsers = async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      setSearching(true);
-      
-      // Search users by username, display name, or email
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url, role, email')
-        .or(`username.ilike.%${searchQuery}%,display_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
-        .limit(20);
-
-      if (error) {
-        console.error('Error searching users:', error);
-        Alert.alert('Error', 'Failed to search users');
-        return;
-      }
-
-      setSearchResults(data || []);
-    } catch (error) {
-      console.error('Error in handleSearchUsers:', error);
-      Alert.alert('Error', 'Failed to search users');
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleSelectUser = (user: UserSearchResult) => {
-    setSelectedUser(user);
-    setShowUserSearchModal(false);
-    setShowActionModal(true);
-  };
-
-  const handleApplyAction = async () => {
-    if (!selectedUser || !user) {
-      Alert.alert('Error', 'No user selected');
-      return;
-    }
-
-    if (!actionReason.trim()) {
-      Alert.alert('Error', 'Please provide a reason for this action');
-      return;
-    }
-
-    try {
-      // Calculate expiration time for timeout
-      let expiresAt = null;
-      if (actionType === 'timeout') {
-        const now = new Date();
-        now.setMinutes(now.getMinutes() + timeoutDuration);
-        expiresAt = now.toISOString();
-      }
-
-      // Insert moderation action
-      const { error: actionError } = await supabase
-        .from('moderation_actions')
-        .insert({
-          target_user_id: selectedUser.id,
-          action_type: actionType,
-          reason: actionReason,
-          note: actionNote || null,
-          duration_minutes: actionType === 'timeout' ? timeoutDuration : null,
-          issued_by_admin_id: user.id,
-          expires_at: expiresAt,
-          is_active: true,
-        });
-
-      if (actionError) {
-        console.error('Error applying action:', actionError);
-        Alert.alert('Error', 'Failed to apply action');
-        return;
-      }
-
-      // Create notification for the user
-      const notificationMessage = getNotificationMessage(actionType, actionReason, timeoutDuration);
-      const { error: notifError } = await supabase
-        .from('notifications')
-        .insert({
-          sender_id: user.id,
-          receiver_id: selectedUser.id,
-          type: actionType === 'warning' ? 'warning' : 'admin_announcement',
-          message: notificationMessage,
-          category: 'safety',
-          read: false,
-        });
-
-      if (notifError) {
-        console.error('Error creating notification:', notifError);
-      }
-
-      Alert.alert('Success', `Action applied to ${selectedUser.username}`);
-      setShowActionModal(false);
-      setSelectedUser(null);
-      setActionReason('');
-      setActionNote('');
-      setTimeoutDuration(60);
-    } catch (error) {
-      console.error('Error in handleApplyAction:', error);
-      Alert.alert('Error', 'Failed to apply action');
-    }
-  };
-
-  const getNotificationMessage = (type: string, reason: string, duration?: number) => {
-    switch (type) {
-      case 'warning':
-        return `⚠️ Warning: ${reason}`;
-      case 'timeout':
-        return `⏱️ Timeout (${duration} minutes): ${reason}`;
-      case 'ban':
-        return `🚫 Temporary Ban: ${reason}`;
-      case 'permanent_ban':
-        return `🚫 Permanent Ban: ${reason}`;
-      default:
-        return reason;
-    }
-  };
-
-  const handleSendAnnouncement = async () => {
-    if (!announcementTitle.trim() || !announcementMessage.trim()) {
-      Alert.alert('Error', 'Please enter both title and message');
-      return;
-    }
-
-    if (!user) {
-      Alert.alert('Error', 'User not authenticated');
-      return;
-    }
-
-    try {
-      // Insert announcement
-      const { error: announcementError } = await supabase
-        .from('announcements')
-        .insert({
-          title: announcementTitle,
-          message: announcementMessage,
-          link: announcementLink || null,
-          issued_by_admin_id: user.id,
-          is_active: true,
-        });
-
-      if (announcementError) {
-        console.error('Error creating announcement:', announcementError);
-        Alert.alert('Error', 'Failed to create announcement');
-        return;
-      }
-
-      // Get all active users
-      const { data: users, error: usersError } = await supabase
-        .from('profiles')
-        .select('id')
-        .limit(10000);
-
-      if (usersError) {
-        console.error('Error fetching users:', usersError);
-        Alert.alert('Error', 'Failed to fetch users');
-        return;
-      }
-
-      // Create notifications for all users
-      const notifications = users.map(u => ({
-        sender_id: user.id,
-        receiver_id: u.id,
-        type: 'admin_announcement',
-        message: `📢 ${announcementTitle}: ${announcementMessage}`,
-        category: 'admin',
-        read: false,
-      }));
-
-      const { error: notifError } = await supabase
-        .from('notifications')
-        .insert(notifications);
-
-      if (notifError) {
-        console.error('Error creating notifications:', notifError);
-        Alert.alert('Warning', 'Announcement created but notifications failed');
-      } else {
-        Alert.alert('Success', `Announcement sent to ${users.length} users`);
-      }
-
-      setShowAnnouncementModal(false);
-      setAnnouncementTitle('');
-      setAnnouncementMessage('');
-      setAnnouncementLink('');
-    } catch (error) {
-      console.error('Error in handleSendAnnouncement:', error);
-      Alert.alert('Error', 'Failed to send announcement');
-    }
-  };
-
-  if (loading) {
-    return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.brandPrimary} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <IconSymbol
-            ios_icon_name="chevron.left"
-            android_material_icon_name="arrow_back"
-            size={24}
-            color={colors.text}
-          />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Head Admin Dashboard</Text>
-          <View style={[styles.roleBadge, { backgroundColor: '#FFD700' }]}>
-            <Text style={styles.roleBadgeText}>HEAD ADMIN</Text>
-          </View>
-        </View>
-      </View>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Stats Overview */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>📊 Platform Overview</Text>
-          
-          <View style={styles.statsGrid}>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
-                size={28}
-                color={colors.brandPrimary}
-              />
-              <Text style={[styles.statValue, { color: colors.text }]}>{stats.totalUsers}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Users</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <IconSymbol
-                ios_icon_name="checkmark.circle.fill"
-                android_material_icon_name="check_circle"
-                size={28}
-                color="#00C853"
-              />
-              <Text style={[styles.statValue, { color: colors.text }]}>{stats.activeUsers}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <IconSymbol
-                ios_icon_name="hand.raised.fill"
-                android_material_icon_name="block"
-                size={28}
-                color="#DC143C"
-              />
-              <Text style={[styles.statValue, { color: colors.text }]}>{stats.bannedUsers}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Banned</Text>
-            </View>
-
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <IconSymbol
-                ios_icon_name="clock.fill"
-                android_material_icon_name="schedule"
-                size={28}
-                color="#FFA500"
-              />
-              <Text style={[styles.statValue, { color: colors.text }]}>{stats.timedOutUsers}</Text>
-              <Text style={[styles.statLabel, { color: colors.textNow let's update the HeadAdminDashboardScreen to fix the access check issue:
-
-<write file="app/screens/HeadAdminDashboardScreen.tsx">
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  TextInput,
-  Modal,
-} from 'react-native';
-import { router } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { adminService, AdminRole } from '@/app/services/adminService';
-import { supabase } from '@/app/integrations/supabase/client';
-import GradientButton from '@/components/GradientButton';
-
-interface UserSearchResult {
-  id: string;
-  username: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  role: string | null;
-  email: string | null;
-}
-
-export default function HeadAdminDashboardScreen() {
-  const { colors } = useTheme();
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    activeUsers: 0,
-    bannedUsers: 0,
-    timedOutUsers: 0,
-    openReports: 0,
-    streamReports: 0,
-    admins: 0,
-    support: 0,
-  });
-  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
-  const [announcementTitle, setAnnouncementTitle] = useState('');
-  const [announcementMessage, setAnnouncementMessage] = useState('');
-  const [announcementLink, setAnnouncementLink] = useState('');
-  const [showUserSearchModal, setShowUserSearchModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
-  const [showActionModal, setShowActionModal] = useState(false);
-  const [actionType, setActionType] = useState<'ban' | 'timeout' | 'permanent_ban' | 'warning'>('warning');
-  const [actionReason, setActionReason] = useState('');
-  const [actionNote, setActionNote] = useState('');
-  const [timeoutDuration, setTimeoutDuration] = useState(60);
-  const [searching, setSearching] = useState(false);
-
-  useEffect(() => {
-    checkAccess();
-  }, [user]);
-
-  const checkAccess = async () => {
+  const checkAccess = useCallback(async () => {
     if (!user) {
       router.replace('/auth/login');
       return;
@@ -481,50 +114,11 @@ export default function HeadAdminDashboardScreen() {
 
     await fetchStats();
     setLoading(false);
-  };
+  }, [user, fetchStats]);
 
-  const fetchStats = async () => {
-    try {
-      // Fetch total users
-      const { count: totalUsersCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true });
-
-      // Fetch open reports
-      const { data: reportsData } = await supabase
-        .from('user_reports')
-        .select('id, type')
-        .eq('status', 'open');
-
-      // Fetch banned users
-      const { count: bannedCount } = await supabase
-        .from('admin_penalties')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
-
-      // Fetch staff counts
-      const { data: staffData } = await supabase
-        .from('profiles')
-        .select('role')
-        .in('role', ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'LIVE_MODERATOR']);
-
-      const admins = staffData?.filter(s => s.role === 'ADMIN' || s.role === 'HEAD_ADMIN').length || 0;
-      const support = staffData?.filter(s => s.role === 'SUPPORT').length || 0;
-
-      setStats({
-        totalUsers: totalUsersCount || 0,
-        activeUsers: 0, // TODO: Implement active users tracking
-        bannedUsers: bannedCount || 0,
-        timedOutUsers: 0, // TODO: Implement timeout tracking
-        openReports: reportsData?.filter(r => r.type !== 'stream').length || 0,
-        streamReports: reportsData?.filter(r => r.type === 'stream').length || 0,
-        admins,
-        support,
-      });
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-    }
-  };
+  useEffect(() => {
+    checkAccess();
+  }, [checkAccess]);
 
   const handleSearchUsers = async () => {
     if (!searchQuery.trim()) {
@@ -535,7 +129,6 @@ export default function HeadAdminDashboardScreen() {
     try {
       setSearching(true);
       
-      // Search by username, display name, or email
       const { data, error } = await supabase
         .from('profiles')
         .select('id, username, display_name, avatar_url, role, email')
@@ -575,7 +168,6 @@ export default function HeadAdminDashboardScreen() {
     }
 
     try {
-      // Calculate expiration time for timeout
       let expiresAt = null;
       if (actionType === 'timeout') {
         const now = new Date();
@@ -583,7 +175,6 @@ export default function HeadAdminDashboardScreen() {
         expiresAt = now.toISOString();
       }
 
-      // Insert moderation action
       const { error: actionError } = await supabase
         .from('moderation_actions')
         .insert({
@@ -603,7 +194,6 @@ export default function HeadAdminDashboardScreen() {
         return;
       }
 
-      // Create notification for the user
       const notificationMessage = getNotificationMessage(actionType, actionReason, timeoutDuration);
       const { error: notifError } = await supabase
         .from('notifications')
@@ -659,7 +249,6 @@ export default function HeadAdminDashboardScreen() {
     }
 
     try {
-      // Insert announcement
       const { error: announcementError } = await supabase
         .from('announcements')
         .insert({
@@ -676,7 +265,6 @@ export default function HeadAdminDashboardScreen() {
         return;
       }
 
-      // Get all active users
       const { data: users, error: usersError } = await supabase
         .from('profiles')
         .select('id')
@@ -688,7 +276,6 @@ export default function HeadAdminDashboardScreen() {
         return;
       }
 
-      // Create notifications for all users
       const notifications = users.map(u => ({
         sender_id: user.id,
         receiver_id: u.id,
@@ -751,7 +338,6 @@ export default function HeadAdminDashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Stats Overview */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>📊 Platform Overview</Text>
           
@@ -802,7 +388,6 @@ export default function HeadAdminDashboardScreen() {
           </View>
         </View>
 
-        {/* User Search & Actions */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>🔍 User Search & Actions</Text>
           
@@ -824,7 +409,6 @@ export default function HeadAdminDashboardScreen() {
           </Text>
         </View>
 
-        {/* Reports Overview */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>🚨 Reports</Text>
           
@@ -881,7 +465,6 @@ export default function HeadAdminDashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Admin Management */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>👥 Admin & Support</Text>
           
@@ -910,7 +493,6 @@ export default function HeadAdminDashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Global Actions */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>🌐 Global Actions</Text>
           
@@ -968,7 +550,6 @@ export default function HeadAdminDashboardScreen() {
         </View>
       </ScrollView>
 
-      {/* User Search Modal */}
       <Modal
         visible={showUserSearchModal}
         animationType="slide"
@@ -1064,7 +645,6 @@ export default function HeadAdminDashboardScreen() {
         </View>
       </Modal>
 
-      {/* Action Modal */}
       <Modal
         visible={showActionModal}
         animationType="slide"
@@ -1161,7 +741,6 @@ export default function HeadAdminDashboardScreen() {
         </View>
       </Modal>
 
-      {/* Announcement Modal */}
       <Modal
         visible={showAnnouncementModal}
         animationType="slide"

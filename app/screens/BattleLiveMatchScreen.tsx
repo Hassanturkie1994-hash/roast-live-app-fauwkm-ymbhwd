@@ -32,28 +32,34 @@ export default function BattleLiveMatchScreen() {
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   
-  // Battle Leader states
   const [isBattleLeader, setIsBattleLeader] = useState(false);
   const [showDurationModal, setShowDurationModal] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState<MatchDuration | null>(null);
-  const [opponentDuration, setOpponentDuration] = useState<MatchDuration | null>(null);
   
-  // Timer states
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   
-  // Gift overlay state
   const [showGiftOverlay, setShowGiftOverlay] = useState(false);
   
   const channelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const handleMatchEnd = useCallback(async () => {
+    if (!match) return;
+
+    await battleService.endBattleMatch(match.id);
+
+    router.replace({
+      pathname: '/screens/BattlePostMatchScreen',
+      params: { matchId: match.id },
+    });
+  }, [match]);
+
   const fetchLobbyAndMatch = useCallback(async () => {
     if (!lobbyId || !user) return;
 
     try {
-      // Fetch lobby
       const { data: lobbyData, error: lobbyError } = await supabase
         .from('battle_lobbies')
         .select('*')
@@ -65,7 +71,6 @@ export default function BattleLiveMatchScreen() {
         return;
       }
 
-      // Fetch match
       const { data: matchData, error: matchError } = await supabase
         .from('battle_matches')
         .select('*')
@@ -82,12 +87,10 @@ export default function BattleLiveMatchScreen() {
         setMatch(matchData as BattleMatch || null);
         setIsLoading(false);
         
-        // Determine if user is battle leader
         if (matchData) {
           const isLeader = matchData.team_a_leader_id === user.id || matchData.team_b_leader_id === user.id;
           setIsBattleLeader(isLeader);
 
-          // Check if duration is set and start timer
           if (matchData.duration_minutes > 0 && !isTimerRunning) {
             const elapsed = matchData.started_at
               ? Math.floor((Date.now() - new Date(matchData.started_at).getTime()) / 1000)
@@ -110,7 +113,6 @@ export default function BattleLiveMatchScreen() {
     isMountedRef.current = true;
     fetchLobbyAndMatch();
 
-    // Subscribe to updates
     if (lobbyId) {
       const channel = supabase
         .channel(`battle_match:${lobbyId}`)
@@ -157,20 +159,6 @@ export default function BattleLiveMatchScreen() {
     };
   }, [lobbyId, fetchLobbyAndMatch]);
 
-  const handleMatchEnd = useCallback(async () => {
-    if (!match) return;
-
-    // End the match and distribute rewards
-    await battleService.endBattleMatch(match.id);
-
-    // Navigate to post-match screen
-    router.replace({
-      pathname: '/screens/BattlePostMatchScreen',
-      params: { matchId: match.id },
-    });
-  }, [match, router]);
-
-  // Timer logic
   useEffect(() => {
     if (isTimerRunning && timeRemaining !== null && timeRemaining > 0) {
       timerIntervalRef.current = setInterval(() => {
@@ -268,9 +256,8 @@ export default function BattleLiveMatchScreen() {
   const handleGiftSent = async (giftId: string, amountSek: number) => {
     if (!match || !user) return;
 
-    // Determine which team to send gift to
     const userTeam = lobby?.team_a_players.includes(user.id) ? 'team_a' : 'team_b';
-    const receiverTeam = userTeam; // Gifts go to your own team
+    const receiverTeam = userTeam;
 
     await battleService.sendBattleGift(match.id, user.id, receiverTeam, giftId, amountSek);
   };
@@ -323,9 +310,7 @@ export default function BattleLiveMatchScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Split Screen Layout */}
       <View style={styles.splitContainer}>
-        {/* Team A (Left Side) */}
         <View style={styles.teamSide}>
           {isCameraOn ? (
             <CameraView style={StyleSheet.absoluteFill} facing={facing} />
@@ -337,10 +322,8 @@ export default function BattleLiveMatchScreen() {
           </View>
         </View>
 
-        {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Team B (Right Side) */}
         <View style={styles.teamSide}>
           <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1a1a1a' }]} />
           <View style={styles.teamOverlay}>
@@ -349,7 +332,6 @@ export default function BattleLiveMatchScreen() {
         </View>
       </View>
 
-      {/* Header with Timer */}
       <View style={[styles.header, { backgroundColor: 'rgba(0, 0, 0, 0.8)' }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleEndMatch}>
           <IconSymbol
@@ -382,7 +364,6 @@ export default function BattleLiveMatchScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      {/* Battle Leader Duration Selection */}
       {isBattleLeader && !selectedDuration && match && !match.duration_minutes && (
         <View style={styles.leaderPrompt}>
           <Text style={styles.leaderPromptText}>
@@ -397,7 +378,6 @@ export default function BattleLiveMatchScreen() {
         </View>
       )}
 
-      {/* Score Display */}
       <View style={styles.scoreContainer}>
         <View style={styles.scoreCard}>
           <Text style={styles.scoreLabel}>Team A</Text>
@@ -410,10 +390,8 @@ export default function BattleLiveMatchScreen() {
         </View>
       </View>
 
-      {/* Chat Overlay */}
       <ChatOverlay streamId={match?.stream_id || lobby.id} />
 
-      {/* Gift Overlay */}
       {showGiftOverlay && match && (
         <EnhancedGiftOverlay
           streamId={match.stream_id || lobby.id}
@@ -423,7 +401,6 @@ export default function BattleLiveMatchScreen() {
         />
       )}
 
-      {/* Bottom Controls */}
       <View style={styles.bottomControls}>
         <TouchableOpacity
           style={[styles.controlButton, !isMicOn && styles.controlButtonOff]}
@@ -471,7 +448,6 @@ export default function BattleLiveMatchScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Duration Selection Modal */}
       <Modal
         visible={showDurationModal}
         transparent
