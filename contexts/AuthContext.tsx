@@ -29,6 +29,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   checkDeviceBan: () => Promise<boolean>;
+  resetPassword: (email: string) => Promise<{ error: any }>;
+  updatePassword: (newPassword: string) => Promise<{ error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,9 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return banned;
   }, []);
 
-  const fetchProfile = useCallback(async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string, retryCount = 0): Promise<Profile | null> => {
     try {
-      console.log('Fetching profile for user:', userId);
+      console.log('Fetching profile for user:', userId, 'Retry:', retryCount);
       
       const { data, error } = await supabase
         .from('profiles')
@@ -61,26 +63,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
 
+      if (!data && retryCount < 3) {
+        // Profile might still be creating via trigger, wait and retry
+        console.log('Profile not found, waiting for trigger to complete...');
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return fetchProfile(userId, retryCount + 1);
+      }
+
       if (!data) {
-        console.log('Profile not found for user:', userId);
-        // Profile should be created by the database trigger
-        // Wait a moment and try again
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        const { data: retryData, error: retryError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle();
-        
-        if (retryError || !retryData) {
-          console.error('Profile still not found after retry');
-          return null;
-        }
-        
-        console.log('Profile fetched successfully on retry:', retryData);
-        await deviceBanService.storeDeviceFingerprint(userId);
-        return retryData;
+        console.error('Profile not found after retries');
+        return null;
       }
 
       console.log('Profile fetched successfully:', data);
@@ -243,7 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Sign up with Supabase
-      // Profile and wallet will be created automatically by database triggers
+      // Profile and wallet will be created automatically by database trigger
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -261,33 +253,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        // Create profile manually (will trigger wallet creation via database trigger)
-        const username = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || email.split('@')[0];
-        
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: data.user.id,
-          username: username,
-          display_name: displayName,
-          email: email,
-          avatar_url: null,
-          unique_profile_link: `roastlive.com/@${username}`,
-          followers_count: 0,
-          following_count: 0,
-          role: 'USER',
-        });
-
-        if (profileError) {
-          // Check if it's a duplicate key error (profile already exists)
-          if (profileError.code === '23505') {
-            console.log('Profile already exists, continuing...');
-          } else {
-            console.error('❌ Error creating profile:', profileError);
-            return { error: profileError };
-          }
-        }
-
+        // Store device fingerprint
         await deviceBanService.storeDeviceFingerprint(data.user.id);
-        console.log('✅ Sign up successful');
+        console.log('✅ Sign up successful - profile and wallet will be created automatically');
       }
 
       return { error: null };
@@ -307,6 +275,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const resetPassword = useCallback(async (email: string) => {
+    try {
+      console.log('🔑 Requesting password reset for:', email);
+      
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'https://natively.dev/reset-password',
+      });
+
+      if (error) {
+        console.error('❌ Password reset error:', error);
+        return { error };
+      }
+
+      console.log('✅ Password reset email sent');
+      return { error: null };
+    } catch (error) {
+      console.error('❌ Password reset exception:', error);
+      return { error };
+    }
+  }, []);
+
+  const updatePassword = useCallback(async (newPassword: string) => {
+    try {
+      console.log('🔑 Updating password...');
+      
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        console.error('❌ Password update error:', error);
+        return { error };
+      }
+
+      console.log('✅ Password updated successfully');
+      return { error: null };
+    } catch (error) {
+      console.error('❌ Password update exception:', error);
+      return { error };
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -319,6 +329,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signOut,
         refreshProfile,
         checkDeviceBan,
+        resetPassword,
+        updatePassword,
       }}
     >
       {children}

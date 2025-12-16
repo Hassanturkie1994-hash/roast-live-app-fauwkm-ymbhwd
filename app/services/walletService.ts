@@ -26,46 +26,25 @@ export interface WalletTransactionV2 {
 
 class WalletService {
   /**
-   * Get or create wallet for user
+   * Get wallet for user
+   * Note: Wallet is created automatically by database trigger on user signup
    */
-  async getOrCreateWallet(userId: string): Promise<Wallet | null> {
+  async getWallet(userId: string): Promise<Wallet | null> {
     try {
-      // Try to get existing wallet
-      const { data: existing, error: fetchError } = await supabase
+      const { data, error } = await supabase
         .from('wallets')
         .select('*')
         .eq('user_id', userId)
         .single();
 
-      if (existing) {
-        return existing as Wallet;
+      if (error) {
+        console.error('Error fetching wallet:', error);
+        return null;
       }
 
-      // Create new wallet if doesn't exist
-      if (fetchError && fetchError.code === 'PGRST116') {
-        const { data: newWallet, error: createError } = await supabase
-          .from('wallets')
-          .insert({
-            user_id: userId,
-            balance_cents: 0,
-            lifetime_earned_cents: 0,
-            lifetime_spent_cents: 0,
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          console.error('Error creating wallet:', createError);
-          return null;
-        }
-
-        return newWallet as Wallet;
-      }
-
-      console.error('Error fetching wallet:', fetchError);
-      return null;
+      return data as Wallet;
     } catch (error) {
-      console.error('Error in getOrCreateWallet:', error);
+      console.error('Error in getWallet:', error);
       return null;
     }
   }
@@ -75,7 +54,7 @@ class WalletService {
    */
   async getBalance(userId: string): Promise<number> {
     try {
-      const wallet = await this.getOrCreateWallet(userId);
+      const wallet = await this.getWallet(userId);
       return wallet ? wallet.balance_cents : 0;
     } catch (error) {
       console.error('Error in getBalance:', error);
@@ -92,9 +71,9 @@ class WalletService {
     metadata?: any
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const wallet = await this.getOrCreateWallet(userId);
+      const wallet = await this.getWallet(userId);
       if (!wallet) {
-        return { success: false, error: 'Failed to get wallet' };
+        return { success: false, error: 'Wallet not found' };
       }
 
       // Update wallet balance
@@ -134,9 +113,9 @@ class WalletService {
     metadata?: any
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const wallet = await this.getOrCreateWallet(userId);
+      const wallet = await this.getWallet(userId);
       if (!wallet) {
-        return { success: false, error: 'Failed to get wallet' };
+        return { success: false, error: 'Wallet not found' };
       }
 
       if (wallet.balance_cents < amountCents) {
@@ -182,9 +161,9 @@ class WalletService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // Deduct from member's wallet
-      const memberWallet = await this.getOrCreateWallet(memberId);
+      const memberWallet = await this.getWallet(memberId);
       if (!memberWallet) {
-        return { success: false, error: 'Failed to get member wallet' };
+        return { success: false, error: 'Member wallet not found' };
       }
 
       if (memberWallet.balance_cents < amountCents) {
@@ -211,7 +190,7 @@ class WalletService {
       }
 
       // Update creator wallet
-      const creatorWallet = await this.getOrCreateWallet(creatorId);
+      const creatorWallet = await this.getWallet(creatorId);
       if (creatorWallet) {
         await supabase
           .from('wallets')

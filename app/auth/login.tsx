@@ -36,14 +36,25 @@ export default function LoginScreen() {
       const { error } = await signIn(email, password);
       
       if (error) {
-        Alert.alert('Login Failed', error.message || 'An error occurred during login');
-      } else {
-        // Navigation will be handled by NavigationGuard in _layout.tsx
-        console.log('✅ Login successful, navigation guard will redirect');
+        console.error('Login error:', error);
+        
+        // Provide user-friendly error messages
+        let errorMessage = 'An error occurred during login';
+        
+        if (error.message?.includes('Email not confirmed')) {
+          errorMessage = 'Please verify your email address before signing in. Check your inbox for the verification link.';
+        } else if (error.message?.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password. Please try again.';
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        Alert.alert('Login Failed', errorMessage);
       }
+      // Success is handled by auth state change
     } catch (error) {
       console.error('Login error:', error);
-      Alert.alert('Login Failed', 'An unexpected error occurred');
+      Alert.alert('Login Failed', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -61,7 +72,7 @@ export default function LoginScreen() {
         <View style={styles.header}>
           <AppLogo size="xlarge" alignment="center" />
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Welcome back to the live experience
+            Welcome back to Roast Live
           </Text>
         </View>
 
@@ -69,7 +80,7 @@ export default function LoginScreen() {
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: colors.text }]}>Email</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
               placeholder="Enter your email"
               placeholderTextColor={colors.placeholder}
               value={email}
@@ -77,25 +88,31 @@ export default function LoginScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               editable={!loading}
+              autoComplete="email"
             />
           </View>
 
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
+              style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
               placeholder="Enter your password"
               placeholderTextColor={colors.placeholder}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
               editable={!loading}
+              autoComplete="password"
             />
           </View>
 
-          <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={[styles.forgotPasswordText, { color: colors.brandPrimary }]}>
-              Forgot password?
+          <TouchableOpacity
+            style={styles.forgotPassword}
+            onPress={() => router.push('/auth/forgot-password')}
+            disabled={loading}
+          >
+            <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
+              Forgot Password?
             </Text>
           </TouchableOpacity>
 
@@ -111,12 +128,15 @@ export default function LoginScreen() {
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
           </View>
 
-          <GradientButton
-            title="Create New Account"
+          <TouchableOpacity
+            style={[styles.secondaryButton, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => router.push('/auth/register')}
             disabled={loading}
-            variant="secondary"
-          />
+          >
+            <Text style={[styles.secondaryButtonText, { color: colors.text }]}>
+              Don&apos;t have an account? Sign Up
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -182,5 +202,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginHorizontal: 16,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderRadius: 25,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

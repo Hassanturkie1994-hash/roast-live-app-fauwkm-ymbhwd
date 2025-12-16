@@ -42,17 +42,25 @@ export default function RegisterScreen() {
       return;
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
     setLoading(true);
     
     try {
       const { error } = await signUp(email, password, displayName);
       
       if (error) {
+        console.error('Registration error:', error);
         Alert.alert('Registration Failed', error.message || 'An error occurred during registration');
       } else {
         Alert.alert(
-          'Success!',
-          'Your account has been created. Please check your email to verify your account before signing in.',
+          'Success! 🎉',
+          'Your account has been created successfully!\n\nPlease check your email to verify your account before signing in. The verification link will expire in 24 hours.',
           [
             {
               text: 'OK',
@@ -63,7 +71,7 @@ export default function RegisterScreen() {
       }
     } catch (error) {
       console.error('Registration error:', error);
-      Alert.alert('Registration Failed', 'An unexpected error occurred');
+      Alert.alert('Registration Failed', 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -95,6 +103,7 @@ export default function RegisterScreen() {
               value={displayName}
               onChangeText={setDisplayName}
               editable={!loading}
+              autoCapitalize="words"
             />
           </View>
 
@@ -109,6 +118,7 @@ export default function RegisterScreen() {
               autoCapitalize="none"
               keyboardType="email-address"
               editable={!loading}
+              autoComplete="email"
             />
           </View>
 
@@ -122,6 +132,7 @@ export default function RegisterScreen() {
               onChangeText={setPassword}
               secureTextEntry
               editable={!loading}
+              autoComplete="password-new"
             />
           </View>
 
@@ -135,6 +146,7 @@ export default function RegisterScreen() {
               onChangeText={setConfirmPassword}
               secureTextEntry
               editable={!loading}
+              autoComplete="password-new"
             />
           </View>
 

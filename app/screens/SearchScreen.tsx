@@ -11,182 +11,159 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
-import { colors, commonStyles } from '@/styles/commonStyles';
+import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { searchService } from '@/app/services/searchService';
+import { adminService } from '@/app/services/adminService';
+import { followService } from '@/app/services/followService';
+import { useAuth } from '@/contexts/AuthContext';
 
-interface SearchResult {
-  users: any[];
-  posts: any[];
-  streams: any[];
+interface SearchUserResult {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  followers_count: number;
+  role: string;
 }
 
 export default function SearchScreen() {
+  const { colors } = useTheme();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<SearchResult>({
-    users: [],
-    posts: [],
-    streams: [],
-  });
-  const [activeTab, setActiveTab] = useState<'all' | 'users' | 'posts' | 'streams'>('all');
+  const [users, setUsers] = useState<SearchUserResult[]>([]);
+  const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
 
-  // Memoize search function to prevent recreation on every render
-  const performSearch = useCallback(async () => {
+  const performSearch = useCallback(async (query: string) => {
+    if (!query || query.trim().length === 0) {
+      setUsers([]);
+      return;
+    }
+
     setLoading(true);
     try {
-      const result = await searchService.searchAll(searchQuery);
-      if (result.success) {
-        setResults(result.data);
+      const results = await adminService.searchUsers(query, 20);
+      setUsers(results);
+
+      // Check following status for each user
+      if (user) {
+        const followingStatuses: Record<string, boolean> = {};
+        for (const searchUser of results) {
+          const isFollowing = await followService.isFollowing(user.id, searchUser.id);
+          followingStatuses[searchUser.id] = isFollowing;
+        }
+        setFollowingMap(followingStatuses);
       }
     } catch (error) {
       console.error('Error performing search:', error);
     } finally {
       setLoading(false);
     }
-  }, [searchQuery]);
+  }, [user]);
 
   useEffect(() => {
     if (searchQuery.length > 0) {
       const delaySearch = setTimeout(() => {
-        performSearch();
+        performSearch(searchQuery);
       }, 300);
 
       return () => clearTimeout(delaySearch);
     } else {
-      setResults({ users: [], posts: [], streams: [] });
+      setUsers([]);
     }
   }, [searchQuery, performSearch]);
 
   const handleUserPress = useCallback((userId: string) => {
-    router.push(`/screens/UserProfileScreen?userId=${userId}`);
-  }, []);
-
-  const handlePostPress = useCallback((postId: string) => {
-    router.push(`/screens/PostDetailScreen?postId=${postId}`);
-  }, []);
-
-  const handleStreamPress = useCallback((streamId: string) => {
     router.push({
-      pathname: '/live-player',
-      params: { streamId },
+      pathname: '/screens/PublicProfileScreen',
+      params: { userId },
     });
   }, []);
 
+  const handleFollowToggle = useCallback(async (userId: string) => {
+    if (!user) return;
+
+    const isCurrentlyFollowing = followingMap[userId];
+
+    try {
+      if (isCurrentlyFollowing) {
+        await followService.unfollowUser(user.id, userId);
+        setFollowingMap(prev => ({ ...prev, [userId]: false }));
+      } else {
+        await followService.followUser(user.id, userId);
+        setFollowingMap(prev => ({ ...prev, [userId]: true }));
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+    }
+  }, [user, followingMap]);
+
   const renderUsers = useCallback(() => {
-    const users = results.users;
     if (users.length === 0) return null;
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Users</Text>
-        {users.map((user, index) => (
-          <TouchableOpacity
-            key={user.id || `user-${index}`}
-            style={styles.userCard}
-            onPress={() => handleUserPress(user.id)}
-            activeOpacity={0.7}
-          >
-            <Image
-              source={{
-                uri: user.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
-              }}
-              style={styles.userAvatar}
-            />
-            <View style={styles.userInfo}>
-              <Text style={styles.userName}>{user.display_name || user.username}</Text>
-              <Text style={styles.userUsername}>@{user.username}</Text>
-              {user.bio && <Text style={styles.userBio} numberOfLines={1}>{user.bio}</Text>}
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  }, [results.users, handleUserPress]);
+        {users.map((searchUser, index) => {
+          const isFollowing = followingMap[searchUser.id];
+          const isCurrentUser = user?.id === searchUser.id;
 
-  const renderPosts = useCallback(() => {
-    const posts = results.posts;
-    if (posts.length === 0) return null;
-
-    return (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Posts</Text>
-        <View style={styles.postsGrid}>
-          {posts.map((post, index) => (
+          return (
             <TouchableOpacity
-              key={post.id || `post-${index}`}
-              style={styles.postCard}
-              onPress={() => handlePostPress(post.id)}
-              activeOpacity={0.8}
+              key={searchUser.id || `user-${index}`}
+              style={[styles.userCard, { backgroundColor: colors.card }]}
+              onPress={() => handleUserPress(searchUser.id)}
+              activeOpacity={0.7}
             >
-              <Image source={{ uri: post.media_url }} style={styles.postImage} />
-              <View style={styles.postOverlay}>
-                <View style={styles.postStats}>
-                  <View style={styles.postStat}>
-                    <IconSymbol
-                      ios_icon_name="heart.fill"
-                      android_material_icon_name="favorite"
-                      size={14}
-                      color={colors.text}
-                    />
-                    <Text style={styles.postStatText}>{post.likes_count}</Text>
-                  </View>
-                </View>
+              <Image
+                source={{
+                  uri: searchUser.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
+                }}
+                style={styles.userAvatar}
+              />
+              <View style={styles.userInfo}>
+                <Text style={[styles.userName, { color: colors.text }]}>
+                  {searchUser.display_name || searchUser.username}
+                </Text>
+                <Text style={[styles.userUsername, { color: colors.textSecondary }]}>
+                  @{searchUser.username}
+                </Text>
+                <Text style={[styles.userFollowers, { color: colors.textSecondary }]}>
+                  {searchUser.followers_count || 0} followers
+                </Text>
               </View>
+              {!isCurrentUser && (
+                <TouchableOpacity
+                  style={[
+                    styles.followButton,
+                    isFollowing
+                      ? { backgroundColor: colors.backgroundAlt, borderColor: colors.border }
+                      : { backgroundColor: colors.primary },
+                  ]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleFollowToggle(searchUser.id);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.followButtonText,
+                      { color: isFollowing ? colors.text : '#FFFFFF' },
+                    ]}
+                  >
+                    {isFollowing ? 'Following' : 'Follow'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
-          ))}
-        </View>
+          );
+        })}
       </View>
     );
-  }, [results.posts, handlePostPress]);
-
-  const renderStreams = useCallback(() => {
-    const streams = results.streams;
-    if (streams.length === 0) return null;
-
-    return (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Live Streams</Text>
-        {streams.map((stream, index) => (
-          <TouchableOpacity
-            key={stream.id || `stream-${index}`}
-            style={styles.streamCard}
-            onPress={() => handleStreamPress(stream.id)}
-            activeOpacity={0.7}
-          >
-            <Image
-              source={{
-                uri:
-                  stream.users?.avatar ||
-                  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
-              }}
-              style={styles.streamThumbnail}
-            />
-            <View style={styles.streamInfo}>
-              <Text style={styles.streamTitle} numberOfLines={1}>{stream.title}</Text>
-              <Text style={styles.streamBroadcaster}>{stream.users?.display_name}</Text>
-              <View style={styles.streamMeta}>
-                <View style={styles.liveBadge}>
-                  <Text style={styles.liveText}>LIVE</Text>
-                </View>
-                <Text style={styles.viewerCount}>{stream.viewer_count || 0} viewers</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  }, [results.streams, handleStreamPress]);
+  }, [users, followingMap, user, colors, handleUserPress, handleFollowToggle]);
 
   return (
-    <View style={commonStyles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <IconSymbol
             ios_icon_name="arrow.left"
@@ -195,7 +172,7 @@ export default function SearchScreen() {
             color={colors.text}
           />
         </TouchableOpacity>
-        <View style={styles.searchContainer}>
+        <View style={[styles.searchContainer, { backgroundColor: colors.backgroundAlt }]}>
           <IconSymbol
             ios_icon_name="magnifyingglass"
             android_material_icon_name="search"
@@ -203,8 +180,8 @@ export default function SearchScreen() {
             color={colors.textSecondary}
           />
           <TextInput
-            style={styles.searchInput}
-            placeholder="Search users, posts, streams..."
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search users..."
             placeholderTextColor={colors.placeholder}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -230,8 +207,8 @@ export default function SearchScreen() {
       >
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.gradientEnd} />
-            <Text style={styles.loadingText}>Searching...</Text>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Searching...</Text>
           </View>
         ) : searchQuery.length === 0 ? (
           <View style={styles.emptyState}>
@@ -241,10 +218,12 @@ export default function SearchScreen() {
               size={64}
               color={colors.textSecondary}
             />
-            <Text style={styles.emptyText}>Search for users, posts, or streams</Text>
-            <Text style={styles.emptySubtext}>Start typing to see results</Text>
+            <Text style={[styles.emptyText, { color: colors.text }]}>Search for users</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+              Find and follow other users on Roast Live
+            </Text>
           </View>
-        ) : results.users.length === 0 && results.posts.length === 0 && results.streams.length === 0 ? (
+        ) : users.length === 0 ? (
           <View style={styles.emptyState}>
             <IconSymbol
               ios_icon_name="exclamationmark.magnifyingglass"
@@ -252,15 +231,13 @@ export default function SearchScreen() {
               size={64}
               color={colors.textSecondary}
             />
-            <Text style={styles.emptyText}>No results found</Text>
-            <Text style={styles.emptySubtext}>Try a different search term</Text>
+            <Text style={[styles.emptyText, { color: colors.text }]}>No users found</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+              Try a different search term
+            </Text>
           </View>
         ) : (
-          <>
-            {renderUsers()}
-            {renderPosts()}
-            {renderStreams()}
-          </>
+          renderUsers()
         )}
       </ScrollView>
     </View>
@@ -268,6 +245,9 @@ export default function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -275,7 +255,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     gap: 12,
   },
   backButton: {
@@ -288,7 +267,6 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -296,7 +274,6 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: colors.text,
     fontSize: 16,
   },
   scrollView: {
@@ -314,7 +291,6 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.textSecondary,
   },
   emptyState: {
     alignItems: 'center',
@@ -325,26 +301,17 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
     marginTop: 20,
     textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 14,
     fontWeight: '400',
-    color: colors.textSecondary,
     marginTop: 8,
     textAlign: 'center',
   },
   section: {
     paddingVertical: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    paddingHorizontal: 20,
-    marginBottom: 12,
   },
   userCard: {
     flexDirection: 'row',
@@ -357,7 +324,6 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: colors.backgroundAlt,
   },
   userInfo: {
     flex: 1,
@@ -366,104 +332,23 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '700',
-    color: colors.text,
   },
   userUsername: {
     fontSize: 14,
     fontWeight: '400',
-    color: colors.textSecondary,
   },
-  userBio: {
+  userFollowers: {
     fontSize: 12,
     fontWeight: '400',
-    color: colors.textSecondary,
-    marginTop: 2,
   },
-  postsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 18,
-    gap: 4,
-  },
-  postCard: {
-    width: '32%',
-    aspectRatio: 9 / 16,
-    backgroundColor: colors.card,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  postImage: {
-    width: '100%',
-    height: '100%',
-  },
-  postOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    padding: 8,
-    justifyContent: 'flex-end',
-  },
-  postStats: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  postStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  postStatText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  streamCard: {
-    flexDirection: 'row',
+  followButton: {
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    gap: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
   },
-  streamThumbnail: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    backgroundColor: colors.backgroundAlt,
-  },
-  streamInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  streamTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  streamBroadcaster: {
+  followButtonText: {
     fontSize: 14,
-    fontWeight: '400',
-    color: colors.textSecondary,
-  },
-  streamMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  liveBadge: {
-    backgroundColor: colors.gradientEnd,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  liveText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: 1,
-  },
-  viewerCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
+    fontWeight: '700',
   },
 });

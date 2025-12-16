@@ -12,11 +12,12 @@ import {
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase } from '@/app/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import GradientButton from '@/components/GradientButton';
 
 export default function ChangePasswordScreen() {
   const { colors } = useTheme();
+  const { updatePassword, user } = useAuth();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -46,41 +47,24 @@ export default function ChangePasswordScreen() {
       return;
     }
 
+    if (newPassword === currentPassword) {
+      Alert.alert('Error', 'New password must be different from current password.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // First, verify current password by attempting to sign in
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user?.email) {
-        Alert.alert('Error', 'User email not found.');
+      // Update password using the auth context method
+      const { error } = await updatePassword(newPassword);
+
+      if (error) {
+        Alert.alert('Error', error.message || 'Failed to update password.');
         setLoading(false);
         return;
       }
 
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: currentPassword,
-      });
-
-      if (signInError) {
-        Alert.alert('Error', 'Current password is incorrect.');
-        setLoading(false);
-        return;
-      }
-
-      // Update password
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (updateError) {
-        Alert.alert('Error', updateError.message);
-        setLoading(false);
-        return;
-      }
-
-      Alert.alert('Success', 'Password updated successfully.', [
+      Alert.alert('Success! 🎉', 'Your password has been updated successfully.', [
         {
           text: 'OK',
           onPress: () => router.back(),
@@ -114,6 +98,18 @@ export default function ChangePasswordScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.infoBox}>
+          <IconSymbol
+            ios_icon_name="info.circle.fill"
+            android_material_icon_name="info"
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+            For security reasons, you&apos;ll need to sign in again after changing your password.
+          </Text>
+        </View>
+
         <View style={styles.section}>
           <Text style={[styles.label, { color: colors.text }]}>Current Password</Text>
           <View style={[styles.inputContainer, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
@@ -125,6 +121,7 @@ export default function ChangePasswordScreen() {
               onChangeText={setCurrentPassword}
               secureTextEntry={!showCurrentPassword}
               autoCapitalize="none"
+              editable={!loading}
             />
             <TouchableOpacity onPress={() => setShowCurrentPassword(!showCurrentPassword)}>
               <IconSymbol
@@ -148,6 +145,7 @@ export default function ChangePasswordScreen() {
               onChangeText={setNewPassword}
               secureTextEntry={!showNewPassword}
               autoCapitalize="none"
+              editable={!loading}
             />
             <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)}>
               <IconSymbol
@@ -174,6 +172,7 @@ export default function ChangePasswordScreen() {
               onChangeText={setConfirmPassword}
               secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
+              editable={!loading}
             />
             <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
               <IconSymbol
@@ -231,6 +230,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 24,
     paddingBottom: 120,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(255, 107, 0, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    marginLeft: 12,
   },
   section: {
     marginBottom: 24,
