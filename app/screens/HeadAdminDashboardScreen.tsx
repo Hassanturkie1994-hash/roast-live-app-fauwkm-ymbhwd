@@ -76,7 +76,7 @@ export default function HeadAdminDashboardScreen() {
       const { data: staffData } = await supabase
         .from('profiles')
         .select('role')
-        .in('role', ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'LIVE_MODERATOR']);
+        .in('role', ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'MODERATOR']);
 
       const admins = staffData?.filter(s => s.role === 'ADMIN' || s.role === 'HEAD_ADMIN').length || 0;
       const support = staffData?.filter(s => s.role === 'SUPPORT').length || 0;
@@ -150,8 +150,8 @@ export default function HeadAdminDashboardScreen() {
     }
   };
 
-  const handleSelectUser = (user: UserSearchResult) => {
-    setSelectedUser(user);
+  const handleSelectUser = (selectedUserData: UserSearchResult) => {
+    setSelectedUser(selectedUserData);
     setShowUserSearchModal(false);
     setShowActionModal(true);
   };
