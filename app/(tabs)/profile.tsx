@@ -7,7 +7,7 @@ import {
   Text,
   TouchableOpacity,
   Image,
-  Dimensions,
+  useWindowDimensions,
   Alert,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -30,24 +30,13 @@ interface Post {
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuth();
   const { colors } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<'replays' | 'posts' | 'stories'>('replays');
   const [posts, setPosts] = useState<Post[]>([]);
   const [likedPosts, setLikedPosts] = useState<Post[]>([]);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
-  const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
-
-  // Update screen width on dimension changes
-  useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setScreenWidth(window.width);
-    });
-
-    return () => {
-      subscription?.remove();
-    };
-  }, []);
 
   const fetchUserData = useCallback(async () => {
     if (!user) return;

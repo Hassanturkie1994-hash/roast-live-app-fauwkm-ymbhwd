@@ -9,13 +9,14 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
-} from 'react-native';
+} from 'react';
 import { router } from 'expo-router';
 import RoastIcon from '@/components/Icons/RoastIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { adminService, AdminRole } from '@/app/services/adminService';
+import { battleService } from '@/app/services/battleService';
 
 export default function AccountSettingsScreen() {
   const { signOut, user, profile } = useAuth();
@@ -25,6 +26,7 @@ export default function AccountSettingsScreen() {
   const [userRole, setUserRole] = useState<AdminRole | null>(null);
   const [isLoadingRole, setIsLoadingRole] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [hasActiveBattle, setHasActiveBattle] = useState(false);
 
   const checkUserRole = useCallback(async () => {
     if (!user) {
@@ -56,10 +58,22 @@ export default function AccountSettingsScreen() {
     }
   }, [user]);
 
+  const checkActiveBattle = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const { lobby } = await battleService.getUserActiveLobby(user.id);
+      setHasActiveBattle(!!lobby);
+    } catch (error) {
+      console.error('Error checking active battle:', error);
+    }
+  }, [user]);
+
   useEffect(() => {
     checkUserRole();
     checkIfLive();
-  }, [checkUserRole, checkIfLive]);
+    checkActiveBattle();
+  }, [checkUserRole, checkIfLive, checkActiveBattle]);
 
   const handleSignOut = async () => {
     if (isLive) {
@@ -98,6 +112,48 @@ export default function AccountSettingsScreen() {
       router.push('/screens/SupportDashboardScreen' as any);
     } else if (userRole === 'MODERATOR') {
       router.push('/screens/ModeratorDashboardScreen' as any);
+    }
+  };
+
+  const handleBattleSettings = () => {
+    if (hasActiveBattle) {
+      Alert.alert(
+        'Active Battle',
+        'You have an active battle. Would you like to return to it?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Return to Battle',
+            onPress: async () => {
+              const { lobby } = await battleService.getUserActiveLobby(user!.id);
+              if (lobby) {
+                if (lobby.status === 'in_battle') {
+                  router.push({
+                    pathname: '/screens/BattleLiveMatchScreen',
+                    params: { lobbyId: lobby.id },
+                  });
+                } else if (lobby.status === 'matched') {
+                  router.push({
+                    pathname: '/screens/BattlePreMatchLobbyScreen',
+                    params: { lobbyId: lobby.id },
+                  });
+                } else {
+                  router.push({
+                    pathname: '/screens/BattleLobbyScreen',
+                    params: { lobbyId: lobby.id },
+                  });
+                }
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Battle Mode',
+        'Battle mode allows you to compete against other streamers in live roasting battles!\n\nFeatures:\n- 1v1 to 5v5 battles\n- Invite friends or matchmake\n- Real-time scoring\n- Viewer participation\n- Earn rewards\n\nStart a battle from the Go Live screen!',
+        [{ text: 'Got it!' }]
+      );
     }
   };
 
@@ -375,6 +431,30 @@ export default function AccountSettingsScreen() {
                 <Text style={[styles.settingText, { color: colors.text }]}>Stream Dashboard</Text>
                 <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
                   Manage VIP club, moderators & more
+                </Text>
+              </View>
+            </View>
+            <RoastIcon
+              name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
+            onPress={handleBattleSettings}
+          >
+            <View style={styles.settingLeft}>
+              <RoastIcon
+                name="crown-flame"
+                size={20}
+                color="#FFD700"
+              />
+              <View>
+                <Text style={[styles.settingText, { color: colors.text }]}>Battle Mode</Text>
+                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
+                  {hasActiveBattle ? 'Active battle in progress' : 'Compete in live roasting battles'}
                 </Text>
               </View>
             </View>
