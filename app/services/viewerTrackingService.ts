@@ -8,6 +8,7 @@ export interface StreamViewer {
   user_id: string;
   joined_at: string;
   left_at: string | null;
+  watch_time_seconds: number;
   created_at: string;
   profiles?: {
     id: string;
@@ -18,6 +19,8 @@ export interface StreamViewer {
 }
 
 class ViewerTrackingService {
+  private watchTimeIntervals: Map<string, NodeJS.Timeout> = new Map();
+
   // Track when a viewer joins a stream
   async joinStream(
     streamId: string,
@@ -44,6 +47,7 @@ class ViewerTrackingService {
           stream_id: streamId,
           user_id: userId,
           joined_at: new Date().toISOString(),
+          watch_time_seconds: 0,
         })
         .select('*, profiles(*)')
         .single();
@@ -53,16 +57,27 @@ class ViewerTrackingService {
         return { success: false, error: error.message };
       }
 
+      // Start watch time tracking
+      this.startWatchTimeTracking(streamId, userId);
+
       // Track in analytics system
-      const { data: followData } = await supabase
-        .from('followers')
-        .select('id')
-        .eq('follower_id', userId)
-        .eq('following_id', (await supabase.from('streams').select('broadcaster_id').eq('id', streamId).single()).data?.broadcaster_id)
+      const { data: streamData } = await supabase
+        .from('streams')
+        .select('broadcaster_id')
+        .eq('id', streamId)
         .single();
 
-      const deviceType = this.detectDeviceType();
-      await analyticsService.trackViewerJoin(streamId, userId, deviceType, !!followData);
+      if (streamData?.broadcaster_id) {
+        const { data: followData } = await supabase
+          .from('followers')
+          .select('id')
+          .eq('follower_id', userId)
+          .eq('following_id', streamData.broadcaster_id)
+          .single();
+
+        const deviceType = this.detectDeviceType();
+        await analyticsService.trackViewerJoin(streamId, userId, deviceType, !!followData);
+      }
 
       console.log('✅ Viewer join tracked successfully');
       return { success: true, data: data as StreamViewer };
@@ -72,16 +87,53 @@ class ViewerTrackingService {
     }
   }
 
+  // Start tracking watch time (increments every second)
+  private startWatchTimeTracking(streamId: string, userId: string): void {
+    const key = `${streamId}:${userId}`;
+    
+    // Clear any existing interval
+    if (this.watchTimeIntervals.has(key)) {
+      clearInterval(this.watchTimeIntervals.get(key)!);
+    }
+
+    // Increment watch time every second
+    const interval = setInterval(async () => {
+      try {
+        await supabase
+          .from('stream_viewers')
+          .update({ 
+            watch_time_seconds: supabase.rpc('increment', { x: 1 }) 
+          })
+          .eq('stream_id', streamId)
+          .eq('user_id', userId)
+          .is('left_at', null);
+      } catch (error) {
+        console.error('Error updating watch time:', error);
+      }
+    }, 1000);
+
+    this.watchTimeIntervals.set(key, interval);
+  }
+
+  // Stop tracking watch time
+  private stopWatchTimeTracking(streamId: string, userId: string): void {
+    const key = `${streamId}:${userId}`;
+    
+    if (this.watchTimeIntervals.has(key)) {
+      clearInterval(this.watchTimeIntervals.get(key)!);
+      this.watchTimeIntervals.delete(key);
+    }
+  }
+
   // Detect device type
   private detectDeviceType(): 'mobile' | 'web' | 'tablet' {
-    // Simple device detection - can be enhanced
     if (typeof window !== 'undefined') {
       const width = window.innerWidth;
       if (width < 768) return 'mobile';
       if (width < 1024) return 'tablet';
       return 'web';
     }
-    return 'mobile'; // Default for React Native
+    return 'mobile';
   }
 
   // Track when a viewer leaves a stream
@@ -90,6 +142,9 @@ class ViewerTrackingService {
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
+      // Stop watch time tracking
+      this.stopWatchTimeTracking(streamId, userId);
+
       const { error } = await supabase
         .from('stream_viewers')
         .update({ left_at: new Date().toISOString() })
@@ -102,7 +157,6 @@ class ViewerTrackingService {
         return { success: false, error: error.message };
       }
 
-      // Track in analytics system
       await analyticsService.trackViewerLeave(streamId, userId);
 
       console.log('✅ Viewer leave tracked successfully');
@@ -131,6 +185,29 @@ class ViewerTrackingService {
       return data as StreamViewer[];
     } catch (error) {
       console.error('Error in getActiveViewers:', error);
+      return [];
+    }
+  }
+
+  // Get top viewers by watch time
+  async getTopViewersByWatchTime(streamId: string, limit: number = 100): Promise<StreamViewer[]> {
+    try {
+      const { data, error } = await supabase
+        .from('stream_viewers')
+        .select('*, profiles(*)')
+        .eq('stream_id', streamId)
+        .is('left_at', null)
+        .order('watch_time_seconds', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Error fetching top viewers:', error);
+        return [];
+      }
+
+      return data as StreamViewer[];
+    } catch (error) {
+      console.error('Error in getTopViewersByWatchTime:', error);
       return [];
     }
   }
@@ -200,6 +277,14 @@ class ViewerTrackingService {
   // Clean up viewer sessions when stream ends
   async cleanupStreamViewers(streamId: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Stop all watch time tracking for this stream
+      this.watchTimeIntervals.forEach((interval, key) => {
+        if (key.startsWith(`${streamId}:`)) {
+          clearInterval(interval);
+          this.watchTimeIntervals.delete(key);
+        }
+      });
+
       const { error } = await supabase
         .from('stream_viewers')
         .update({ left_at: new Date().toISOString() })
@@ -211,7 +296,6 @@ class ViewerTrackingService {
         return { success: false, error: error.message };
       }
 
-      // Calculate and store stream metrics
       await analyticsService.calculateStreamMetrics(streamId);
 
       console.log('✅ Viewer sessions cleaned up successfully');
@@ -220,6 +304,12 @@ class ViewerTrackingService {
       console.error('Error in cleanupStreamViewers:', error);
       return { success: false, error: 'Failed to cleanup viewer sessions' };
     }
+  }
+
+  // Clean up all intervals on service shutdown
+  cleanup(): void {
+    this.watchTimeIntervals.forEach((interval) => clearInterval(interval));
+    this.watchTimeIntervals.clear();
   }
 }
 

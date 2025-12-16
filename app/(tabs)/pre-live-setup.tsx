@@ -43,6 +43,10 @@ export default function PreLiveSetupScreen() {
   const [showContentLabelModal, setShowContentLabelModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  // NEW: Goal states
+  const [giftGoal, setGiftGoal] = useState('');
+  const [roastGoalViewers, setRoastGoalViewers] = useState('');
+
   // Panel visibility states
   const [showEffectsPanel, setShowEffectsPanel] = useState(false);
   const [showFiltersPanel, setShowFiltersPanel] = useState(false);
@@ -65,13 +69,10 @@ export default function PreLiveSetupScreen() {
   const isMountedRef = useRef(true);
 
   // CRITICAL: Hide bottom tab bar when this screen is focused
-  // This uses useFocusEffect to ensure cleanup runs on blur
-  // ALSO: Reset streaming state when returning to this screen
   useFocusEffect(
     useCallback(() => {
       console.log('🎬 [PRE-LIVE] Screen focused - hiding bottom tab bar');
       
-      // Hide the tab bar
       const parent = navigation.getParent();
       if (parent) {
         parent.setOptions({
@@ -79,14 +80,11 @@ export default function PreLiveSetupScreen() {
         });
       }
 
-      // CRITICAL FIX: Reset state machine to PRE_LIVE_SETUP when screen gains focus
-      // This ensures buttons are enabled after returning from a stream
       if (liveStreamState.currentState === 'IDLE' || liveStreamState.currentState === 'STREAM_ENDED') {
         console.log('🔄 [PRE-LIVE] Resetting state machine to PRE_LIVE_SETUP on focus');
         liveStreamState.enterPreLiveSetup();
       }
 
-      // Cleanup: Restore tab bar when screen loses focus
       return () => {
         console.log('🎬 [PRE-LIVE] Screen blurred - restoring bottom tab bar');
         const parent = navigation.getParent();
@@ -111,11 +109,8 @@ export default function PreLiveSetupScreen() {
       requestPermission();
     }
 
-    // Enter PRE_LIVE_SETUP state
     liveStreamState.enterPreLiveSetup();
     console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
-    console.log('🎨 [PRE-LIVE] Active filter:', activeFilter?.name || 'None');
-    console.log('✨ [PRE-LIVE] Active effect:', activeEffect?.name || 'None');
 
     return () => {
       isMountedRef.current = false;
@@ -123,7 +118,6 @@ export default function PreLiveSetupScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, permission]);
 
-  // Update state machine when content label is selected
   useEffect(() => {
     if (contentLabel && liveStreamState.currentState === 'PRE_LIVE_SETUP') {
       liveStreamState.selectContentLabel();
@@ -131,7 +125,6 @@ export default function PreLiveSetupScreen() {
     }
   }, [contentLabel, liveStreamState]);
 
-  // Update state machine when practice mode changes
   useEffect(() => {
     if (practiceMode && liveStreamState.currentState === 'CONTENT_LABEL_SELECTED') {
       liveStreamState.enablePracticeMode();
@@ -145,7 +138,6 @@ export default function PreLiveSetupScreen() {
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
     
-    // CRITICAL: Explicitly restore tab bar BEFORE navigation
     const parent = navigation.getParent();
     if (parent) {
       console.log('🔄 [PRE-LIVE] Explicitly restoring tab bar before navigation');
@@ -154,10 +146,7 @@ export default function PreLiveSetupScreen() {
       });
     }
     
-    // Reset state machine to IDLE
     liveStreamState.resetToIdle();
-    
-    // Navigate back
     router.back();
   };
 
@@ -167,12 +156,6 @@ export default function PreLiveSetupScreen() {
 
   const handleGoLive = useCallback(async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
-    console.log('📊 [PRE-LIVE] Current state:', liveStreamState.currentState);
-    console.log('🎯 [PRE-LIVE] Practice Mode:', practiceMode);
-    console.log('🎮 [PRE-LIVE] Stream Mode:', streamMode);
-    console.log('🔥 [PRE-LIVE] Battle Format:', battleFormat);
-    console.log('🎨 [PRE-LIVE] Active filter:', activeFilter?.name || 'None');
-    console.log('✨ [PRE-LIVE] Active effect:', activeEffect?.name || 'None');
 
     if (!streamTitle.trim()) {
       Alert.alert('Error', 'Please enter a stream title');
@@ -198,7 +181,6 @@ export default function PreLiveSetupScreen() {
         return;
       }
 
-      // Check if user is blocked from matchmaking
       const isBlocked = await battleService.isUserBlocked(user.id);
       if (isBlocked) {
         Alert.alert(
@@ -209,13 +191,11 @@ export default function PreLiveSetupScreen() {
         return;
       }
 
-      // Navigate to battle format selection screen
       console.log('🎮 [PRE-LIVE] Navigating to battle lobby creation');
       
       try {
         setIsLoading(true);
 
-        // Create battle lobby
         const { lobby, error } = await battleService.createLobby(
           user.id,
           battleFormat,
@@ -230,7 +210,6 @@ export default function PreLiveSetupScreen() {
 
         console.log('✅ [PRE-LIVE] Battle lobby created:', lobby);
 
-        // Navigate to lobby screen
         router.push({
           pathname: '/screens/BattleLobbyScreen',
           params: { lobbyId: lobby.id },
@@ -248,7 +227,6 @@ export default function PreLiveSetupScreen() {
       }
     }
 
-    // Check if we can go live (solo mode)
     if (!liveStreamState.canGoLive()) {
       console.warn('⚠️ [PRE-LIVE] Cannot go live from current state:', liveStreamState.currentState);
       Alert.alert('Error', 'Please complete setup before going live');
@@ -258,7 +236,6 @@ export default function PreLiveSetupScreen() {
     try {
       setIsLoading(true);
 
-      // Only check streaming permissions for real streams
       if (!practiceMode) {
         const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
         if (!canStream.canStream) {
@@ -266,18 +243,12 @@ export default function PreLiveSetupScreen() {
           return;
         }
 
-        // Log creator rules acceptance
         await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
       }
 
       console.log('✅ [PRE-LIVE] Validation passed');
-      console.log('🎬 [PRE-LIVE] Transitioning to STREAM_CREATING state');
-
-      // Transition to STREAM_CREATING state
       liveStreamState.startStreamCreation();
 
-      // IMMEDIATELY navigate to broadcaster screen with all settings
-      // Filters and effects are managed by CameraEffectsContext (no need to pass as params)
       console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
       
       router.push({
@@ -290,17 +261,12 @@ export default function PreLiveSetupScreen() {
           whoCanWatch,
           selectedModerators: JSON.stringify(selectedModerators),
           selectedVIPClub: selectedVIPClub || '',
+          giftGoal: giftGoal || '',
+          roastGoalViewers: roastGoalViewers || '0',
         },
       });
 
       console.log('✅ [PRE-LIVE] Navigation initiated successfully');
-      console.log('📦 [PRE-LIVE] Settings passed:', {
-        practiceMode,
-        selectedModerators: selectedModerators.length,
-        selectedVIPClub,
-        hasFilter: hasActiveFilter(),
-        hasEffect: hasActiveEffect(),
-      });
     } catch (error) {
       console.error('❌ [PRE-LIVE] Error in handleGoLive:', error);
       liveStreamState.setError('Failed to start stream setup. Please try again.');
@@ -310,7 +276,7 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, hasActiveFilter, hasActiveEffect, activeFilter, activeEffect, streamMode, battleFormat]);
+  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers, streamMode, battleFormat]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -346,10 +312,10 @@ export default function PreLiveSetupScreen() {
         {/* CAMERA PREVIEW BACKGROUND */}
         <CameraView style={StyleSheet.absoluteFill} facing={facing} />
 
-        {/* CAMERA FILTER OVERLAY - Using improved component */}
+        {/* CAMERA FILTER OVERLAY */}
         <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
 
-        {/* VISUAL EFFECTS OVERLAY - Using improved component */}
+        {/* VISUAL EFFECTS OVERLAY */}
         <ImprovedVisualEffectsOverlay effect={activeEffect} />
 
         {/* DARK OVERLAY */}
@@ -371,20 +337,48 @@ export default function PreLiveSetupScreen() {
           </View>
         </View>
 
-        {/* ESTIMATED EARNINGS & ROAST GOALS */}
+        {/* GOALS SECTION - UPDATED */}
         <View style={styles.goalsContainer}>
+          {/* Gift Goal */}
           <View style={styles.goalCard}>
-            <Text style={styles.goalIcon}>💎</Text>
+            <IconSymbol
+              ios_icon_name="gift.fill"
+              android_material_icon_name="card_giftcard"
+              size={24}
+              color="#FFD700"
+            />
             <View style={styles.goalTextContainer}>
-              <Text style={styles.goalLabel}>Est. Earnings</Text>
-              <Text style={styles.goalValue}>$0.00</Text>
+              <Text style={styles.goalLabel}>Gift Goal</Text>
+              <TextInput
+                style={styles.goalInput}
+                placeholder="e.g., Reach 10,000 gifts"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={giftGoal}
+                onChangeText={setGiftGoal}
+                maxLength={50}
+              />
             </View>
           </View>
+
+          {/* Roast Goal */}
           <View style={styles.goalCard}>
-            <Text style={styles.goalIcon}>🔥</Text>
+            <IconSymbol
+              ios_icon_name="flame.fill"
+              android_material_icon_name="whatshot"
+              size={24}
+              color="#FF6B00"
+            />
             <View style={styles.goalTextContainer}>
               <Text style={styles.goalLabel}>Roast Goal</Text>
-              <Text style={styles.goalValue}>100 viewers</Text>
+              <TextInput
+                style={styles.goalInput}
+                placeholder="Target viewers"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={roastGoalViewers}
+                onChangeText={setRoastGoalViewers}
+                keyboardType="number-pad"
+                maxLength={6}
+              />
             </View>
           </View>
         </View>
@@ -435,8 +429,22 @@ export default function PreLiveSetupScreen() {
           </View>
         )}
 
-        {/* BOTTOM ACTION BAR */}
+        {/* BOTTOM ACTION BAR - UPDATED ICONS */}
         <View style={styles.bottomBar}>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => setShowContentLabelModal(true)}
+          >
+            <IconSymbol
+              ios_icon_name="tag.fill"
+              android_material_icon_name="label"
+              size={28}
+              color={contentLabel ? colors.brandPrimary : '#FFFFFF'}
+            />
+            <Text style={styles.actionButtonText}>Content</Text>
+            {contentLabel && <View style={styles.activeDot} />}
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={styles.actionButton} 
             onPress={() => setShowEffectsPanel(true)}
@@ -544,18 +552,6 @@ export default function PreLiveSetupScreen() {
           </View>
         )}
 
-        {/* STATE MACHINE DEBUG (Remove in production) */}
-        {__DEV__ && (
-          <View style={styles.debugContainer}>
-            <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-            <Text style={styles.debugText}>Mode: {streamMode.toUpperCase()}</Text>
-            <Text style={styles.debugText}>Format: {battleFormat || 'NONE'}</Text>
-            <Text style={styles.debugText}>Practice: {practiceMode ? 'YES' : 'NO'}</Text>
-            <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
-            <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
-          </View>
-        )}
-
         {/* CONTENT LABEL MODAL */}
         <ContentLabelModal
           visible={showContentLabelModal}
@@ -563,13 +559,13 @@ export default function PreLiveSetupScreen() {
           onCancel={() => setShowContentLabelModal(false)}
         />
 
-        {/* EFFECTS PANEL - Using improved component */}
+        {/* EFFECTS PANEL */}
         <ImprovedEffectsPanel
           visible={showEffectsPanel}
           onClose={() => setShowEffectsPanel(false)}
         />
 
-        {/* FILTERS PANEL - Using improved component */}
+        {/* FILTERS PANEL */}
         <ImprovedFiltersPanel
           visible={showFiltersPanel}
           onClose={() => setShowFiltersPanel(false)}
@@ -583,7 +579,7 @@ export default function PreLiveSetupScreen() {
           onSelectClub={setSelectedVIPClub}
         />
 
-        {/* SETTINGS PANEL - Now includes battle mode settings */}
+        {/* SETTINGS PANEL */}
         <LiveSettingsPanel
           visible={showSettingsPanel}
           onClose={() => setShowSettingsPanel(false)}
@@ -655,12 +651,10 @@ const styles = StyleSheet.create({
     top: Platform.OS === 'android' ? 120 : 110,
     left: 20,
     right: 20,
-    flexDirection: 'row',
     gap: 12,
     zIndex: 10,
   },
   goalCard: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -668,26 +662,27 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
-  goalIcon: {
-    fontSize: 24,
-  },
   goalTextContainer: {
     flex: 1,
   },
   goalLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginBottom: 2,
-  },
-  goalValue: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  goalInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   titleContainer: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 210 : 200,
+    top: Platform.OS === 'android' ? 260 : 250,
     left: 20,
     right: 20,
     zIndex: 10,
@@ -703,7 +698,7 @@ const styles = StyleSheet.create({
   },
   contentLabelDisplay: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 280 : 270,
+    top: Platform.OS === 'android' ? 330 : 320,
     left: 20,
     right: 20,
     flexDirection: 'row',
@@ -722,7 +717,7 @@ const styles = StyleSheet.create({
   },
   battleModeIndicator: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 350 : 340,
+    top: Platform.OS === 'android' ? 400 : 390,
     left: 20,
     right: 20,
     flexDirection: 'row',
@@ -822,19 +817,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  debugContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 420 : 410,
-    left: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 8,
-    padding: 8,
-    zIndex: 10,
-  },
-  debugText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#00FF00',
   },
 });

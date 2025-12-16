@@ -1,18 +1,20 @@
 
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Modal,
+  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
-import { useVIPClub } from '@/contexts/VIPClubContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { creatorClubService } from '@/app/services/creatorClubService';
 
 interface VIPClubPanelProps {
   visible: boolean;
@@ -21,28 +23,82 @@ interface VIPClubPanelProps {
   onSelectClub: (clubId: string | null) => void;
 }
 
+interface CreatorClub {
+  id: string;
+  name: string;
+  tag: string;
+  monthly_price_cents: number;
+  description: string | null;
+  is_active: boolean;
+  member_count?: number;
+}
+
 export default function VIPClubPanel({
   visible,
   onClose,
   selectedClub,
   onSelectClub,
 }: VIPClubPanelProps) {
-  const { clubs, isLoading, refreshClubs } = useVIPClub();
+  const { user } = useAuth();
+  const [myClub, setMyClub] = useState<CreatorClub | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [memberCount, setMemberCount] = useState(0);
 
   useEffect(() => {
-    if (visible) {
-      console.log('📥 [VIPClubPanel] Panel opened, refreshing clubs');
-      refreshClubs();
+    if (visible && user) {
+      loadMyClub();
     }
-  }, [visible]);
+  }, [visible, user]);
 
-  const handleSelectClub = (clubId: string) => {
-    console.log('👑 [VIPClubPanel] VIP Club selected:', clubId);
-    if (clubId === selectedClub) {
-      onSelectClub(null);
-    } else {
-      onSelectClub(clubId);
+  const loadMyClub = async () => {
+    if (!user) return;
+
+    setIsLoading(true);
+    try {
+      console.log('📥 [VIPClubPanel] Loading creator club for user:', user.id);
+
+      const club = await creatorClubService.getCreatorClub(user.id);
+      
+      if (club) {
+        setMyClub(club);
+        
+        // Load member count
+        const members = await creatorClubService.getClubMembers(club.id);
+        setMemberCount(members.length);
+
+        // Auto-select if not already selected
+        if (!selectedClub) {
+          onSelectClub(club.id);
+        }
+
+        console.log('✅ [VIPClubPanel] Loaded club:', club.name);
+      } else {
+        setMyClub(null);
+        console.log('ℹ️ [VIPClubPanel] No VIP club found for this creator');
+      }
+    } catch (error) {
+      console.error('❌ [VIPClubPanel] Error loading club:', error);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  const handleToggleClub = () => {
+    if (selectedClub === myClub?.id) {
+      onSelectClub(null);
+    } else if (myClub) {
+      onSelectClub(myClub.id);
+    }
+  };
+
+  const handleCreateClub = () => {
+    Alert.alert(
+      'Create VIP Club',
+      'You need to create a VIP Club first in your Stream Dashboard.',
+      [
+        { text: 'OK' }
+      ]
+    );
   };
 
   return (
@@ -62,99 +118,125 @@ export default function VIPClubPanel({
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.description}>
-              Select which VIP Club is active for this live stream. Members will get exclusive access and perks.
-            </Text>
-
             {isLoading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.brandPrimary} />
-                <Text style={styles.loadingText}>Loading your VIP Clubs...</Text>
+                <Text style={styles.loadingText}>Loading your VIP Club...</Text>
               </View>
-            ) : clubs.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <IconSymbol
-                  ios_icon_name="star.slash"
-                  android_material_icon_name="star_border"
-                  size={48}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.emptyTitle}>No VIP Clubs Yet</Text>
-                <Text style={styles.emptyText}>
-                  Create a VIP Club in Settings to offer exclusive perks to your most dedicated fans!
+            ) : myClub ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Your VIP Club</Text>
+                <Text style={styles.sectionDescription}>
+                  Restrict this stream to your VIP Club members only
                 </Text>
-              </View>
-            ) : (
-              <>
-                {/* None Option */}
-                <TouchableOpacity
-                  style={[styles.clubCard, selectedClub === null && styles.clubCardActive]}
-                  onPress={() => onSelectClub(null)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.clubBadge}>
-                    <Text style={styles.clubBadgeEmoji}>🚫</Text>
-                  </View>
-                  <View style={styles.clubInfo}>
-                    <Text style={[styles.clubName, selectedClub === null && styles.clubNameActive]}>
-                      No VIP Club
-                    </Text>
-                    <Text style={styles.clubDescription}>
-                      Stream without VIP Club restrictions
-                    </Text>
-                  </View>
-                  {selectedClub === null && (
-                    <IconSymbol
-                      ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
-                      size={24}
-                      color={colors.brandPrimary}
-                    />
-                  )}
-                </TouchableOpacity>
 
-                {/* VIP Clubs */}
-                {clubs.map((club) => {
-                  const isSelected = selectedClub === club.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={club.id}
-                      style={[styles.clubCard, isSelected && styles.clubCardActive]}
-                      onPress={() => handleSelectClub(club.id)}
-                      activeOpacity={0.7}
+                <View style={styles.clubCard}>
+                  <View style={styles.clubHeader}>
+                    <View 
+                      style={[
+                        styles.clubBadge, 
+                        { backgroundColor: myClub.tag ? colors.brandPrimary : '#FFD700' }
+                      ]}
                     >
-                      <View style={styles.clubBadge}>
-                        <Text style={styles.clubBadgeEmoji}>👑</Text>
-                      </View>
-                      <View style={styles.clubInfo}>
-                        <Text style={[styles.clubName, isSelected && styles.clubNameActive]}>
-                          {club.name}
-                        </Text>
-                        <Text style={styles.clubTag}>
-                          {club.tag}
-                        </Text>
-                        <Text style={styles.clubStats}>
-                          {(club.monthly_price_cents / 100).toFixed(2)} {club.currency}/month
-                        </Text>
-                        {club.description && (
-                          <Text style={styles.clubDescription} numberOfLines={2}>
-                            {club.description}
-                          </Text>
-                        )}
-                      </View>
-                      {isSelected && (
+                      <IconSymbol
+                        ios_icon_name="star.fill"
+                        android_material_icon_name="workspace_premium"
+                        size={20}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.clubBadgeText}>{myClub.tag || myClub.name}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleButton,
+                        selectedClub === myClub.id && styles.toggleButtonActive,
+                      ]}
+                      onPress={handleToggleClub}
+                    >
+                      <View
+                        style={[
+                          styles.toggleThumb,
+                          selectedClub === myClub.id && styles.toggleThumbActive,
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.clubDetails}>
+                    <Text style={styles.clubName}>{myClub.name}</Text>
+                    {myClub.description && (
+                      <Text style={styles.clubDescription}>{myClub.description}</Text>
+                    )}
+                    
+                    <View style={styles.clubStats}>
+                      <View style={styles.clubStat}>
                         <IconSymbol
-                          ios_icon_name="checkmark.circle.fill"
-                          android_material_icon_name="check_circle"
-                          size={24}
+                          ios_icon_name="person.2.fill"
+                          android_material_icon_name="people"
+                          size={16}
                           color={colors.brandPrimary}
                         />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </>
+                        <Text style={styles.clubStatText}>{memberCount} members</Text>
+                      </View>
+                      <View style={styles.clubStat}>
+                        <IconSymbol
+                          ios_icon_name="creditcard.fill"
+                          android_material_icon_name="payment"
+                          size={16}
+                          color={colors.brandPrimary}
+                        />
+                        <Text style={styles.clubStatText}>
+                          {(myClub.monthly_price_cents / 100).toFixed(2)} SEK/month
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {selectedClub === myClub.id && (
+                    <View style={styles.activeIndicator}>
+                      <IconSymbol
+                        ios_icon_name="checkmark.circle.fill"
+                        android_material_icon_name="check_circle"
+                        size={20}
+                        color={colors.brandPrimary}
+                      />
+                      <Text style={styles.activeText}>
+                        Only VIP Club members can watch this stream
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.infoBox}>
+                  <IconSymbol
+                    ios_icon_name="info.circle.fill"
+                    android_material_icon_name="info"
+                    size={16}
+                    color={colors.brandPrimary}
+                  />
+                  <Text style={styles.infoText}>
+                    When enabled, only your VIP Club members will be able to watch this stream. 
+                    This is the same club you manage in your Stream Dashboard.
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <IconSymbol
+                  ios_icon_name="star.slash.fill"
+                  android_material_icon_name="workspace_premium"
+                  size={64}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.emptyTitle}>No VIP Club</Text>
+                <Text style={styles.emptyDescription}>
+                  You haven&apos;t created a VIP Club yet. Create one in your Stream Dashboard to 
+                  offer exclusive content to your subscribers.
+                </Text>
+                <TouchableOpacity style={styles.createButton} onPress={handleCreateClub}>
+                  <Text style={styles.createButtonText}>Go to Stream Dashboard</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </ScrollView>
 
@@ -177,7 +259,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
+    maxHeight: '80%',
   },
   header: {
     flexDirection: 'row',
@@ -195,36 +277,151 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
   },
-  description: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 20,
-  },
   loadingContainer: {
     alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 40,
     gap: 16,
   },
   loadingText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
     color: colors.textSecondary,
   },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 12,
+  section: {
+    marginBottom: 20,
   },
-  emptyTitle: {
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 6,
+  },
+  sectionDescription: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  clubCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  clubHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  clubBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 6,
+  },
+  clubBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  toggleButton: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.border,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.brandPrimary,
+  },
+  toggleThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  clubDetails: {
+    marginBottom: 12,
+  },
+  clubName: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+    marginBottom: 6,
   },
-  emptyText: {
+  clubDescription: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  clubStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  clubStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  clubStatText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  activeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.brandPrimary,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    gap: 8,
+  },
+  activeText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.brandPrimary,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    gap: 10,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text,
+    lineHeight: 18,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  emptyDescription: {
     fontSize: 14,
     fontWeight: '400',
     color: colors.textSecondary,
@@ -232,61 +429,19 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingHorizontal: 20,
   },
-  clubCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  createButton: {
     backgroundColor: colors.backgroundAlt,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    marginTop: 8,
   },
-  clubCardActive: {
-    backgroundColor: 'rgba(164, 0, 40, 0.1)',
-    borderColor: colors.brandPrimary,
-    borderWidth: 2,
-  },
-  clubBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  clubBadgeEmoji: {
-    fontSize: 32,
-  },
-  clubInfo: {
-    flex: 1,
-  },
-  clubName: {
-    fontSize: 16,
+  createButtonText: {
+    fontSize: 14,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 4,
-  },
-  clubNameActive: {
-    color: colors.brandPrimary,
-  },
-  clubTag: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.brandPrimary,
-    marginBottom: 4,
-  },
-  clubDescription: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  clubStats: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
   },
   footer: {
     padding: 20,

@@ -13,7 +13,6 @@ import AppLogo from '@/components/AppLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import ChatOverlay from '@/components/ChatOverlay';
 import GiftAnimationOverlay from '@/components/GiftAnimationOverlay';
-import ConnectionStatusIndicator from '@/components/ConnectionStatusIndicator';
 import ViewerListModal from '@/components/ViewerListModal';
 import ContentLabelBadge from '@/components/ContentLabelBadge';
 import { ContentLabel } from '@/components/ContentLabelModal';
@@ -21,6 +20,8 @@ import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverla
 import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOverlay';
 import ImprovedEffectsPanel from '@/components/ImprovedEffectsPanel';
 import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
+import GuestSeatGrid from '@/components/GuestSeatGrid';
+import HostControlDashboard from '@/components/HostControlDashboard';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useStreaming } from '@/contexts/StreamingContext';
@@ -31,6 +32,7 @@ import { cloudflareService } from '@/app/services/cloudflareService';
 import { contentSafetyService } from '@/app/services/contentSafetyService';
 import { viewerTrackingService } from '@/app/services/viewerTrackingService';
 import { liveStreamArchiveService } from '@/app/services/liveStreamArchiveService';
+import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
 import { useStreamConnection } from '@/hooks/useStreamConnection';
 
 interface StreamData {
@@ -50,6 +52,13 @@ interface GiftAnimation {
   tier: 'A' | 'B' | 'C';
 }
 
+interface ViewerRanking {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  watch_time_seconds: number;
+}
+
 export default function BroadcastScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
@@ -57,7 +66,6 @@ export default function BroadcastScreen() {
   const liveStreamState = useLiveStreamState();
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   
-  // Get params from navigation (filters/effects now come from context)
   const params = useLocalSearchParams<{
     streamTitle?: string;
     contentLabel?: ContentLabel;
@@ -66,13 +74,14 @@ export default function BroadcastScreen() {
     whoCanWatch?: string;
     selectedModerators?: string;
     selectedVIPClub?: string;
+    giftGoal?: string;
+    roastGoalViewers?: string;
   }>();
 
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
 
-  // Parse practice mode
   const isPracticeMode = params.practiceMode === 'true';
 
   // Stream creation states
@@ -89,12 +98,22 @@ export default function BroadcastScreen() {
   const [totalGifts, setTotalGifts] = useState(0);
   const [totalLikes, setTotalLikes] = useState(0);
 
+  // NEW: Network & FPS metrics
+  const [networkQuality, setNetworkQuality] = useState<'Good' | 'Medium' | 'Bad'>('Good');
+  const [currentFPS, setCurrentFPS] = useState(30);
+
+  // NEW: Viewer ranking
+  const [topViewers, setTopViewers] = useState<ViewerRanking[]>([]);
+  const [showViewerRanking, setShowViewerRanking] = useState(false);
+
   // Camera controls
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
 
-  // Effects and filters are now managed by CameraEffectsContext
-  // They persist automatically across screens and during live
+  // NEW: Guest management
+  const [activeGuests, setActiveGuests] = useState<StreamGuestSeat[]>([]);
+  const [showGuestControls, setShowGuestControls] = useState(false);
+  const [showHostDashboard, setShowHostDashboard] = useState(false);
 
   // UI states
   const [giftAnimations, setGiftAnimations] = useState<GiftAnimation[]>([]);
@@ -112,9 +131,9 @@ export default function BroadcastScreen() {
   const realtimeRef = useRef<any>(null);
   const giftChannelRef = useRef<any>(null);
   const likesChannelRef = useRef<any>(null);
+  const guestChannelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
 
-  // Connection monitoring (only for real streams)
   const {
     connectionStatus,
     reconnectAttempt,
@@ -132,12 +151,10 @@ export default function BroadcastScreen() {
     },
   });
 
-  // CRITICAL: Hide bottom tab bar when this screen is focused
   useFocusEffect(
     useCallback(() => {
       console.log('🎬 [BROADCAST] Screen focused - hiding bottom tab bar');
       
-      // Hide the tab bar
       const parent = navigation.getParent();
       if (parent) {
         parent.setOptions({
@@ -145,7 +162,6 @@ export default function BroadcastScreen() {
         });
       }
 
-      // Cleanup: Restore tab bar when screen loses focus
       return () => {
         console.log('🎬 [BROADCAST] Screen blurred - restoring bottom tab bar');
         const parent = navigation.getParent();
@@ -163,7 +179,6 @@ export default function BroadcastScreen() {
     try {
       console.log('🎯 [PRACTICE] Starting Practice Mode');
 
-      // Activate keep awake
       try {
         await activateKeepAwakeAsync();
         console.log('✅ [PRACTICE] Keep awake activated');
@@ -171,10 +186,8 @@ export default function BroadcastScreen() {
         console.warn('⚠️ [PRACTICE] Failed to activate keep awake:', keepAwakeError);
       }
 
-      // Update state machine
       liveStreamState.startBroadcasting();
 
-      // Set UI to "live" state (but it's practice)
       if (isMountedRef.current) {
         setIsLive(true);
         setIsStreaming(true);
@@ -210,12 +223,8 @@ export default function BroadcastScreen() {
     }
 
     console.log('🎬 [STREAM-CREATE-1] Starting stream creation...');
-    console.log('📝 [STREAM-CREATE-1] Title:', params.streamTitle);
-    console.log('🏷️ [STREAM-CREATE-1] Label:', params.contentLabel);
-    console.log('📊 [STREAM-CREATE-1] State:', liveStreamState.currentState);
 
     try {
-      // STEP 1: Activate keep awake (non-blocking)
       console.log('💤 [STREAM-CREATE-2] Attempting to activate keep awake...');
       try {
         await activateKeepAwakeAsync();
@@ -224,7 +233,6 @@ export default function BroadcastScreen() {
         console.warn('⚠️ [STREAM-CREATE-2] KeepAwake failed (continuing anyway):', keepAwakeError);
       }
 
-      // STEP 2: Create Cloudflare stream
       console.log('📡 [STREAM-CREATE-3] Calling cloudflareService.startLive...');
       
       const timeoutPromise = new Promise((_, reject) => {
@@ -244,16 +252,24 @@ export default function BroadcastScreen() {
         throw new Error(result.error || 'Failed to create stream');
       }
 
-      // STEP 3: Set content label
-      console.log('📝 [STREAM-CREATE-4] Setting content label on stream...');
+      console.log('📝 [STREAM-CREATE-4] Setting content label and goals on stream...');
       try {
         await contentSafetyService.setStreamContentLabel(result.stream.id, params.contentLabel);
-        console.log('✅ [STREAM-CREATE-4] Content label set successfully');
+        
+        // Store goals in stream metadata
+        await supabase
+          .from('streams')
+          .update({
+            gift_goal: params.giftGoal || null,
+            roast_goal_viewers: parseInt(params.roastGoalViewers || '0', 10),
+          })
+          .eq('id', result.stream.id);
+        
+        console.log('✅ [STREAM-CREATE-4] Content label and goals set successfully');
       } catch (labelError) {
-        console.error('⚠️ [STREAM-CREATE-4] Failed to set content label (continuing anyway):', labelError);
+        console.error('⚠️ [STREAM-CREATE-4] Failed to set content label/goals (continuing anyway):', labelError);
       }
 
-      // STEP 4: Create archive record
       console.log('📦 [STREAM-CREATE-5] Creating archive record...');
       const startTime = new Date().toISOString();
       streamStartTime.current = startTime;
@@ -273,11 +289,9 @@ export default function BroadcastScreen() {
         console.error('⚠️ [STREAM-CREATE-5] Error creating archive (continuing anyway):', archiveError);
       }
 
-      // STEP 5: Update state machine
       console.log('🔄 [STREAM-CREATE-6] Updating state machine to STREAM_READY...');
       liveStreamState.streamCreated();
 
-      // STEP 6: Update UI state
       console.log('🎉 [STREAM-CREATE-7] Setting stream state in UI...');
       if (isMountedRef.current) {
         setCurrentStream(result.stream);
@@ -294,17 +308,10 @@ export default function BroadcastScreen() {
         console.log('✅ [STREAM-CREATE-7] Stream state updated successfully');
       }
 
-      // STEP 7: Start broadcasting
       console.log('🔄 [STREAM-CREATE-8] Transitioning to BROADCASTING state...');
       liveStreamState.startBroadcasting();
 
       startStreamTimer();
-
-      console.log('📺 [STREAM-CREATE-9] Stream details:', {
-        id: result.stream.id,
-        live_input_id: result.stream.live_input_id,
-        playback_url: result.stream.playback_url,
-      });
 
       console.log('🎊 [STREAM-CREATE-10] Stream creation complete! Now LIVE!');
     } catch (error) {
@@ -331,28 +338,20 @@ export default function BroadcastScreen() {
         setIsCreatingStream(false);
       }
     }
-  }, [user, params.streamTitle, params.contentLabel, liveStreamState, setIsStreaming, startStreamTimer]);
+  }, [user, params, liveStreamState, setIsStreaming, startStreamTimer]);
 
   /* ───────────────── MOUNT / AUTH GUARD ───────────────── */
   useEffect(() => {
     isMountedRef.current = true;
     console.log('🎬 [BROADCAST] BroadcastScreen mounted with params:', params);
-    console.log('📊 [BROADCAST] Current state machine state:', liveStreamState.currentState);
-    console.log('🎯 [BROADCAST] Practice Mode:', isPracticeMode);
-    console.log('🎨 [BROADCAST] Active filter:', activeFilter?.name || 'None');
-    console.log('✨ [BROADCAST] Active effect:', activeEffect?.name || 'None');
 
     if (!user) {
       router.replace('/auth/login');
       return;
     }
 
-    // Validate params
     if (!params.streamTitle || !params.contentLabel) {
-      console.error('❌ [BROADCAST] Missing required params:', { 
-        streamTitle: params.streamTitle, 
-        contentLabel: params.contentLabel 
-      });
+      console.error('❌ [BROADCAST] Missing required params');
       
       Alert.alert(
         'Missing Stream Information',
@@ -374,19 +373,16 @@ export default function BroadcastScreen() {
       return;
     }
 
-    // PRACTICE MODE: Skip stream creation entirely
     if (isPracticeMode) {
       console.log('🎯 [BROADCAST] Practice Mode enabled - skipping Cloudflare stream creation');
       startPracticeMode();
     } else {
-      // REAL LIVE: Create stream on mount
       createStreamOnMount();
     }
 
     return () => {
       isMountedRef.current = false;
       console.log('🎬 [BROADCAST] BroadcastScreen unmounted');
-      // Deactivate keep awake when component unmounts
       try {
         deactivateKeepAwake();
         console.log('💤 [BROADCAST] Keep awake deactivated on unmount');
@@ -394,16 +390,14 @@ export default function BroadcastScreen() {
         console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake on unmount:', error);
       }
     };
-  }, [user, params, isPracticeMode, createStreamOnMount, startPracticeMode, liveStreamState, activeFilter, activeEffect]);
+  }, [user, params, isPracticeMode, createStreamOnMount, startPracticeMode, liveStreamState]);
 
-  /* ───────────────── PERMISSIONS ───────────────── */
   useEffect(() => {
     if (!permission?.granted) {
       requestPermission();
     }
   }, [permission, requestPermission]);
 
-  /* ───────────────── BACK BUTTON HANDLER ───────────────── */
   useEffect(() => {
     if (isLive && Platform.OS === 'android') {
       const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -431,7 +425,7 @@ export default function BroadcastScreen() {
     };
   }, [isLive]);
 
-  /* ───────────────── VIEWER COUNT SUBSCRIPTION (ONLY FOR REAL STREAMS) ───────────────── */
+  /* ───────────────── VIEWER COUNT SUBSCRIPTION ───────────────── */
   const subscribeViewers = useCallback((streamId: string) => {
     if (!isMountedRef.current || isPracticeMode) return;
 
@@ -455,7 +449,7 @@ export default function BroadcastScreen() {
     realtimeRef.current = channel;
   }, [isPracticeMode]);
 
-  /* ───────────────── GIFT SUBSCRIPTION (ONLY FOR REAL STREAMS) ───────────────── */
+  /* ───────────────── GIFT SUBSCRIPTION ───────────────── */
   const subscribeToGifts = useCallback((streamId: string) => {
     if (!isMountedRef.current || isPracticeMode) return;
 
@@ -489,7 +483,7 @@ export default function BroadcastScreen() {
     giftChannelRef.current = channel;
   }, [isPracticeMode]);
 
-  /* ───────────────── LIKES SUBSCRIPTION (ONLY FOR REAL STREAMS) ───────────────── */
+  /* ───────────────── LIKES SUBSCRIPTION ───────────────── */
   const subscribeToLikes = useCallback((streamId: string) => {
     if (!isMountedRef.current || isPracticeMode) return;
 
@@ -511,12 +505,41 @@ export default function BroadcastScreen() {
     likesChannelRef.current = channel;
   }, [isPracticeMode]);
 
+  /* ───────────────── GUEST SUBSCRIPTION ───────────────── */
+  const subscribeToGuests = useCallback((streamId: string) => {
+    if (!isMountedRef.current || isPracticeMode) return;
+
+    console.log('🔌 [BROADCAST] Subscribing to guest events');
+
+    const channel = streamGuestService.subscribeToGuestEvents(streamId, (payload) => {
+      console.log('👥 [BROADCAST] Guest event received:', payload);
+      loadActiveGuests();
+    });
+
+    guestChannelRef.current = channel;
+  }, [isPracticeMode]);
+
+  const loadActiveGuests = useCallback(async () => {
+    if (!currentStream?.id || isPracticeMode) return;
+
+    try {
+      const guests = await streamGuestService.getActiveGuestSeats(currentStream.id);
+      if (isMountedRef.current) {
+        setActiveGuests(guests);
+      }
+    } catch (error) {
+      console.error('Error loading active guests:', error);
+    }
+  }, [currentStream?.id, isPracticeMode]);
+
   useEffect(() => {
     if (isLive && currentStream?.id && !isPracticeMode && isMountedRef.current) {
       console.log('🚀 [BROADCAST] Initializing Realtime channels for stream:', currentStream.id);
       subscribeViewers(currentStream.id);
       subscribeToGifts(currentStream.id);
       subscribeToLikes(currentStream.id);
+      subscribeToGuests(currentStream.id);
+      loadActiveGuests();
     }
     
     return () => {
@@ -535,8 +558,79 @@ export default function BroadcastScreen() {
         supabase.removeChannel(likesChannelRef.current);
         likesChannelRef.current = null;
       }
+      if (guestChannelRef.current) {
+        console.log('🔌 [BROADCAST] Unsubscribing from guest channel');
+        supabase.removeChannel(guestChannelRef.current);
+        guestChannelRef.current = null;
+      }
     };
-  }, [isLive, currentStream?.id, subscribeViewers, subscribeToGifts, subscribeToLikes, isPracticeMode]);
+  }, [isLive, currentStream?.id, subscribeViewers, subscribeToGifts, subscribeToLikes, subscribeToGuests, loadActiveGuests, isPracticeMode]);
+
+  /* ───────────────── VIEWER RANKING ───────────────── */
+  const loadViewerRanking = useCallback(async () => {
+    if (!currentStream?.id || isPracticeMode) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('stream_viewers')
+        .select('user_id, watch_time_seconds, profiles(display_name, avatar_url)')
+        .eq('stream_id', currentStream.id)
+        .is('left_at', null)
+        .order('watch_time_seconds', { ascending: false })
+        .limit(100);
+
+      if (error) {
+        console.error('Error loading viewer ranking:', error);
+        return;
+      }
+
+      const rankings: ViewerRanking[] = (data || []).map((v: any) => ({
+        user_id: v.user_id,
+        display_name: v.profiles?.display_name || 'Unknown',
+        avatar_url: v.profiles?.avatar_url || null,
+        watch_time_seconds: v.watch_time_seconds || 0,
+      }));
+
+      if (isMountedRef.current) {
+        setTopViewers(rankings);
+      }
+    } catch (error) {
+      console.error('Error in loadViewerRanking:', error);
+    }
+  }, [currentStream?.id, isPracticeMode]);
+
+  useEffect(() => {
+    if (isLive && currentStream?.id && !isPracticeMode) {
+      // Load viewer ranking every 10 seconds
+      loadViewerRanking();
+      const interval = setInterval(loadViewerRanking, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isLive, currentStream?.id, isPracticeMode, loadViewerRanking]);
+
+  /* ───────────────── NETWORK QUALITY SIMULATION ───────────────── */
+  useEffect(() => {
+    if (!isLive) return;
+
+    // Simulate network quality monitoring
+    const interval = setInterval(() => {
+      if (isMountedRef.current) {
+        const random = Math.random();
+        if (random > 0.9) {
+          setNetworkQuality('Bad');
+        } else if (random > 0.7) {
+          setNetworkQuality('Medium');
+        } else {
+          setNetworkQuality('Good');
+        }
+
+        // Simulate FPS (typically 24-30 for mobile streaming)
+        setCurrentFPS(Math.floor(24 + Math.random() * 7));
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isLive]);
 
   const handleAnimationComplete = (animationId: string) => {
     if (isMountedRef.current) {
@@ -557,6 +651,10 @@ export default function BroadcastScreen() {
       supabase.removeChannel(likesChannelRef.current);
       likesChannelRef.current = null;
     }
+    if (guestChannelRef.current) {
+      supabase.removeChannel(guestChannelRef.current);
+      guestChannelRef.current = null;
+    }
   };
 
   /* ───────────────── END STREAM ───────────────── */
@@ -564,7 +662,6 @@ export default function BroadcastScreen() {
     console.log('🛑 [BROADCAST] Ending stream (Practice Mode:', isPracticeMode, ')');
 
     try {
-      // CRITICAL FIX: Reset ALL streaming state BEFORE any other operations
       console.log('🔄 [BROADCAST] Resetting streaming state...');
       if (isMountedRef.current) {
         setIsLive(false);
@@ -578,13 +675,9 @@ export default function BroadcastScreen() {
         setGiftAnimations([]);
       }
 
-      // Update state machine
       liveStreamState.endStream();
-      
-      // Stop reconnection attempts
       stopReconnect();
 
-      // Deactivate keep awake
       try {
         deactivateKeepAwake();
         console.log('💤 [BROADCAST] Keep awake deactivated');
@@ -592,11 +685,9 @@ export default function BroadcastScreen() {
         console.warn('⚠️ [BROADCAST] Failed to deactivate keep awake:', keepAwakeError);
       }
 
-      // PRACTICE MODE: Just clean up and exit
       if (isPracticeMode) {
         console.log('🎯 [PRACTICE] Ending practice mode - no Cloudflare cleanup needed');
 
-        // CRITICAL: Explicitly restore tab bar BEFORE navigation
         const parent = navigation.getParent();
         if (parent) {
           console.log('🔄 [PRACTICE] Explicitly restoring tab bar before navigation');
@@ -605,7 +696,6 @@ export default function BroadcastScreen() {
           });
         }
 
-        // Reset state machine to IDLE
         liveStreamState.resetToIdle();
 
         Alert.alert(
@@ -621,7 +711,6 @@ export default function BroadcastScreen() {
         return;
       }
 
-      // REAL STREAM: Full cleanup
       if (!currentStream) {
         Alert.alert('Error', 'No active stream to end');
         return;
@@ -632,16 +721,16 @@ export default function BroadcastScreen() {
         streamId: currentStream.id,
       });
 
-      // Get total unique viewers
       const totalViewerCount = await viewerTrackingService.getTotalViewerCount(currentStream.id);
       if (isMountedRef.current) {
         setTotalViewers(totalViewerCount);
       }
 
-      // Clean up viewer sessions
       await viewerTrackingService.cleanupStreamViewers(currentStream.id);
 
-      // Update archive with final metrics
+      // End all guest sessions
+      await streamGuestService.endAllGuestSessions(currentStream.id);
+
       if (archiveId && streamStartTime.current) {
         const endTime = new Date().toISOString();
         const duration = liveStreamArchiveService.calculateDuration(
@@ -657,11 +746,7 @@ export default function BroadcastScreen() {
           archived_url: currentStream.playback_url,
         });
 
-        console.log('📦 [BROADCAST] Stream archive updated with metrics:', {
-          duration,
-          peakViewers,
-          totalViewers: totalViewerCount,
-        });
+        console.log('📦 [BROADCAST] Stream archive updated with metrics');
       }
 
       await cloudflareService.stopLive({
@@ -671,7 +756,6 @@ export default function BroadcastScreen() {
 
       console.log('✅ [BROADCAST] Stream ended successfully');
 
-      // Stop stream timer and update database
       if (user) {
         await stopStreamTimer(user.id);
       }
@@ -684,7 +768,6 @@ export default function BroadcastScreen() {
         streamStartTime.current = null;
       }
 
-      // CRITICAL: Explicitly restore tab bar BEFORE navigation
       const parent = navigation.getParent();
       if (parent) {
         console.log('🔄 [BROADCAST] Explicitly restoring tab bar before navigation');
@@ -693,7 +776,6 @@ export default function BroadcastScreen() {
         });
       }
 
-      // Reset state machine to IDLE
       liveStreamState.resetToIdle();
 
       Alert.alert(
@@ -774,7 +856,6 @@ export default function BroadcastScreen() {
   const handleCancel = () => {
     console.log('❌ [BROADCAST] Cancelling stream creation...');
     
-    // Reset streaming state
     if (isMountedRef.current) {
       setIsStreaming(false);
       setIsLive(false);
@@ -782,7 +863,6 @@ export default function BroadcastScreen() {
       setStreamCreationError(null);
     }
     
-    // CRITICAL: Explicitly restore tab bar BEFORE navigation
     const parent = navigation.getParent();
     if (parent) {
       console.log('🔄 [BROADCAST] Explicitly restoring tab bar before navigation');
@@ -791,16 +871,19 @@ export default function BroadcastScreen() {
       });
     }
     
-    // Reset state machine to IDLE
     liveStreamState.resetToIdle();
-    
-    // Navigate back
     router.back();
   };
 
   const handleShare = () => {
     console.log('📤 [BROADCAST] Share stream');
     setShowShareModal(true);
+  };
+
+  const handleInviteGuest = () => {
+    if (isMountedRef.current) {
+      setShowViewerList(true);
+    }
   };
 
   /* ───────────────── RENDER ───────────────── */
@@ -825,19 +908,16 @@ export default function BroadcastScreen() {
     );
   }
 
-  // Show loading state while creating stream (NOT for practice mode)
   if (isCreatingStream && !isPracticeMode) {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={commonStyles.container}>
-          {/* Camera preview in background */}
           <CameraView 
             style={StyleSheet.absoluteFill} 
             facing={facing}
           />
           
-          {/* Loading overlay */}
           <View style={styles.loadingOverlay}>
             <AppLogo size="large" alignment="center" />
             <ActivityIndicator size="large" color={colors.gradientEnd} style={styles.loadingSpinner} />
@@ -848,28 +928,22 @@ export default function BroadcastScreen() {
               <Text style={styles.loadingStep}>⏳ Creating stream...</Text>
               <Text style={styles.loadingStep}>⏳ Connecting to server...</Text>
             </View>
-            {__DEV__ && (
-              <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-            )}
           </View>
         </View>
       </>
     );
   }
 
-  // Show error state if stream creation failed
   if (streamCreationError) {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={commonStyles.container}>
-          {/* Camera preview in background */}
           <CameraView 
             style={StyleSheet.absoluteFill} 
             facing={facing}
           />
           
-          {/* Error overlay */}
           <View style={styles.errorOverlay}>
             <IconSymbol
               ios_icon_name="exclamationmark.triangle.fill"
@@ -879,9 +953,6 @@ export default function BroadcastScreen() {
             />
             <Text style={styles.errorTitle}>Failed to Start Stream</Text>
             <Text style={styles.errorMessage}>{streamCreationError}</Text>
-            {__DEV__ && (
-              <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-            )}
             <View style={styles.errorButtons}>
               <TouchableOpacity
                 style={styles.errorCancelButton}
@@ -927,26 +998,31 @@ export default function BroadcastScreen() {
           </View>
         )}
 
-        {/* CAMERA FILTER OVERLAY - Using improved component with context */}
+        {/* CAMERA FILTER OVERLAY */}
         <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
 
-        {/* VISUAL EFFECTS OVERLAY - Using improved component with context */}
+        {/* VISUAL EFFECTS OVERLAY */}
         <ImprovedVisualEffectsOverlay effect={activeEffect} />
+
+        {/* GUEST SEAT GRID (if guests are active) */}
+        {activeGuests.length > 0 && user && (
+          <GuestSeatGrid
+            hostName={user.display_name || 'Host'}
+            hostAvatarUrl={user.avatar_url}
+            guests={activeGuests}
+            streamId={currentStream?.id || ''}
+            hostId={user.id}
+            isHost={true}
+            onRefresh={loadActiveGuests}
+            onEmptySeatPress={handleInviteGuest}
+          />
+        )}
 
         {/* OVERLAY LAYER */}
         <View style={styles.overlay} pointerEvents="box-none">
           {isLive && (
             <>
-              {/* Connection Status (only for real streams) */}
-              {!isPracticeMode && (
-                <ConnectionStatusIndicator
-                  status={connectionStatus}
-                  attemptNumber={reconnectAttempt}
-                  maxAttempts={6}
-                />
-              )}
-
-              {/* TOP BAR - TikTok Style */}
+              {/* TOP BAR */}
               <View style={styles.topBar}>
                 <View style={styles.topLeft}>
                   {/* Host Avatar & Name */}
@@ -971,7 +1047,7 @@ export default function BroadcastScreen() {
                     <LiveBadge size="small" />
                   )}
 
-                  {/* Viewer Count (0 for practice mode) */}
+                  {/* Viewer Count */}
                   <TouchableOpacity 
                     style={styles.viewerCountButton}
                     onPress={() => !isPracticeMode && setShowViewerList(true)}
@@ -986,6 +1062,17 @@ export default function BroadcastScreen() {
                     />
                     <Text style={styles.viewerCountText}>{isPracticeMode ? 0 : viewerCount}</Text>
                   </TouchableOpacity>
+
+                  {/* Duration Timer - FIXED */}
+                  <View style={styles.durationBadge}>
+                    <IconSymbol
+                      ios_icon_name="clock.fill"
+                      android_material_icon_name="schedule"
+                      size={14}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.durationText}>{formatTime(liveSeconds)}</Text>
+                  </View>
                 </View>
 
                 {/* Close (End Live) Button */}
@@ -1010,28 +1097,59 @@ export default function BroadcastScreen() {
                 </View>
               )}
 
-              {/* RIGHT SIDE OVERLAYS - TikTok Style */}
+              {/* RIGHT SIDE CONTROLS - UPDATED */}
               <View style={styles.rightSideControls}>
-                {/* Likes Animation */}
-                <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
+                {/* Add Guests Button */}
+                <TouchableOpacity 
+                  style={styles.rightSideButton} 
+                  onPress={handleInviteGuest}
+                  activeOpacity={0.7}
+                >
                   <IconSymbol
-                    ios_icon_name="heart.fill"
-                    android_material_icon_name="favorite"
+                    ios_icon_name="person.badge.plus.fill"
+                    android_material_icon_name="person_add"
                     size={32}
-                    color="#FF1744"
+                    color="#FFFFFF"
                   />
-                  <Text style={styles.rightSideButtonText}>{totalLikes}</Text>
+                  <Text style={styles.rightSideButtonText}>Add Guest</Text>
+                  {activeGuests.length > 0 && (
+                    <View style={styles.guestCountBadge}>
+                      <Text style={styles.guestCountText}>{activeGuests.length}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
 
-                {/* Gifts */}
-                <TouchableOpacity style={styles.rightSideButton} activeOpacity={0.7}>
+                {/* Camera Toggle */}
+                <TouchableOpacity 
+                  style={styles.rightSideButton} 
+                  onPress={toggleCamera}
+                  activeOpacity={0.7}
+                >
                   <IconSymbol
-                    ios_icon_name="gift.fill"
-                    android_material_icon_name="card_giftcard"
+                    ios_icon_name={isCameraOn ? 'video.fill' : 'video.slash.fill'}
+                    android_material_icon_name={isCameraOn ? 'videocam' : 'videocam_off'}
                     size={32}
-                    color="#FFD700"
+                    color={isCameraOn ? '#FFFFFF' : '#FF1744'}
                   />
-                  <Text style={styles.rightSideButtonText}>{totalGifts}</Text>
+                  <Text style={styles.rightSideButtonText}>Camera</Text>
+                </TouchableOpacity>
+
+                {/* Flashlight Control */}
+                <TouchableOpacity 
+                  style={styles.rightSideButton} 
+                  onPress={toggleFlash}
+                  activeOpacity={0.7}
+                  disabled={facing !== 'back'}
+                >
+                  <IconSymbol
+                    ios_icon_name={flashMode === 'on' ? 'bolt.fill' : 'bolt.slash.fill'}
+                    android_material_icon_name={flashMode === 'on' ? 'flash_on' : 'flash_off'}
+                    size={32}
+                    color={facing === 'back' ? (flashMode === 'on' ? '#FFD700' : '#FFFFFF') : '#666666'}
+                  />
+                  <Text style={[styles.rightSideButtonText, facing !== 'back' && styles.disabledText]}>
+                    Flash
+                  </Text>
                 </TouchableOpacity>
 
                 {/* Effects */}
@@ -1064,7 +1182,22 @@ export default function BroadcastScreen() {
                   <Text style={styles.rightSideButtonText}>Filters</Text>
                 </TouchableOpacity>
 
-                {/* Share (disabled in practice mode) */}
+                {/* Settings */}
+                <TouchableOpacity 
+                  style={styles.rightSideButton} 
+                  onPress={() => setShowLiveSettings(true)}
+                  activeOpacity={0.7}
+                >
+                  <IconSymbol
+                    ios_icon_name="gearshape.fill"
+                    android_material_icon_name="settings"
+                    size={32}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.rightSideButtonText}>Settings</Text>
+                </TouchableOpacity>
+
+                {/* Share */}
                 {!isPracticeMode && (
                   <TouchableOpacity 
                     style={styles.rightSideButton} 
@@ -1082,7 +1215,7 @@ export default function BroadcastScreen() {
                 )}
               </View>
 
-              {/* BOTTOM LEFT - Chat Overlay (simulated for practice mode) */}
+              {/* BOTTOM LEFT - Chat Overlay */}
               {isPracticeMode ? (
                 <View style={styles.practiceChatOverlay}>
                   <Text style={styles.practiceChatText}>💬 Chat Preview</Text>
@@ -1095,6 +1228,8 @@ export default function BroadcastScreen() {
                   streamId={currentStream.id}
                   isBroadcaster={true}
                   streamDelay={0}
+                  hostId={user?.id}
+                  hostName={user?.display_name || 'Host'}
                 />
               ) : null}
 
@@ -1128,30 +1263,63 @@ export default function BroadcastScreen() {
                   />
                 </TouchableOpacity>
 
-                {/* Settings */}
+                {/* Host Dashboard */}
                 <TouchableOpacity
                   style={styles.bottomControlButton}
-                  onPress={() => setShowLiveSettings(true)}
+                  onPress={() => setShowHostDashboard(true)}
                   activeOpacity={0.7}
                 >
                   <IconSymbol
-                    ios_icon_name="gearshape.fill"
-                    android_material_icon_name="settings"
+                    ios_icon_name="slider.horizontal.3"
+                    android_material_icon_name="tune"
                     size={24}
                     color="#FFFFFF"
                   />
                 </TouchableOpacity>
               </View>
 
-              {/* STATE MACHINE DEBUG (Remove in production) */}
-              {__DEV__ && (
-                <View style={styles.debugContainer}>
-                  <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
-                  <Text style={styles.debugText}>Mode: {isPracticeMode ? 'PRACTICE' : 'LIVE'}</Text>
-                  <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
-                  <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
+              {/* BOTTOM METRICS BAR - REPLACES DEBUG TEXT */}
+              <View style={styles.metricsBar}>
+                {/* Network Quality */}
+                <View style={styles.metricItem}>
+                  <IconSymbol
+                    ios_icon_name="wifi"
+                    android_material_icon_name="wifi"
+                    size={16}
+                    color={
+                      networkQuality === 'Good' ? '#00FF00' :
+                      networkQuality === 'Medium' ? '#FFA500' : '#FF0000'
+                    }
+                  />
+                  <Text style={styles.metricText}>{networkQuality}</Text>
                 </View>
-              )}
+
+                {/* FPS */}
+                <View style={styles.metricItem}>
+                  <IconSymbol
+                    ios_icon_name="speedometer"
+                    android_material_icon_name="speed"
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.metricText}>{currentFPS} FPS</Text>
+                </View>
+
+                {/* Viewer Count */}
+                <TouchableOpacity 
+                  style={styles.metricItem}
+                  onPress={() => setShowViewerRanking(true)}
+                  disabled={isPracticeMode}
+                >
+                  <IconSymbol
+                    ios_icon_name="person.2.fill"
+                    android_material_icon_name="people"
+                    size={16}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.metricText}>{viewerCount} viewers</Text>
+                </TouchableOpacity>
+              </View>
             </>
           )}
         </View>
@@ -1169,7 +1337,7 @@ export default function BroadcastScreen() {
           />
         ))}
 
-        {/* VIEWER LIST MODAL (disabled in practice mode) */}
+        {/* VIEWER LIST MODAL */}
         {currentStream && user && !isPracticeMode && (
           <ViewerListModal
             visible={showViewerList}
@@ -1183,13 +1351,33 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* EFFECTS PANEL - Using improved component with context */}
+        {/* VIEWER RANKING MODAL */}
+        {!isPracticeMode && (
+          <ViewerRankingModal
+            visible={showViewerRanking}
+            onClose={() => setShowViewerRanking(false)}
+            topViewers={topViewers}
+            totalViewers={viewerCount}
+          />
+        )}
+
+        {/* HOST DASHBOARD */}
+        {currentStream && user && (
+          <HostControlDashboard
+            visible={showHostDashboard}
+            onClose={() => setShowHostDashboard(false)}
+            streamId={currentStream.id}
+            hostId={user.id}
+          />
+        )}
+
+        {/* EFFECTS PANEL */}
         <ImprovedEffectsPanel
           visible={showEffectsPanel}
           onClose={() => setShowEffectsPanel(false)}
         />
 
-        {/* FILTERS PANEL - Using improved component with context */}
+        {/* FILTERS PANEL */}
         <ImprovedFiltersPanel
           visible={showFiltersPanel}
           onClose={() => setShowFiltersPanel(false)}
@@ -1206,9 +1394,11 @@ export default function BroadcastScreen() {
           totalGifts={totalGifts}
           totalLikes={totalLikes}
           isPracticeMode={isPracticeMode}
+          giftGoal={params.giftGoal}
+          roastGoalViewers={params.roastGoalViewers}
         />
 
-        {/* SHARE MODAL (disabled in practice mode) */}
+        {/* SHARE MODAL */}
         {!isPracticeMode && (
           <ShareModal
             visible={showShareModal}
@@ -1261,6 +1451,94 @@ export default function BroadcastScreen() {
   );
 }
 
+/* ───────────────── VIEWER RANKING MODAL ───────────────── */
+
+interface ViewerRankingModalProps {
+  visible: boolean;
+  onClose: () => void;
+  topViewers: ViewerRanking[];
+  totalViewers: number;
+}
+
+function ViewerRankingModal({ visible, onClose, topViewers, totalViewers }: ViewerRankingModalProps) {
+  const formatWatchTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.settingsOverlay}>
+        <View style={styles.settingsPanel}>
+          <View style={styles.settingsHeader}>
+            <Text style={styles.settingsTitle}>Top Viewers</Text>
+            <TouchableOpacity onPress={onClose}>
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.rankingInfo}>
+            <Text style={styles.rankingInfoText}>
+              Showing top {Math.min(topViewers.length, 100)} viewers by watch time
+            </Text>
+            <Text style={styles.rankingInfoSubtext}>
+              Total viewers: {totalViewers}
+            </Text>
+          </View>
+
+          <ScrollView style={styles.rankingList} showsVerticalScrollIndicator={false}>
+            {topViewers.length === 0 ? (
+              <View style={styles.emptyRanking}>
+                <IconSymbol
+                  ios_icon_name="person.2.slash"
+                  android_material_icon_name="people_outline"
+                  size={48}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.emptyText}>No viewers yet</Text>
+              </View>
+            ) : (
+              topViewers.map((viewer, index) => (
+                <View key={viewer.user_id} style={styles.rankingItem}>
+                  <View style={styles.rankBadge}>
+                    <Text style={styles.rankNumber}>#{index + 1}</Text>
+                  </View>
+                  <View style={styles.viewerAvatar}>
+                    <IconSymbol
+                      ios_icon_name="person.fill"
+                      android_material_icon_name="person"
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </View>
+                  <View style={styles.viewerDetails}>
+                    <Text style={styles.viewerName}>{viewer.display_name}</Text>
+                    <Text style={styles.watchTime}>{formatWatchTime(viewer.watch_time_seconds)}</Text>
+                  </View>
+                  {index < 3 && (
+                    <IconSymbol
+                      ios_icon_name="trophy.fill"
+                      android_material_icon_name="emoji_events"
+                      size={20}
+                      color={index === 0 ? '#FFD700' : index === 1 ? '#C0C0C0' : '#CD7F32'}
+                    />
+                  )}
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 /* ───────────────── LIVE SETTINGS MODAL ───────────────── */
 
 interface LiveSettingsModalProps {
@@ -1273,6 +1551,8 @@ interface LiveSettingsModalProps {
   totalGifts: number;
   totalLikes: number;
   isPracticeMode: boolean;
+  giftGoal?: string;
+  roastGoalViewers?: string;
 }
 
 function LiveSettingsModal({
@@ -1285,6 +1565,8 @@ function LiveSettingsModal({
   totalGifts,
   totalLikes,
   isPracticeMode,
+  giftGoal,
+  roastGoalViewers,
 }: LiveSettingsModalProps) {
   const formatTime = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -1314,6 +1596,12 @@ function LiveSettingsModal({
               <View style={styles.infoCard}>
                 <Text style={styles.infoTitle}>{streamTitle}</Text>
                 <View style={styles.infoRow}>
+                  <IconSymbol
+                    ios_icon_name="clock.fill"
+                    android_material_icon_name="schedule"
+                    size={16}
+                    color={colors.brandPrimary}
+                  />
                   <Text style={styles.infoText}>Duration: {formatTime(liveSeconds)}</Text>
                 </View>
                 {isPracticeMode && (
@@ -1331,6 +1619,45 @@ function LiveSettingsModal({
                 )}
               </View>
             </View>
+
+            {/* Goals Progress */}
+            {(giftGoal || roastGoalViewers) && (
+              <View style={styles.settingSection}>
+                <Text style={styles.settingLabel}>Goals Progress</Text>
+                {giftGoal && (
+                  <View style={styles.goalProgressCard}>
+                    <IconSymbol
+                      ios_icon_name="gift.fill"
+                      android_material_icon_name="card_giftcard"
+                      size={20}
+                      color="#FFD700"
+                    />
+                    <View style={styles.goalProgressInfo}>
+                      <Text style={styles.goalProgressLabel}>Gift Goal</Text>
+                      <Text style={styles.goalProgressValue}>{giftGoal}</Text>
+                      <Text style={styles.goalProgressCurrent}>Current: {totalGifts} gifts</Text>
+                    </View>
+                  </View>
+                )}
+                {roastGoalViewers && parseInt(roastGoalViewers, 10) > 0 && (
+                  <View style={styles.goalProgressCard}>
+                    <IconSymbol
+                      ios_icon_name="flame.fill"
+                      android_material_icon_name="whatshot"
+                      size={20}
+                      color="#FF6B00"
+                    />
+                    <View style={styles.goalProgressInfo}>
+                      <Text style={styles.goalProgressLabel}>Roast Goal</Text>
+                      <Text style={styles.goalProgressValue}>{roastGoalViewers} viewers</Text>
+                      <Text style={styles.goalProgressCurrent}>
+                        Current: {viewerCount} / {roastGoalViewers}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
 
             {/* Live Stats */}
             <View style={styles.settingSection}>
@@ -1379,34 +1706,6 @@ function LiveSettingsModal({
                   <Text style={styles.statLabel}>Likes</Text>
                 </View>
               </View>
-            </View>
-
-            {/* Moderator Management */}
-            <View style={styles.settingSection}>
-              <Text style={styles.settingLabel}>Moderators</Text>
-              <TouchableOpacity style={styles.manageButton}>
-                <Text style={styles.manageButtonText}>Manage Moderators</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron_right"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Pin Messages */}
-            <View style={styles.settingSection}>
-              <Text style={styles.settingLabel}>Pinned Messages</Text>
-              <TouchableOpacity style={styles.manageButton}>
-                <Text style={styles.manageButtonText}>Manage Pinned Messages</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron_right"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
             </View>
           </ScrollView>
 
@@ -1612,6 +1911,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+    flexWrap: 'wrap',
   },
   hostInfo: {
     flexDirection: 'row',
@@ -1661,6 +1961,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  durationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    gap: 4,
+  },
+  durationText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   closeButton: {
     width: 36,
     height: 36,
@@ -1686,6 +2000,7 @@ const styles = StyleSheet.create({
   rightSideButton: {
     alignItems: 'center',
     gap: 4,
+    position: 'relative',
   },
   rightSideButtonText: {
     fontSize: 12,
@@ -1694,6 +2009,27 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  disabledText: {
+    color: '#666666',
+  },
+  guestCountBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: colors.gradientEnd,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  guestCountText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   practiceChatOverlay: {
     position: 'absolute',
@@ -1742,19 +2078,28 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(164, 0, 40, 0.8)',
     borderColor: colors.brandPrimary,
   },
-  debugContainer: {
+  metricsBar: {
     position: 'absolute',
     bottom: 60,
-    left: 20,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 8,
-    padding: 8,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     zIndex: 100,
   },
-  debugText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#00FF00',
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metricText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   modal: {
     ...StyleSheet.absoluteFillObject,
@@ -1855,8 +2200,8 @@ const styles = StyleSheet.create({
   },
   infoRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   infoText: {
     fontSize: 14,
@@ -1879,6 +2224,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: colors.text,
+  },
+  goalProgressCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    gap: 12,
+  },
+  goalProgressInfo: {
+    flex: 1,
+  },
+  goalProgressLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  goalProgressValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  goalProgressCurrent: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.brandPrimary,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -1903,22 +2277,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.textSecondary,
-  },
-  manageButton: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  manageButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
   },
   settingsFooter: {
     padding: 20,
@@ -1956,5 +2314,80 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.text,
+  },
+  rankingInfo: {
+    padding: 16,
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  rankingInfoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  rankingInfoSubtext: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.textSecondary,
+  },
+  rankingList: {
+    maxHeight: 500,
+    padding: 16,
+  },
+  emptyRanking: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  rankingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  rankBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.brandPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankNumber: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  viewerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerDetails: {
+    flex: 1,
+  },
+  viewerName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  watchTime: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
   },
 });

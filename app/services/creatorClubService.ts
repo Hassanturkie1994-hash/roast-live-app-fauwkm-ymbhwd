@@ -46,17 +46,14 @@ class CreatorClubService {
     currency: string = 'SEK'
   ): Promise<{ success: boolean; error?: string; data?: CreatorClub }> {
     try {
-      // Validate tag length
       if (tag.length > 5) {
         return { success: false, error: 'Tag must be 5 characters or less' };
       }
 
-      // Validate name length
       if (name.length > 32) {
         return { success: false, error: 'Name must be 32 characters or less' };
       }
 
-      // Check if club already exists
       const existing = await this.getClubByCreator(creatorId);
       if (existing) {
         return { success: false, error: 'You already have a creator club' };
@@ -160,7 +157,14 @@ class CreatorClubService {
   }
 
   /**
-   * Get all creator clubs for a creator (NEW METHOD - fixes undefined error)
+   * Get creator club (alias for getClubByCreator for compatibility)
+   */
+  async getCreatorClub(creatorId: string): Promise<CreatorClub | null> {
+    return this.getClubByCreator(creatorId);
+  }
+
+  /**
+   * Get all creator clubs for a creator
    * Returns array of clubs (typically just one per creator)
    */
   async getCreatorClubs(creatorId: string): Promise<{ success: boolean; error?: string; data?: CreatorClub[] }> {
@@ -217,13 +221,11 @@ class CreatorClubService {
     memberId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Check if already a member
       const isMember = await this.isMember(clubId, memberId);
       if (isMember) {
         return { success: false, error: 'You are already a member of this club' };
       }
 
-      // Calculate renewal date (1 month from now)
       const renewsAt = new Date();
       renewsAt.setMonth(renewsAt.getMonth() + 1);
 
@@ -260,7 +262,6 @@ class CreatorClubService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       if (immediate) {
-        // Immediately deactivate
         const { error } = await supabase
           .from('creator_club_memberships')
           .update({
@@ -275,7 +276,6 @@ class CreatorClubService {
           return { success: false, error: error.message };
         }
       } else {
-        // Cancel at period end
         const { error } = await supabase
           .from('creator_club_memberships')
           .update({
@@ -317,7 +317,6 @@ class CreatorClubService {
 
       if (!data) return false;
 
-      // Check if subscription is still active
       if (!data.is_active) return false;
 
       const renewsAt = new Date(data.renews_at);
@@ -361,7 +360,6 @@ class CreatorClubService {
         return [];
       }
 
-      // Filter out expired subscriptions
       const now = new Date();
       return (data as CreatorClubMembership[]).filter((member) => {
         const renewsAt = new Date(member.renews_at);

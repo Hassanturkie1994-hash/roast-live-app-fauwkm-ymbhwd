@@ -25,12 +25,16 @@ interface ChatOverlayProps {
   streamId: string;
   isBroadcaster?: boolean;
   streamDelay?: number;
+  hostId?: string;
+  hostName?: string;
 }
 
 export default function ChatOverlay({ 
   streamId, 
   isBroadcaster = false,
-  streamDelay = 0 
+  streamDelay = 0,
+  hostId,
+  hostName = 'Host',
 }: ChatOverlayProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -42,14 +46,12 @@ export default function ChatOverlay({
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const isMountedRef = useRef(true);
 
-  // Debug indicator
   const [debugVisible, setDebugVisible] = useState(true);
 
   useEffect(() => {
     isMountedRef.current = true;
     console.log('🎨 ChatOverlay mounted for stream:', streamId);
     
-    // Hide debug indicator after 3 seconds
     const debugTimer = setTimeout(() => {
       if (isMountedRef.current) {
         setDebugVisible(false);
@@ -98,7 +100,6 @@ export default function ChatOverlay({
 
     console.log('🔌 Subscribing to chat channel:', `stream:${streamId}:chat`);
 
-    // Use broadcast channel for real-time chat (more scalable and reliable)
     const channel = supabase
       .channel(`stream:${streamId}:chat`)
       .on('broadcast', { event: 'new_message' }, (payload) => {
@@ -108,13 +109,11 @@ export default function ChatOverlay({
         
         const newMessage = payload.payload as ChatMessage;
         
-        // Apply stream delay for non-broadcasters
         if (!isBroadcaster && streamDelay > 0) {
           setTimeout(() => {
             if (isMountedRef.current) {
               setMessages((prev) => [...prev, newMessage]);
               
-              // Fade animation for new messages
               Animated.sequence([
                 Animated.timing(fadeAnim, {
                   toValue: 0.5,
@@ -132,7 +131,6 @@ export default function ChatOverlay({
         } else {
           setMessages((prev) => [...prev, newMessage]);
           
-          // Fade animation for new messages
           Animated.sequence([
             Animated.timing(fadeAnim, {
               toValue: 0.5,
@@ -159,7 +157,6 @@ export default function ChatOverlay({
   }, [streamId, isBroadcaster, streamDelay, fadeAnim]);
 
   useEffect(() => {
-    // Always fetch recent messages and subscribe when component mounts
     fetchRecentMessages();
     subscribeToChat();
 
@@ -176,7 +173,6 @@ export default function ChatOverlay({
   }, [fetchRecentMessages, subscribeToChat]);
 
   useEffect(() => {
-    // Auto-scroll to bottom when new messages arrive
     if (messages.length > 0) {
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -192,7 +188,6 @@ export default function ChatOverlay({
     try {
       console.log('📤 Sending message:', trimmedMessage);
       
-      // Insert message into database
       const { data: newMessage, error } = await supabase
         .from('chat_messages')
         .insert({
@@ -210,7 +205,6 @@ export default function ChatOverlay({
 
       console.log('✅ Message saved to database');
 
-      // Broadcast the message to all viewers
       if (channelRef.current && newMessage && isMountedRef.current) {
         await channelRef.current.send({
           type: 'broadcast',
@@ -228,24 +222,32 @@ export default function ChatOverlay({
     }
   };
 
-  const renderMessage = (msg: ChatMessage, index: number) => (
-    <Animated.View
-      key={index}
-      style={[
-        styles.chatMessage,
-        index === messages.length - 1 && { opacity: fadeAnim },
-      ]}
-    >
-      <Text style={styles.chatUsername}>{msg.users.display_name}:</Text>
-      <Text style={styles.chatText}>{msg.message}</Text>
-    </Animated.View>
-  );
+  const renderMessage = (msg: ChatMessage, index: number) => {
+    const isHost = msg.user_id === hostId;
+    
+    return (
+      <Animated.View
+        key={index}
+        style={[
+          styles.chatMessage,
+          index === messages.length - 1 && { opacity: fadeAnim },
+        ]}
+      >
+        <Text style={styles.chatUsername}>
+          <Text style={isHost ? styles.hostUsername : undefined}>
+            {msg.users.display_name}
+          </Text>
+          {isHost && <Text style={styles.hostLabel}> - Host</Text>}
+          :
+        </Text>
+        <Text style={styles.chatText}>{msg.message}</Text>
+      </Animated.View>
+    );
+  };
 
   if (isBroadcaster) {
-    // Broadcaster view - compact chat on the left side
     return (
       <View style={styles.broadcasterChatContainer} pointerEvents="box-none">
-        {/* Debug indicator */}
         {debugVisible && (
           <View style={styles.debugIndicator}>
             <Text style={styles.debugText}>
@@ -263,18 +265,42 @@ export default function ChatOverlay({
         >
           {messages.slice(-10).map(renderMessage)}
         </ScrollView>
+
+        {/* Host Chat Input */}
+        <View style={styles.hostChatInputContainer}>
+          <TextInput
+            style={styles.hostChatInput}
+            placeholder="Send a message..."
+            placeholderTextColor="rgba(255, 255, 255, 0.5)"
+            value={messageText}
+            onChangeText={setMessageText}
+            onSubmitEditing={handleSendMessage}
+            returnKeyType="send"
+            editable={!!user}
+          />
+          <TouchableOpacity 
+            style={styles.hostSendButton} 
+            onPress={handleSendMessage}
+            disabled={!user || !messageText.trim()}
+          >
+            <IconSymbol
+              ios_icon_name="paperplane.fill"
+              android_material_icon_name="send"
+              size={18}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
-  // Viewer view - expandable chat
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.viewerChatContainer, isExpanded && styles.viewerChatExpanded]}
       pointerEvents="box-none"
     >
-      {/* Debug indicator */}
       {debugVisible && (
         <View style={styles.debugIndicator}>
           <Text style={styles.debugText}>
@@ -347,11 +373,12 @@ const styles = StyleSheet.create({
     left: 16,
     bottom: 140,
     width: '55%',
-    maxHeight: 250,
+    maxHeight: 300,
     zIndex: 100,
   },
   broadcasterChatMessages: {
-    maxHeight: 250,
+    maxHeight: 200,
+    marginBottom: 8,
   },
   chatMessagesContent: {
     paddingBottom: 8,
@@ -369,10 +396,42 @@ const styles = StyleSheet.create({
     color: colors.gradientEnd,
     marginBottom: 2,
   },
+  hostUsername: {
+    color: '#FF0000',
+    fontWeight: '800',
+  },
+  hostLabel: {
+    color: '#FF0000',
+    fontWeight: '800',
+    fontSize: 11,
+  },
   chatText: {
     fontSize: 14,
     fontWeight: '400',
     color: colors.text,
+  },
+  hostChatInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 25,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  hostChatInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  hostSendButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.brandPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   viewerChatContainer: {
     position: 'absolute',
