@@ -25,6 +25,7 @@ interface UserSearchResult {
   display_name: string | null;
   avatar_url: string | null;
   role: string | null;
+  email: string | null;
 }
 
 export default function HeadAdminDashboardScreen() {
@@ -54,6 +55,7 @@ export default function HeadAdminDashboardScreen() {
   const [actionReason, setActionReason] = useState('');
   const [actionNote, setActionNote] = useState('');
   const [timeoutDuration, setTimeoutDuration] = useState(60);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     checkAccess();
@@ -106,22 +108,22 @@ export default function HeadAdminDashboardScreen() {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url, role')
-        .or(`username.ilike.%${searchQuery}%,display_name.ilike.%${searchQuery}%,id.eq.${searchQuery}`)
-        .limit(10);
+      setSearching(true);
+      
+      // Use the new adminService.searchUsers method
+      const result = await adminService.searchUsers(searchQuery);
 
-      if (error) {
-        console.error('Error searching users:', error);
-        Alert.alert('Error', 'Failed to search users');
+      if (!result.success) {
+        Alert.alert('Error', result.error || 'Failed to search users');
         return;
       }
 
-      setSearchResults(data || []);
+      setSearchResults(result.users || []);
     } catch (error) {
       console.error('Error in handleSearchUsers:', error);
       Alert.alert('Error', 'Failed to search users');
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -386,6 +388,10 @@ export default function HeadAdminDashboardScreen() {
             />
             <Text style={[styles.actionButtonText, { color: colors.text }]}>Search Users</Text>
           </TouchableOpacity>
+          
+          <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+            Search by username, display name, email, or user ID
+          </Text>
         </View>
 
         {/* Reports Overview */}
@@ -557,7 +563,7 @@ export default function HeadAdminDashboardScreen() {
               <View style={styles.searchContainer}>
                 <TextInput
                   style={[styles.searchInput, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-                  placeholder="Username, User ID, or Email"
+                  placeholder="Username, Display Name, Email, or User ID"
                   placeholderTextColor={colors.textSecondary}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -566,13 +572,18 @@ export default function HeadAdminDashboardScreen() {
                 <TouchableOpacity
                   style={[styles.searchButton, { backgroundColor: colors.brandPrimary }]}
                   onPress={handleSearchUsers}
+                  disabled={searching}
                 >
-                  <IconSymbol
-                    ios_icon_name="magnifyingglass"
-                    android_material_icon_name="search"
-                    size={20}
-                    color="#FFFFFF"
-                  />
+                  {searching ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <IconSymbol
+                      ios_icon_name="magnifyingglass"
+                      android_material_icon_name="search"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -597,6 +608,11 @@ export default function HeadAdminDashboardScreen() {
                         <Text style={[styles.searchResultUsername, { color: colors.textSecondary }]}>
                           @{result.username}
                         </Text>
+                        {result.email && (
+                          <Text style={[styles.searchResultEmail, { color: colors.textSecondary }]}>
+                            {result.email}
+                          </Text>
+                        )}
                       </View>
                     </View>
                     <IconSymbol
@@ -918,6 +934,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  helperText: {
+    fontSize: 12,
+    fontWeight: '400',
+    fontStyle: 'italic',
+    marginTop: -8,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1030,6 +1052,11 @@ const styles = StyleSheet.create({
   searchResultUsername: {
     fontSize: 14,
     fontWeight: '400',
+  },
+  searchResultEmail: {
+    fontSize: 12,
+    fontWeight: '400',
+    fontStyle: 'italic',
   },
   actionTypeContainer: {
     flexDirection: 'row',

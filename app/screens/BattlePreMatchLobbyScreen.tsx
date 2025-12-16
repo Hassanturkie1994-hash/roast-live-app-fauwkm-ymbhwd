@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Image,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
@@ -19,6 +20,15 @@ import { battleService, BattleLobby } from '@/app/services/battleService';
 import { supabase } from '@/app/integrations/supabase/client';
 import ChatOverlay from '@/components/ChatOverlay';
 
+interface PlayerData {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  isReady: boolean;
+  isHost: boolean;
+}
+
 export default function BattlePreMatchLobbyScreen() {
   const { lobbyId } = useLocalSearchParams<{ lobbyId: string }>();
   const { user } = useAuth();
@@ -29,6 +39,7 @@ export default function BattlePreMatchLobbyScreen() {
   const [facing, setFacing] = useState<CameraType>('front');
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
+  const [playersData, setPlayersData] = useState<PlayerData[]>([]);
   const channelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
 
@@ -51,12 +62,45 @@ export default function BattlePreMatchLobbyScreen() {
 
       if (isMountedRef.current) {
         setLobby(data as BattleLobby);
+        
+        // Fetch player data
+        if (data.team_a_players && data.team_a_players.length > 0) {
+          await fetchPlayersData(data.team_a_players, data.host_id);
+        }
+        
         setIsLoading(false);
       }
     } catch (error) {
       console.error('❌ Exception fetching lobby:', error);
     }
   }, [lobbyId, user]);
+
+  const fetchPlayersData = async (playerIds: string[], hostId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', playerIds);
+
+      if (error) {
+        console.error('❌ Error fetching players data:', error);
+        return;
+      }
+
+      const players: PlayerData[] = (data || []).map((profile) => ({
+        id: profile.id,
+        username: profile.username || 'Unknown',
+        display_name: profile.display_name,
+        avatar_url: profile.avatar_url,
+        isReady: true, // In pre-match lobby, all joined players are considered ready
+        isHost: profile.id === hostId,
+      }));
+
+      setPlayersData(players);
+    } catch (error) {
+      console.error('❌ Exception fetching players data:', error);
+    }
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -139,22 +183,114 @@ export default function BattlePreMatchLobbyScreen() {
     setIsCameraOn((prev) => !prev);
   };
 
-  const getPlayerTiles = () => {
+  const getPlayerSlots = () => {
     if (!lobby) return [];
     
     const maxPlayers = lobby.max_players_per_team;
-    const tiles = [];
+    const slots: Array<{ index: number; player: PlayerData | null }> = [];
     
     for (let i = 0; i < maxPlayers; i++) {
-      const playerId = lobby.team_a_players[i];
-      tiles.push({
+      const player = playersData[i] || null;
+      slots.push({
         index: i,
-        playerId: playerId || null,
-        isHost: playerId === lobby.host_id,
+        player,
       });
     }
     
-    return tiles;
+    return slots;
+  };
+
+  const renderPlayerSlot = (slot: { index: number; player: PlayerData | null }) => {
+    const { player } = slot;
+
+    if (!player) {
+      // Empty slot
+      return (
+        <View
+          key={slot.index}
+          style={[
+            styles.playerTile,
+            {
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            },
+          ]}
+        >
+          <View style={styles.emptyTileContent}>
+            <IconSymbol
+              ios_icon_name="person.badge.plus"
+              android_material_icon_name="person_add"
+              size={32}
+              color="rgba(255, 255, 255, 0.4)"
+            />
+            <Text style={styles.emptyTileText}>Waiting...</Text>
+          </View>
+        </View>
+      );
+    }
+
+    // Player slot with data
+    return (
+      <View
+        key={slot.index}
+        style={[
+          styles.playerTile,
+          {
+            backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            borderColor: player.isHost ? '#FFD700' : 'rgba(255, 255, 255, 0.2)',
+            borderWidth: player.isHost ? 3 : 2,
+          },
+        ]}
+      >
+        {/* Avatar */}
+        {player.avatar_url ? (
+          <Image
+            source={{ uri: player.avatar_url }}
+            style={styles.playerAvatar}
+          />
+        ) : (
+          <View style={[styles.playerAvatar, styles.placeholderAvatar]}>
+            <IconSymbol
+              ios_icon_name="person.fill"
+              android_material_icon_name="person"
+              size={32}
+              color="#FFFFFF"
+            />
+          </View>
+        )}
+
+        {/* Username */}
+        <Text style={styles.playerUsername} numberOfLines={1}>
+          {player.display_name || player.username}
+          {player.isHost && ' 👑'}
+        </Text>
+
+        {/* Ready indicator */}
+        <View style={[styles.readyBadge, { backgroundColor: player.isReady ? '#00C853' : '#FFA500' }]}>
+          <Text style={styles.readyText}>{player.isReady ? 'READY' : 'NOT READY'}</Text>
+        </View>
+
+        {/* Mic/Camera indicators */}
+        <View style={styles.playerTileControls}>
+          <View style={[styles.controlIndicator, { backgroundColor: 'rgba(0, 255, 0, 0.8)' }]}>
+            <IconSymbol
+              ios_icon_name="mic.fill"
+              android_material_icon_name="mic"
+              size={12}
+              color="#FFFFFF"
+            />
+          </View>
+          <View style={[styles.controlIndicator, { backgroundColor: 'rgba(0, 255, 0, 0.8)' }]}>
+            <IconSymbol
+              ios_icon_name="video.fill"
+              android_material_icon_name="videocam"
+              size={12}
+              color="#FFFFFF"
+            />
+          </View>
+        </View>
+      </View>
+    );
   };
 
   if (!permission?.granted) {
@@ -198,7 +334,7 @@ export default function BattlePreMatchLobbyScreen() {
     );
   }
 
-  const playerTiles = getPlayerTiles();
+  const playerSlots = getPlayerSlots();
 
   return (
     <View style={styles.container}>
@@ -228,76 +364,25 @@ export default function BattlePreMatchLobbyScreen() {
             <Text style={styles.liveText}>PRE-MATCH LOBBY</Text>
           </View>
           <Text style={styles.formatText}>{lobby.format.toUpperCase()}</Text>
+          <Text style={styles.playerCountText}>
+            {playersData.length}/{lobby.max_players_per_team} Players
+          </Text>
         </View>
         <View style={styles.placeholder} />
       </View>
 
       {/* Player Tiles Grid */}
       <View style={styles.tilesContainer}>
-        {playerTiles.map((tile) => (
-          <View
-            key={tile.index}
-            style={[
-              styles.playerTile,
-              {
-                backgroundColor: tile.playerId ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.6)',
-                borderColor: tile.isHost ? '#FFD700' : 'rgba(255, 255, 255, 0.2)',
-              },
-            ]}
-          >
-            {tile.playerId ? (
-              <>
-                <View style={styles.playerTileContent}>
-                  <IconSymbol
-                    ios_icon_name="person.fill"
-                    android_material_icon_name="person"
-                    size={32}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.playerTileName}>
-                    Player {tile.index + 1}
-                    {tile.isHost && ' 👑'}
-                  </Text>
-                </View>
-                {/* Mic/Camera indicators */}
-                <View style={styles.playerTileControls}>
-                  <View style={[styles.controlIndicator, { backgroundColor: 'rgba(0, 255, 0, 0.8)' }]}>
-                    <IconSymbol
-                      ios_icon_name="mic.fill"
-                      android_material_icon_name="mic"
-                      size={12}
-                      color="#FFFFFF"
-                    />
-                  </View>
-                  <View style={[styles.controlIndicator, { backgroundColor: 'rgba(0, 255, 0, 0.8)' }]}>
-                    <IconSymbol
-                      ios_icon_name="video.fill"
-                      android_material_icon_name="videocam"
-                      size={12}
-                      color="#FFFFFF"
-                    />
-                  </View>
-                </View>
-              </>
-            ) : (
-              <View style={styles.emptyTileContent}>
-                <IconSymbol
-                  ios_icon_name="person.badge.plus"
-                  android_material_icon_name="person_add"
-                  size={32}
-                  color="rgba(255, 255, 255, 0.4)"
-                />
-                <Text style={styles.emptyTileText}>Waiting...</Text>
-              </View>
-            )}
-          </View>
-        ))}
+        {playerSlots.map((slot) => renderPlayerSlot(slot))}
       </View>
 
       {/* Status Message */}
       <View style={styles.statusContainer}>
         <Text style={styles.statusText}>
-          {lobby.status === 'waiting' && '⏳ Waiting for all players to join...'}
+          {lobby.status === 'waiting' && playersData.length < lobby.max_players_per_team && 
+            `⏳ Waiting for ${lobby.max_players_per_team - playersData.length} more player${lobby.max_players_per_team - playersData.length > 1 ? 's' : ''}...`}
+          {lobby.status === 'waiting' && playersData.length === lobby.max_players_per_team && 
+            '✅ Team full! Ready to search for opponents...'}
           {lobby.status === 'searching' && '🔍 Searching for opponents...'}
           {lobby.status === 'matched' && '✅ Match found! Waiting for acceptance...'}
         </Text>
@@ -429,6 +514,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  playerCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
   placeholder: {
     width: 40,
   },
@@ -442,20 +532,39 @@ const styles = StyleSheet.create({
   },
   playerTile: {
     width: '48%',
-    aspectRatio: 1,
+    aspectRatio: 0.75,
     borderRadius: 12,
     borderWidth: 2,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  playerTileContent: {
-    alignItems: 'center',
+    padding: 12,
     gap: 8,
   },
-  playerTileName: {
+  playerAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  placeholderAvatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playerUsername: {
     fontSize: 14,
     fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  readyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  readyText: {
+    fontSize: 10,
+    fontWeight: '800',
     color: '#FFFFFF',
   },
   playerTileControls: {

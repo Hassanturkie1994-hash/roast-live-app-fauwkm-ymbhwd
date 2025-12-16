@@ -105,6 +105,46 @@ class AdminService {
     }
   }
 
+  // Search users by username, display name, or email (not just UUID)
+  async searchUsers(query: string): Promise<{ success: boolean; users?: any[]; error?: string }> {
+    try {
+      if (!query.trim()) {
+        return { success: true, users: [] };
+      }
+
+      // Check if query is a valid UUID
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUUID = uuidRegex.test(query);
+
+      let searchQuery = supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, role, email');
+
+      if (isUUID) {
+        // If it's a UUID, search by ID
+        searchQuery = searchQuery.eq('id', query);
+      } else {
+        // Otherwise, search by username, display_name, or email (case-insensitive)
+        searchQuery = searchQuery.or(
+          `username.ilike.%${query}%,display_name.ilike.%${query}%,email.ilike.%${query}%`
+        );
+      }
+
+      const { data, error } = await searchQuery.limit(10);
+
+      if (error) {
+        console.error('❌ Error searching users:', error);
+        throw error;
+      }
+
+      return { success: true, users: data || [] };
+    } catch (error) {
+      console.error('❌ Error in searchUsers:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to search users';
+      return { success: false, error: errorMessage };
+    }
+  }
+
   // Assign admin role
   async assignAdminRole(
     userId: string,
