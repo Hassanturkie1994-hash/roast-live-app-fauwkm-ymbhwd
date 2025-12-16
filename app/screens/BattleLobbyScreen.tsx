@@ -317,6 +317,20 @@ export default function BattleLobbyScreen() {
             <Text style={[styles.matchedSubtext, { color: colors.textSecondary }]}>
               Waiting for all players to accept...
             </Text>
+            <View style={styles.acceptButtonContainer}>
+              <GradientButton
+                title="ACCEPT MATCH"
+                onPress={async () => {
+                  // TODO: Accept match logic
+                  // For now, navigate to pre-match lobby
+                  router.push({
+                    pathname: '/screens/BattlePreMatchLobbyScreen',
+                    params: { lobbyId: lobby.id },
+                  });
+                }}
+                size="large"
+              />
+            </View>
           </View>
         )}
       </View>
@@ -504,5 +518,9 @@ const styles = StyleSheet.create({
   matchedSubtext: {
     fontSize: 14,
     fontWeight: '400',
+  },
+  acceptButtonContainer: {
+    width: '100%',
+    marginTop: 12,
   },
 });
