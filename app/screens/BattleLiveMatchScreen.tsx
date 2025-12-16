@@ -15,11 +15,10 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { battleService, BattleLobby, BattleMatch } from '@/app/services/battleService';
+import { battleService, BattleLobby, BattleMatch, MatchDuration } from '@/app/services/battleService';
 import { supabase } from '@/app/integrations/supabase/client';
 import ChatOverlay from '@/components/ChatOverlay';
-
-type MatchDuration = 3 | 6 | 12 | 22 | 30;
+import EnhancedGiftOverlay from '@/components/EnhancedGiftOverlay';
 
 export default function BattleLiveMatchScreen() {
   const { lobbyId } = useLocalSearchParams<{ lobbyId: string }>();
@@ -42,6 +41,9 @@ export default function BattleLiveMatchScreen() {
   // Timer states
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  
+  // Gift overlay state
+  const [showGiftOverlay, setShowGiftOverlay] = useState(false);
   
   const channelRef = useRef<any>(null);
   const isMountedRef = useRef(true);
@@ -81,14 +83,28 @@ export default function BattleLiveMatchScreen() {
         setIsLoading(false);
         
         // Determine if user is battle leader
-        // TODO: Implement premium user check and random selection
-        const isLeader = lobbyData.host_id === user.id;
-        setIsBattleLeader(isLeader);
+        if (matchData) {
+          const isLeader = matchData.team_a_leader_id === user.id || matchData.team_b_leader_id === user.id;
+          setIsBattleLeader(isLeader);
+
+          // Check if duration is set and start timer
+          if (matchData.duration_minutes > 0 && !isTimerRunning) {
+            const elapsed = matchData.started_at
+              ? Math.floor((Date.now() - new Date(matchData.started_at).getTime()) / 1000)
+              : 0;
+            const remaining = matchData.duration_minutes * 60 - elapsed;
+            
+            if (remaining > 0) {
+              setTimeRemaining(remaining);
+              setIsTimerRunning(true);
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('❌ Exception fetching data:', error);
     }
-  }, [lobbyId, user]);
+  }, [lobbyId, user, isTimerRunning]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -167,39 +183,49 @@ export default function BattleLiveMatchScreen() {
   }, [isTimerRunning, timeRemaining]);
 
   const handleMatchEnd = async () => {
-    Alert.alert(
-      'Match Ended',
-      'The battle has ended! Time to see who won.',
-      [
-        {
-          text: 'View Results',
-          onPress: () => {
-            // TODO: Navigate to results screen
-            router.back();
-          },
-        },
-      ]
-    );
+    if (!match) return;
+
+    // End the match and distribute rewards
+    await battleService.endBattleMatch(match.id);
+
+    // Navigate to post-match screen
+    router.replace({
+      pathname: '/screens/BattlePostMatchScreen',
+      params: { matchId: match.id },
+    });
   };
 
   const handleDurationSelect = async (duration: MatchDuration) => {
+    if (!match || !user) return;
+
     setSelectedDuration(duration);
     setShowDurationModal(false);
     
-    // TODO: Send duration selection to backend
-    // TODO: Wait for opponent's selection
-    // TODO: If both match, start timer
-    
-    Alert.alert(
-      'Duration Selected',
-      `You selected ${duration} minutes. Waiting for opponent battle leader to confirm...`,
-      [{ text: 'OK' }]
+    const { success, bothAgreed, error } = await battleService.submitDurationSelection(
+      match.id,
+      user.id,
+      duration
     );
-  };
 
-  const startTimer = (duration: MatchDuration) => {
-    setTimeRemaining(duration * 60);
-    setIsTimerRunning(true);
+    if (error) {
+      Alert.alert('Error', error.message);
+      setSelectedDuration(null);
+      return;
+    }
+
+    if (bothAgreed) {
+      Alert.alert(
+        'Duration Set! 🔥',
+        `Battle will last ${duration} minutes. Let the roasting begin!`,
+        [{ text: 'LET\'S GO!' }]
+      );
+    } else {
+      Alert.alert(
+        'Duration Selected',
+        `You selected ${duration} minutes. Waiting for opponent battle leader to confirm...`,
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const formatTime = (seconds: number): string => {
@@ -229,13 +255,24 @@ export default function BattleLiveMatchScreen() {
         {
           text: 'End Match',
           style: 'destructive',
-          onPress: () => {
-            // TODO: End match logic
-            router.back();
+          onPress: async () => {
+            if (match) {
+              await handleMatchEnd();
+            }
           },
         },
       ]
     );
+  };
+
+  const handleGiftSent = async (giftId: string, amountSek: number) => {
+    if (!match || !user) return;
+
+    // Determine which team to send gift to
+    const userTeam = lobby?.team_a_players.includes(user.id) ? 'team_a' : 'team_b';
+    const receiverTeam = userTeam; // Gifts go to your own team
+
+    await battleService.sendBattleGift(match.id, user.id, receiverTeam, giftId, amountSek);
   };
 
   if (!permission?.granted) {
@@ -346,7 +383,7 @@ export default function BattleLiveMatchScreen() {
       </View>
 
       {/* Battle Leader Duration Selection */}
-      {isBattleLeader && !selectedDuration && (
+      {isBattleLeader && !selectedDuration && match && !match.duration_minutes && (
         <View style={styles.leaderPrompt}>
           <Text style={styles.leaderPromptText}>
             You are the Battle Leader! Select match duration:
@@ -375,6 +412,16 @@ export default function BattleLiveMatchScreen() {
 
       {/* Chat Overlay */}
       <ChatOverlay streamId={match?.stream_id || lobby.id} />
+
+      {/* Gift Overlay */}
+      {showGiftOverlay && match && (
+        <EnhancedGiftOverlay
+          streamId={match.stream_id || lobby.id}
+          streamerId={lobby.host_id}
+          onClose={() => setShowGiftOverlay(false)}
+          onGiftSent={handleGiftSent}
+        />
+      )}
 
       {/* Bottom Controls */}
       <View style={styles.bottomControls}>
@@ -406,6 +453,18 @@ export default function BattleLiveMatchScreen() {
           <IconSymbol
             ios_icon_name="arrow.triangle.2.circlepath.camera.fill"
             android_material_icon_name="flip_camera_ios"
+            size={28}
+            color="#FFFFFF"
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.controlButton, { backgroundColor: 'rgba(255, 215, 0, 0.9)' }]}
+          onPress={() => setShowGiftOverlay(true)}
+        >
+          <IconSymbol
+            ios_icon_name="gift.fill"
+            android_material_icon_name="card_giftcard"
             size={28}
             color="#FFFFFF"
           />
