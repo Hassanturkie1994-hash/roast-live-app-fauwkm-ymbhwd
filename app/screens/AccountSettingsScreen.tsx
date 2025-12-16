@@ -24,6 +24,7 @@ export default function AccountSettingsScreen() {
   const [isPrivateProfile, setIsPrivateProfile] = useState(false);
   const [commentPermission, setCommentPermission] = useState<'everyone' | 'followers' | 'no_one'>('everyone');
   const [userRole, setUserRole] = useState<AdminRole | null>(null);
+  const [isStreamModerator, setIsStreamModerator] = useState(false);
   const [isLoadingRole, setIsLoadingRole] = useState(true);
   const [isLive, setIsLive] = useState(false);
   const [hasActiveBattle, setHasActiveBattle] = useState(false);
@@ -35,9 +36,17 @@ export default function AccountSettingsScreen() {
     }
 
     console.log('Checking admin role for user:', user.id);
-    const result = await adminService.checkAdminRole(user.id);
-    console.log('Admin role result:', result);
-    setUserRole(result.role);
+    
+    // Check staff role
+    const staffResult = await adminService.checkAdminRole(user.id);
+    console.log('Staff role result:', staffResult);
+    setUserRole(staffResult.role);
+    
+    // Check stream moderator role
+    const modResult = await adminService.checkStreamModeratorRole(user.id);
+    console.log('Stream moderator result:', modResult);
+    setIsStreamModerator(modResult.isModerator);
+    
     setIsLoadingRole(false);
   }, [user]);
 
@@ -102,17 +111,21 @@ export default function AccountSettingsScreen() {
     router.push('/screens/ChangePasswordScreen');
   };
 
-  const handleDashboard = () => {
-    console.log('Opening dashboard for role:', userRole);
-    if (userRole === 'HEAD_ADMIN') {
+  const handleDashboard = (role: AdminRole) => {
+    console.log('Opening dashboard for role:', role);
+    if (role === 'HEAD_ADMIN') {
       router.push('/screens/HeadAdminDashboardScreen' as any);
-    } else if (userRole === 'ADMIN') {
+    } else if (role === 'ADMIN') {
       router.push('/screens/AdminDashboardScreen' as any);
-    } else if (userRole === 'SUPPORT') {
+    } else if (role === 'SUPPORT') {
       router.push('/screens/SupportDashboardScreen' as any);
-    } else if (userRole === 'MODERATOR') {
-      router.push('/screens/ModeratorDashboardScreen' as any);
+    } else if (role === 'LIVE_MODERATOR') {
+      router.push('/screens/LiveModeratorDashboardScreen' as any);
     }
+  };
+
+  const handleStreamModeratorDashboard = () => {
+    router.push('/screens/ModeratorDashboardScreen' as any);
   };
 
   const handleBattleSettings = () => {
@@ -181,8 +194,8 @@ export default function AccountSettingsScreen() {
         return 'Admin Dashboard';
       case 'SUPPORT':
         return 'Support Dashboard';
-      case 'MODERATOR':
-        return 'Moderator Dashboard';
+      case 'LIVE_MODERATOR':
+        return 'Live Moderator Dashboard';
       default:
         return 'Dashboard';
     }
@@ -196,8 +209,8 @@ export default function AccountSettingsScreen() {
         return 'Manage reports & users';
       case 'SUPPORT':
         return 'Review appeals & tickets';
-      case 'MODERATOR':
-        return 'Stream moderation tools';
+      case 'LIVE_MODERATOR':
+        return 'Monitor live streams';
       default:
         return '';
     }
@@ -227,38 +240,70 @@ export default function AccountSettingsScreen() {
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
             <ActivityIndicator size="small" color={colors.brandPrimary} />
           </View>
-        ) : userRole ? (
+        ) : (userRole || isStreamModerator) ? (
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
             <View style={styles.sectionTitleRow}>
               <RoastIcon name="admin-dashboard" size={20} />
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Dashboard & Tools</Text>
             </View>
 
-            <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
-              onPress={handleDashboard}
-            >
-              <View style={styles.settingLeft}>
-                <RoastIcon
-                  name="admin-dashboard"
-                  size={20}
-                  color={colors.brandPrimary}
-                />
-                <View>
-                  <Text style={[styles.settingText, { color: colors.text }]}>
-                    {getRoleName(userRole)}
-                  </Text>
-                  <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
-                    {getRoleDescription(userRole)}
-                  </Text>
+            {/* Staff Role Dashboard */}
+            {userRole && (
+              <TouchableOpacity 
+                style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
+                onPress={() => handleDashboard(userRole)}
+              >
+                <View style={styles.settingLeft}>
+                  <RoastIcon
+                    name="admin-dashboard"
+                    size={20}
+                    color={colors.brandPrimary}
+                  />
+                  <View>
+                    <Text style={[styles.settingText, { color: colors.text }]}>
+                      {getRoleName(userRole)}
+                    </Text>
+                    <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
+                      {getRoleDescription(userRole)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <RoastIcon
-                name="chevron-right"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
+                <RoastIcon
+                  name="chevron-right"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+
+            {/* Stream Moderator Dashboard */}
+            {isStreamModerator && (
+              <TouchableOpacity 
+                style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
+                onPress={handleStreamModeratorDashboard}
+              >
+                <View style={styles.settingLeft}>
+                  <RoastIcon
+                    name="shield"
+                    size={20}
+                    color="#9B59B6"
+                  />
+                  <View>
+                    <Text style={[styles.settingText, { color: colors.text }]}>
+                      Stream Moderator Dashboard
+                    </Text>
+                    <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
+                      Moderate assigned creator streams
+                    </Text>
+                  </View>
+                </View>
+                <RoastIcon
+                  name="chevron-right"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
           </View>
         ) : null}
 

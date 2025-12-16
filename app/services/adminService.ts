@@ -1,7 +1,7 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
 
-export type AdminRole = 'HEAD_ADMIN' | 'ADMIN' | 'SUPPORT' | 'MODERATOR' | null;
+export type AdminRole = 'HEAD_ADMIN' | 'ADMIN' | 'SUPPORT' | 'MODERATOR' | 'LIVE_MODERATOR' | null;
 
 interface SearchUserResult {
   id: string;
@@ -37,7 +37,7 @@ class AdminService {
       }
 
       const role = data.role?.toUpperCase() as AdminRole;
-      const isAdmin = ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'MODERATOR'].includes(role || '');
+      const isAdmin = ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'MODERATOR', 'LIVE_MODERATOR'].includes(role || '');
       
       console.log('User role:', role, 'Is admin:', isAdmin);
       
@@ -45,6 +45,32 @@ class AdminService {
     } catch (error) {
       console.error('Error in checkAdminRole:', error);
       return { role: null, isAdmin: false };
+    }
+  }
+
+  /**
+   * Check if user is a stream-level moderator (assigned to specific creators)
+   */
+  async checkStreamModeratorRole(userId: string): Promise<{ isModerator: boolean; streamerId: string | null }> {
+    try {
+      const { data, error } = await supabase
+        .from('moderators')
+        .select('streamer_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error checking stream moderator role:', error);
+        return { isModerator: false, streamerId: null };
+      }
+
+      return { 
+        isModerator: !!data, 
+        streamerId: data?.streamer_id || null 
+      };
+    } catch (error) {
+      console.error('Error in checkStreamModeratorRole:', error);
+      return { isModerator: false, streamerId: null };
     }
   }
 

@@ -14,6 +14,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { adminService } from '@/app/services/adminService';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function SupportDashboardScreen() {
   const { colors } = useTheme();
@@ -37,7 +38,9 @@ export default function SupportDashboardScreen() {
 
     const result = await adminService.checkAdminRole(user.id);
     
-    if (!result.success || result.role !== 'SUPPORT') {
+    console.log('Support dashboard access check:', result);
+    
+    if (!result.isAdmin || result.role !== 'SUPPORT') {
       Alert.alert('Access Denied', 'You do not have support team privileges.');
       router.back();
       return;
@@ -49,11 +52,25 @@ export default function SupportDashboardScreen() {
 
   const fetchStats = async () => {
     try {
-      // TODO: Implement stats fetching
+      // Fetch pending appeals
+      const { count: appealsCount } = await supabase
+        .from('appeals')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      // Fetch resolved appeals today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const { count: resolvedCount } = await supabase
+        .from('appeals')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['approved', 'denied'])
+        .gte('reviewed_at', today.toISOString());
+
       setStats({
-        pendingAppeals: 0,
-        resolvedToday: 0,
-        openTickets: 0,
+        pendingAppeals: appealsCount || 0,
+        resolvedToday: resolvedCount || 0,
+        openTickets: 0, // TODO: Implement ticket system
       });
     } catch (error) {
       console.error('Error fetching stats:', error);

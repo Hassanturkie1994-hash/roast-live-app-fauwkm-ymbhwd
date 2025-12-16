@@ -14,7 +14,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { adminService, AdminRole } from '@/app/services/adminService';
-import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function AdminDashboardScreen() {
   const { colors } = useTheme();
@@ -34,33 +34,45 @@ export default function AdminDashboardScreen() {
   const fetchDashboardStats = useCallback(async () => {
     try {
       // Fetch open reports
-      const reportsResult = await adminService.getReports({ status: 'open', limit: 1000 });
-      const openReports = reportsResult.reports?.length || 0;
+      const { data: reportsData } = await supabase
+        .from('user_reports')
+        .select('id, type')
+        .eq('status', 'open');
+      const openReports = reportsData?.filter(r => r.type !== 'stream').length || 0;
 
       // Fetch live streams
-      const streamsResult = await adminService.getLiveStreams();
-      const liveStreams = streamsResult.streams?.length || 0;
+      const { data: streamsData } = await supabase
+        .from('streams')
+        .select('id')
+        .eq('status', 'live');
+      const liveStreams = streamsData?.length || 0;
 
       // Fetch users under penalty
-      const penaltyResult = await adminService.getUsersUnderPenalty();
-      const usersUnderPenalty = penaltyResult.users?.length || 0;
+      const { count: penaltyCount } = await supabase
+        .from('admin_penalties')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
 
-      // Fetch VIP overview
-      const vipResult = await adminService.getVIPOverview();
-      const vipSubscribers = vipResult.data?.active || 0;
+      // Fetch pending appeals
+      const { count: appealsCount } = await supabase
+        .from('appeals')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
 
-      // Fetch daily transaction volume
-      const volumeResult = await adminService.getDailyTransactionVolume();
-      const dailyVolume = volumeResult.volume || 0;
+      // Fetch VIP subscribers
+      const { count: vipCount } = await supabase
+        .from('vip_memberships')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
 
       setStats({
         openReports,
         liveStreams,
-        usersUnderPenalty,
+        usersUnderPenalty: penaltyCount || 0,
         activeStrikes: 0, // Will be fetched separately
-        pendingAppeals: 0, // Will be fetched separately
-        vipSubscribers,
-        dailyVolume,
+        pendingAppeals: appealsCount || 0,
+        vipSubscribers: vipCount || 0,
+        dailyVolume: 0,
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -75,14 +87,17 @@ export default function AdminDashboardScreen() {
 
     const result = await adminService.checkAdminRole(user.id);
     
-    if (!result.success || !result.role) {
+    console.log('Admin dashboard access check:', result);
+    
+    if (!result.isAdmin || !result.role) {
       Alert.alert('Access Denied', 'You do not have admin privileges.');
       router.back();
       return;
     }
 
-    if (result.role === 'MODERATOR') {
-      Alert.alert('Access Denied', 'Moderators do not have access to the admin dashboard.');
+    // Only ADMIN role can access this dashboard
+    if (result.role !== 'ADMIN') {
+      Alert.alert('Access Denied', 'This dashboard is for Admin role only.');
       router.back();
       return;
     }
@@ -104,6 +119,8 @@ export default function AdminDashboardScreen() {
         return colors.gradientEnd;
       case 'SUPPORT':
         return '#4ECDC4';
+      case 'LIVE_MODERATOR':
+        return '#FF6B6B';
       default:
         return colors.textSecondary;
     }
@@ -117,6 +134,8 @@ export default function AdminDashboardScreen() {
         return 'Admin';
       case 'SUPPORT':
         return 'Support Team';
+      case 'LIVE_MODERATOR':
+        return 'Live Moderator';
       default:
         return 'Moderator';
     }

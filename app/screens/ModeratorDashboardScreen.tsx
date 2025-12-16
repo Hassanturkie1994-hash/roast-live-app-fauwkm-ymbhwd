@@ -14,6 +14,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
+import { adminService } from '@/app/services/adminService';
 
 export default function ModeratorDashboardScreen() {
   const { colors } = useTheme();
@@ -32,7 +33,18 @@ export default function ModeratorDashboardScreen() {
       return;
     }
 
-    // Check if user is a moderator
+    // Check if user is a stream-level moderator (assigned to specific creators)
+    const modResult = await adminService.checkStreamModeratorRole(user.id);
+    
+    console.log('Stream moderator check:', modResult);
+
+    if (!modResult.isModerator) {
+      Alert.alert('Access Denied', 'You are not assigned as a stream moderator.');
+      router.back();
+      return;
+    }
+
+    // Fetch assigned creator details
     const { data: moderatorData, error } = await supabase
       .from('moderators')
       .select('*, profiles!moderators_streamer_id_fkey(*)')
@@ -40,7 +52,7 @@ export default function ModeratorDashboardScreen() {
       .maybeSingle();
 
     if (error || !moderatorData) {
-      Alert.alert('Access Denied', 'You are not assigned as a moderator.');
+      Alert.alert('Error', 'Failed to load moderator data.');
       router.back();
       return;
     }
@@ -118,9 +130,9 @@ export default function ModeratorDashboardScreen() {
           />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Moderator Dashboard</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Stream Moderator</Text>
           <View style={[styles.roleBadge, { backgroundColor: '#9B59B6' }]}>
-            <Text style={styles.roleBadgeText}>MODERATOR</Text>
+            <Text style={styles.roleBadgeText}>STREAM MODERATOR</Text>
           </View>
         </View>
       </View>
@@ -164,11 +176,11 @@ export default function ModeratorDashboardScreen() {
 
         {/* Moderator Rules */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>📋 Moderator Rules</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>📋 Stream Moderator Rules</Text>
           
           <View style={[styles.rulesCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
             <Text style={[styles.rulesText, { color: colors.text }]}>
-              As a moderator, you can:{'\n\n'}
+              As a stream moderator, you can:{'\n\n'}
               - Ban users from the creator&apos;s streams{'\n'}
               - Timeout users temporarily{'\n'}
               - Remove inappropriate comments{'\n'}
@@ -176,7 +188,8 @@ export default function ModeratorDashboardScreen() {
               You cannot:{'\n\n'}
               - Access other creators&apos; streams{'\n'}
               - Perform global moderation actions{'\n'}
-              - Ban users platform-wide
+              - Ban users platform-wide{'\n\n'}
+              Note: This is different from the LIVE_MODERATOR staff role which monitors all live streams.
             </Text>
           </View>
         </View>
