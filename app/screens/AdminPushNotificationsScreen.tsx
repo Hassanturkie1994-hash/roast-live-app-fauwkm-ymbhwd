@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -35,15 +35,7 @@ export default function AdminPushNotificationsScreen() {
     successRate: 0,
   });
 
-  useEffect(() => {
-    checkAdminAccess();
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [activeTab]);
-
-  const checkAdminAccess = async () => {
+  const checkAdminAccess = useCallback(async () => {
     if (!user) return;
 
     const { role } = await adminService.checkAdminRole(user.id);
@@ -51,9 +43,9 @@ export default function AdminPushNotificationsScreen() {
       Alert.alert('Access Denied', 'You do not have permission to access this page.');
       router.back();
     }
-  };
+  }, [user, router]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       // Get logs based on active tab
@@ -78,7 +70,15 @@ export default function AdminPushNotificationsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab]);
+
+  useEffect(() => {
+    checkAdminAccess();
+  }, [checkAdminAccess]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const onRefresh = async () => {
     setRefreshing(true);

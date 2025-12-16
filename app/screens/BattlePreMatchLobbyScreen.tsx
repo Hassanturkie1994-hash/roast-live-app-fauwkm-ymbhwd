@@ -187,7 +187,7 @@ export default function BattlePreMatchLobbyScreen() {
     if (!lobby) return [];
     
     const maxPlayers = lobby.max_players_per_team;
-    const slots: Array<{ index: number; player: PlayerData | null }> = [];
+    const slots: { index: number; player: PlayerData | null }[] = [];
     
     for (let i = 0; i < maxPlayers; i++) {
       const player = playersData[i] || null;

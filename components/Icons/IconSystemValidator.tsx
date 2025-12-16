@@ -1,6 +1,6 @@
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import UnifiedRoastIcon, { UnifiedIconName } from './UnifiedRoastIcon';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -32,19 +32,21 @@ export default function IconSystemValidator() {
 
   useEffect(() => {
     validateIconSystem();
-  }, []);
+  }, [validateIconSystem]);
 
-  const validateIconSystem = async () => {
+  const validateIconSystem = useCallback(async () => {
     const validationResults: ValidationResult[] = [];
 
     // Test 1: Icon Component Exists
     try {
       const testIcon = <UnifiedRoastIcon name="flame-home" size={24} color={colors.text} />;
-      validationResults.push({
-        category: 'Component',
-        passed: true,
-        message: 'UnifiedRoastIcon component exists and renders',
-      });
+      if (testIcon) {
+        validationResults.push({
+          category: 'Component',
+          passed: true,
+          message: 'UnifiedRoastIcon component exists and renders',
+        });
+      }
     } catch (error) {
       validationResults.push({
         category: 'Component',
@@ -58,12 +60,14 @@ export default function IconSystemValidator() {
     try {
       const lightColor = theme === 'light' ? colors.text : colors.text;
       const darkColor = theme === 'dark' ? colors.text : colors.text;
-      validationResults.push({
-        category: 'Theme',
-        passed: true,
-        message: `Theme-aware colors working (${theme} mode)`,
-        details: `Text color: ${colors.text}`,
-      });
+      if (lightColor && darkColor) {
+        validationResults.push({
+          category: 'Theme',
+          passed: true,
+          message: `Theme-aware colors working (${theme} mode)`,
+          details: `Text color: ${colors.text}`,
+        });
+      }
     } catch (error) {
       validationResults.push({
         category: 'Theme',
@@ -86,15 +90,17 @@ export default function IconSystemValidator() {
 
     categories.forEach((category) => {
       try {
-        category.icons.forEach((iconName) => {
-          <UnifiedRoastIcon name={iconName as UnifiedIconName} size={24} color={colors.text} />;
-        });
-        validationResults.push({
-          category: 'Icons',
-          passed: true,
-          message: `${category.name} icons validated`,
-          details: `${category.icons.length} icons checked`,
-        });
+        const iconElements = category.icons.map((iconName) => 
+          <UnifiedRoastIcon key={iconName} name={iconName as UnifiedIconName} size={24} color={colors.text} />
+        );
+        if (iconElements.length > 0) {
+          validationResults.push({
+            category: 'Icons',
+            passed: true,
+            message: `${category.name} icons validated`,
+            details: `${category.icons.length} icons checked`,
+          });
+        }
       } catch (error) {
         validationResults.push({
           category: 'Icons',
@@ -109,11 +115,13 @@ export default function IconSystemValidator() {
     try {
       // This should trigger fallback without crashing
       const fallbackIcon = <UnifiedRoastIcon name={'invalid-icon-name' as UnifiedIconName} size={24} color={colors.text} />;
-      validationResults.push({
-        category: 'Fallback',
-        passed: true,
-        message: 'Fallback system works (no crashes on invalid icons)',
-      });
+      if (fallbackIcon) {
+        validationResults.push({
+          category: 'Fallback',
+          passed: true,
+          message: 'Fallback system works (no crashes on invalid icons)',
+        });
+      }
     } catch (error) {
       validationResults.push({
         category: 'Fallback',
@@ -128,12 +136,14 @@ export default function IconSystemValidator() {
       // TypeScript should catch this at compile time
       // @ts-expect-error - Testing type safety
       const invalidIcon = <UnifiedRoastIcon name="this-icon-does-not-exist" size={24} color={colors.text} />;
-      validationResults.push({
-        category: 'Type Safety',
-        passed: true,
-        message: 'TypeScript type checking active',
-        details: 'Invalid icon names are caught at compile time',
-      });
+      if (invalidIcon) {
+        validationResults.push({
+          category: 'Type Safety',
+          passed: true,
+          message: 'TypeScript type checking active',
+          details: 'Invalid icon names are caught at compile time',
+        });
+      }
     } catch (error) {
       validationResults.push({
         category: 'Type Safety',
@@ -145,7 +155,7 @@ export default function IconSystemValidator() {
 
     setResults(validationResults);
     setIsValidating(false);
-  };
+  }, [colors, theme]);
 
   const passedCount = results.filter((r) => r.passed).length;
   const totalCount = results.length;
@@ -224,7 +234,7 @@ export default function IconSystemValidator() {
             : '⚠️ Icon system has issues that need attention'}
         </Text>
         <Text style={[styles.footerSubtext, { color: colors.textSecondary }]}>
-          Theme: {theme} | Icons: 70+ | Platform: {require('react-native').Platform.OS}
+          Theme: {theme} | Icons: 70+ | Platform: {Platform.OS}
         </Text>
       </View>
     </ScrollView>

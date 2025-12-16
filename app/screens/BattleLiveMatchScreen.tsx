@@ -157,6 +157,19 @@ export default function BattleLiveMatchScreen() {
     };
   }, [lobbyId, fetchLobbyAndMatch]);
 
+  const handleMatchEnd = useCallback(async () => {
+    if (!match) return;
+
+    // End the match and distribute rewards
+    await battleService.endBattleMatch(match.id);
+
+    // Navigate to post-match screen
+    router.replace({
+      pathname: '/screens/BattlePostMatchScreen',
+      params: { matchId: match.id },
+    });
+  }, [match, router]);
+
   // Timer logic
   useEffect(() => {
     if (isTimerRunning && timeRemaining !== null && timeRemaining > 0) {
@@ -180,20 +193,7 @@ export default function BattleLiveMatchScreen() {
         }
       };
     }
-  }, [isTimerRunning, timeRemaining]);
-
-  const handleMatchEnd = async () => {
-    if (!match) return;
-
-    // End the match and distribute rewards
-    await battleService.endBattleMatch(match.id);
-
-    // Navigate to post-match screen
-    router.replace({
-      pathname: '/screens/BattlePostMatchScreen',
-      params: { matchId: match.id },
-    });
-  };
+  }, [isTimerRunning, timeRemaining, handleMatchEnd]);
 
   const handleDurationSelect = async (duration: MatchDuration) => {
     if (!match || !user) return;

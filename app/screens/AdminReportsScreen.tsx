@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,11 +28,7 @@ export default function AdminReportsScreen() {
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState('');
 
-  useEffect(() => {
-    fetchReports();
-  }, [selectedFilter]);
-
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async () => {
     setIsLoading(true);
     const result = await adminService.getReports({ status: selectedFilter, limit: 100 });
     
@@ -41,7 +37,11 @@ export default function AdminReportsScreen() {
     }
     
     setIsLoading(false);
-  };
+  }, [selectedFilter]);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
 
   const handleResolveReport = async (status: ReportStatus) => {
     if (!selectedReport || !user) return;

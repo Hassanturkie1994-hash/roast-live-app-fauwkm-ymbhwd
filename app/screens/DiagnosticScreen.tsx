@@ -240,7 +240,8 @@ export default function DiagnosticScreen() {
 
     // Test 11: AsyncStorage
     try {
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const AsyncStorageModule = await import('@react-native-async-storage/async-storage');
+      const AsyncStorage = AsyncStorageModule.default;
       await AsyncStorage.setItem('diagnostic_test', 'test_value');
       const value = await AsyncStorage.getItem('diagnostic_test');
       await AsyncStorage.removeItem('diagnostic_test');
@@ -263,11 +264,12 @@ export default function DiagnosticScreen() {
 
     // Test 12: Camera Permissions
     try {
-      const { CameraView, useCameraPermissions } = require('expo-camera');
+      const CameraModule = await import('expo-camera');
+      const hasCameraView = typeof CameraModule.CameraView !== 'undefined';
       diagnosticResults.push({
         name: 'Camera Module',
-        status: 'pass',
-        message: 'Camera module loaded successfully',
+        status: hasCameraView ? 'pass' : 'fail',
+        message: hasCameraView ? 'Camera module loaded successfully' : 'Camera module missing',
       });
     } catch (error) {
       diagnosticResults.push({

@@ -52,7 +52,7 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
       router.replace('/(tabs)/(home)');
       setTimeout(() => setIsNavigating(false), 100);
     }
-  }, [user, loading, segments, isNavigating]);
+  }, [user, loading, segments, isNavigating, router]);
 
   // Show loading screen while checking auth state
   if (loading) {
