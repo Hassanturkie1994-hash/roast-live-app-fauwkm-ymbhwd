@@ -7,132 +7,130 @@ import {
   Modal,
   TouchableOpacity,
   TextInput,
+  ScrollView,
   Alert,
   ActivityIndicator,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
+import GradientButton from '@/components/GradientButton';
 import { moderationService } from '@/app/services/moderationService';
-import { router } from 'expo-router';
 
 interface UserActionModalProps {
   visible: boolean;
   onClose: () => void;
   userId: string;
   username: string;
-  streamId: string;
+  displayName: string;
   streamerId: string;
   currentUserId: string;
-  isStreamer: boolean;
+  isHost: boolean;
   isModerator: boolean;
+  isTargetModerator: boolean;
 }
+
+const TIMEOUT_DURATIONS = [1, 5, 10, 30, 60];
 
 export default function UserActionModal({
   visible,
   onClose,
   userId,
   username,
-  streamId,
+  displayName,
   streamerId,
   currentUserId,
-  isStreamer,
+  isHost,
   isModerator,
+  isTargetModerator,
 }: UserActionModalProps) {
-  const [showTimeoutPicker, setShowTimeoutPicker] = useState(false);
-  const [timeoutDuration, setTimeoutDuration] = useState('5');
-  const [isLoading, setIsLoading] = useState(false);
-  const [userIsModerator, setUserIsModerator] = useState(false);
-  const [userIsBanned, setUserIsBanned] = useState(false);
+  const [selectedAction, setSelectedAction] = useState<'timeout' | 'ban' | 'moderator' | null>(null);
+  const [timeoutDuration, setTimeoutDuration] = useState(5);
+  const [reason, setReason] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isBanned, setIsBanned] = useState(false);
+  const [isTimedOut, setIsTimedOut] = useState(false);
 
   useEffect(() => {
     if (visible) {
       checkUserStatus();
     }
-  }, [visible, userId]);
+  }, [visible]);
 
   const checkUserStatus = async () => {
-    const [isMod, isBan] = await Promise.all([
-      moderationService.isModerator(streamerId, userId),
-      moderationService.isBanned(streamerId, userId),
+    const [bannedStatus, timedOutStatus] = await Promise.all([
+      moderationService.isUserBanned(streamerId, userId),
+      moderationService.isUserTimedOut(streamerId, userId),
     ]);
-    setUserIsModerator(isMod);
-    setUserIsBanned(isBan);
+    
+    setIsBanned(bannedStatus);
+    setIsTimedOut(timedOutStatus);
   };
 
-  const handleAddModerator = async () => {
-    if (!isStreamer) {
-      Alert.alert('Permission Denied', 'Only the streamer can add moderators.');
+  const handleTimeout = async () => {
+    if (!reason.trim()) {
+      Alert.alert('Error', 'Please provide a reason for the timeout');
       return;
     }
 
-    setIsLoading(true);
-    const result = await moderationService.addModerator(streamerId, userId);
-    setIsLoading(false);
+    setIsProcessing(true);
+    try {
+      const result = await moderationService.timeoutUser(
+        streamerId,
+        userId,
+        timeoutDuration,
+        reason,
+        currentUserId
+      );
 
-    if (result.success) {
-      Alert.alert('Success', `${username} has been added as a moderator.`);
-      setUserIsModerator(true);
-    } else {
-      Alert.alert('Error', result.error || 'Failed to add moderator.');
+      if (result.success) {
+        Alert.alert('Success', `${displayName} has been timed out for ${timeoutDuration} minutes`);
+        onClose();
+      } else {
+        Alert.alert('Error', result.error || 'Failed to timeout user');
+      }
+    } catch (error) {
+      console.error('Error timing out user:', error);
+      Alert.alert('Error', 'Failed to timeout user');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleRemoveModerator = async () => {
-    if (!isStreamer) {
-      Alert.alert('Permission Denied', 'Only the streamer can remove moderators.');
-      return;
-    }
-
-    Alert.alert(
-      'Remove Moderator',
-      `Are you sure you want to remove ${username} as a moderator?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setIsLoading(true);
-            const result = await moderationService.removeModerator(streamerId, userId);
-            setIsLoading(false);
-
-            if (result.success) {
-              Alert.alert('Success', `${username} has been removed as a moderator.`);
-              setUserIsModerator(false);
-            } else {
-              Alert.alert('Error', result.error || 'Failed to remove moderator.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleBanUser = async () => {
-    if (!isStreamer && !isModerator) {
-      Alert.alert('Permission Denied', 'Only streamers and moderators can ban users.');
+  const handleBan = async () => {
+    if (!reason.trim()) {
+      Alert.alert('Error', 'Please provide a reason for the ban');
       return;
     }
 
     Alert.alert(
-      'Ban User',
-      `Are you sure you want to ban ${username}? They will be removed from this stream and all future streams.`,
+      'Confirm Ban',
+      `Are you sure you want to ban ${displayName} from all your streams?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Ban',
           style: 'destructive',
           onPress: async () => {
-            setIsLoading(true);
-            const result = await moderationService.banUser(streamerId, userId);
-            setIsLoading(false);
+            setIsProcessing(true);
+            try {
+              const result = await moderationService.banUser(
+                streamerId,
+                userId,
+                reason,
+                currentUserId
+              );
 
-            if (result.success) {
-              Alert.alert('Success', `${username} has been banned.`);
-              setUserIsBanned(true);
-              onClose();
-            } else {
-              Alert.alert('Error', result.error || 'Failed to ban user.');
+              if (result.success) {
+                Alert.alert('Success', `${displayName} has been banned from your streams`);
+                onClose();
+              } else {
+                Alert.alert('Error', result.error || 'Failed to ban user');
+              }
+            } catch (error) {
+              console.error('Error banning user:', error);
+              Alert.alert('Error', 'Failed to ban user');
+            } finally {
+              setIsProcessing(false);
             }
           },
         },
@@ -140,122 +138,80 @@ export default function UserActionModal({
     );
   };
 
-  const handleUnbanUser = async () => {
-    if (!isStreamer) {
-      Alert.alert('Permission Denied', 'Only the streamer can unban users.');
+  const handleUnban = async () => {
+    setIsProcessing(true);
+    try {
+      const result = await moderationService.unbanUser(streamerId, userId);
+
+      if (result.success) {
+        Alert.alert('Success', `${displayName} has been unbanned`);
+        onClose();
+      } else {
+        Alert.alert('Error', result.error || 'Failed to unban user');
+      }
+    } catch (error) {
+      console.error('Error unbanning user:', error);
+      Alert.alert('Error', 'Failed to unban user');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleToggleModerator = async () => {
+    if (!isHost) {
+      Alert.alert('Permission Denied', 'Only the host can manage moderators');
       return;
     }
 
-    setIsLoading(true);
-    const result = await moderationService.unbanUser(streamerId, userId);
-    setIsLoading(false);
-
-    if (result.success) {
-      Alert.alert('Success', `${username} has been unbanned.`);
-      setUserIsBanned(false);
-    } else {
-      Alert.alert('Error', result.error || 'Failed to unban user.');
+    setIsProcessing(true);
+    try {
+      if (isTargetModerator) {
+        const result = await moderationService.removeModerator(streamerId, userId, currentUserId);
+        if (result.success) {
+          Alert.alert('Success', `${displayName} is no longer a moderator`);
+          onClose();
+        } else {
+          Alert.alert('Error', result.error || 'Failed to remove moderator');
+        }
+      } else {
+        const result = await moderationService.addModerator(streamerId, userId, currentUserId);
+        if (result.success) {
+          Alert.alert('Success', `${displayName} is now a moderator`);
+          onClose();
+        } else {
+          Alert.alert('Error', result.error || 'Failed to add moderator');
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling moderator:', error);
+      Alert.alert('Error', 'Failed to update moderator status');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleTimeoutUser = async () => {
-    if (!isStreamer && !isModerator) {
-      Alert.alert('Permission Denied', 'Only streamers and moderators can timeout users.');
-      return;
-    }
-
-    setShowTimeoutPicker(true);
-  };
-
-  const confirmTimeout = async () => {
-    const duration = parseInt(timeoutDuration);
-    if (isNaN(duration) || duration < 1 || duration > 60) {
-      Alert.alert('Invalid Duration', 'Please enter a duration between 1 and 60 minutes.');
-      return;
-    }
-
-    setIsLoading(true);
-    setShowTimeoutPicker(false);
-    const result = await moderationService.timeoutUser(streamId, userId, duration);
-    setIsLoading(false);
-
-    if (result.success) {
-      Alert.alert('Success', `${username} has been timed out for ${duration} minutes.`);
-      onClose();
-    } else {
-      Alert.alert('Error', result.error || 'Failed to timeout user.');
-    }
-  };
-
-  const handleViewProfile = () => {
-    onClose();
-    // Navigate to user profile
-    router.push(`/profile/${userId}`);
-  };
-
-  if (showTimeoutPicker) {
-    return (
-      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.timeoutPickerContainer}>
-            <Text style={styles.timeoutTitle}>Timeout Duration</Text>
-            <Text style={styles.timeoutSubtitle}>Select duration (1-60 minutes)</Text>
-            
-            <View style={styles.timeoutInputContainer}>
-              <TextInput
-                style={styles.timeoutInput}
-                value={timeoutDuration}
-                onChangeText={setTimeoutDuration}
-                keyboardType="number-pad"
-                maxLength={2}
-                placeholder="5"
-                placeholderTextColor={colors.placeholder}
-              />
-              <Text style={styles.timeoutUnit}>minutes</Text>
-            </View>
-
-            <View style={styles.quickTimeoutButtons}>
-              {[1, 5, 10, 30, 60].map((duration) => (
-                <TouchableOpacity
-                  key={duration}
-                  style={styles.quickTimeoutButton}
-                  onPress={() => setTimeoutDuration(duration.toString())}
-                >
-                  <Text style={styles.quickTimeoutText}>{duration}m</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.timeoutActions}>
-              <TouchableOpacity
-                style={styles.timeoutCancelButton}
-                onPress={() => {
-                  setShowTimeoutPicker(false);
-                  setTimeoutDuration('5');
-                }}
-              >
-                <Text style={styles.timeoutCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.timeoutConfirmButton}
-                onPress={confirmTimeout}
-              >
-                <Text style={styles.timeoutConfirmText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  }
+  const canModerate = isHost || isModerator;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.header}>
-            <Text style={styles.username}>@{username}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <View style={styles.userInfo}>
+              <View style={styles.userAvatar}>
+                <IconSymbol
+                  ios_icon_name="person.fill"
+                  android_material_icon_name="person"
+                  size={24}
+                  color={colors.textSecondary}
+                />
+              </View>
+              <View>
+                <Text style={styles.displayName}>{displayName}</Text>
+                <Text style={styles.username}>@{username}</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onClose}>
               <IconSymbol
                 ios_icon_name="xmark"
                 android_material_icon_name="close"
@@ -265,104 +221,236 @@ export default function UserActionModal({
             </TouchableOpacity>
           </View>
 
-          {isLoading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size="large" color={colors.gradientEnd} />
-            </View>
-          )}
-
-          <View style={styles.actions}>
-            {/* View Profile - Available to everyone */}
-            <TouchableOpacity style={styles.actionButton} onPress={handleViewProfile}>
-              <IconSymbol
-                ios_icon_name="person.circle.fill"
-                android_material_icon_name="account_circle"
-                size={24}
-                color={colors.text}
-              />
-              <Text style={styles.actionText}>View Profile</Text>
-            </TouchableOpacity>
-
-            {/* Moderator Actions - Only for streamer */}
-            {isStreamer && userId !== currentUserId && (
-              <>
-                {userIsModerator ? (
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.dangerAction]}
-                    onPress={handleRemoveModerator}
-                  >
-                    <IconSymbol
-                      ios_icon_name="shield.slash.fill"
-                      android_material_icon_name="shield"
-                      size={24}
-                      color={colors.gradientEnd}
-                    />
-                    <Text style={[styles.actionText, styles.dangerText]}>
-                      Remove Moderator
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity style={styles.actionButton} onPress={handleAddModerator}>
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* Status Indicators */}
+            {(isBanned || isTimedOut || isTargetModerator) && (
+              <View style={styles.statusSection}>
+                {isTargetModerator && (
+                  <View style={styles.statusBadge}>
                     <IconSymbol
                       ios_icon_name="shield.fill"
                       android_material_icon_name="shield"
-                      size={24}
-                      color={colors.gradientEnd}
+                      size={16}
+                      color="#FFD700"
                     />
-                    <Text style={styles.actionText}>Add Moderator</Text>
-                  </TouchableOpacity>
+                    <Text style={styles.statusText}>Moderator</Text>
+                  </View>
                 )}
-              </>
-            )}
-
-            {/* Ban/Unban - For streamer and moderators */}
-            {(isStreamer || isModerator) && userId !== currentUserId && (
-              <>
-                {userIsBanned ? (
-                  isStreamer && (
-                    <TouchableOpacity style={styles.actionButton} onPress={handleUnbanUser}>
-                      <IconSymbol
-                        ios_icon_name="checkmark.circle.fill"
-                        android_material_icon_name="check_circle"
-                        size={24}
-                        color="#4CAF50"
-                      />
-                      <Text style={styles.actionText}>Unban User</Text>
-                    </TouchableOpacity>
-                  )
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.dangerAction]}
-                    onPress={handleBanUser}
-                  >
+                {isBanned && (
+                  <View style={[styles.statusBadge, styles.bannedBadge]}>
                     <IconSymbol
                       ios_icon_name="hand.raised.fill"
                       android_material_icon_name="block"
-                      size={24}
-                      color={colors.gradientEnd}
+                      size={16}
+                      color="#FF1744"
                     />
-                    <Text style={[styles.actionText, styles.dangerText]}>Ban User</Text>
-                  </TouchableOpacity>
+                    <Text style={styles.statusText}>Banned</Text>
+                  </View>
                 )}
-              </>
+                {isTimedOut && (
+                  <View style={[styles.statusBadge, styles.timedOutBadge]}>
+                    <IconSymbol
+                      ios_icon_name="clock.fill"
+                      android_material_icon_name="schedule"
+                      size={16}
+                      color="#FFA500"
+                    />
+                    <Text style={styles.statusText}>Timed Out</Text>
+                  </View>
+                )}
+              </View>
             )}
 
-            {/* Timeout - For streamer and moderators */}
-            {(isStreamer || isModerator) && userId !== currentUserId && !userIsBanned && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.warningAction]}
-                onPress={handleTimeoutUser}
-              >
-                <IconSymbol
-                  ios_icon_name="clock.fill"
-                  android_material_icon_name="schedule"
-                  size={24}
-                  color="#FF9800"
-                />
-                <Text style={styles.actionText}>Timeout User</Text>
-              </TouchableOpacity>
+            {/* Actions */}
+            {canModerate && !selectedAction && (
+              <View style={styles.actionsGrid}>
+                {!isBanned && !isTimedOut && (
+                  <>
+                    <TouchableOpacity
+                      style={styles.actionCard}
+                      onPress={() => setSelectedAction('timeout')}
+                    >
+                      <IconSymbol
+                        ios_icon_name="clock.fill"
+                        android_material_icon_name="schedule"
+                        size={32}
+                        color="#FFA500"
+                      />
+                      <Text style={styles.actionTitle}>Timeout</Text>
+                      <Text style={styles.actionDescription}>
+                        Temporarily mute user
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.actionCard}
+                      onPress={() => setSelectedAction('ban')}
+                    >
+                      <IconSymbol
+                        ios_icon_name="hand.raised.fill"
+                        android_material_icon_name="block"
+                        size={32}
+                        color="#FF1744"
+                      />
+                      <Text style={styles.actionTitle}>Ban</Text>
+                      <Text style={styles.actionDescription}>
+                        Ban from all streams
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                {isBanned && (
+                  <TouchableOpacity
+                    style={[styles.actionCard, styles.actionCardFull]}
+                    onPress={handleUnban}
+                    disabled={isProcessing}
+                  >
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={32}
+                      color="#4CAF50"
+                    />
+                    <Text style={styles.actionTitle}>Unban User</Text>
+                    <Text style={styles.actionDescription}>
+                      Remove ban from this user
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {isHost && (
+                  <TouchableOpacity
+                    style={[styles.actionCard, styles.actionCardFull]}
+                    onPress={handleToggleModerator}
+                    disabled={isProcessing}
+                  >
+                    <IconSymbol
+                      ios_icon_name={isTargetModerator ? 'shield.slash.fill' : 'shield.fill'}
+                      android_material_icon_name={isTargetModerator ? 'shield' : 'shield'}
+                      size={32}
+                      color={isTargetModerator ? '#FF1744' : '#FFD700'}
+                    />
+                    <Text style={styles.actionTitle}>
+                      {isTargetModerator ? 'Remove Moderator' : 'Make Moderator'}
+                    </Text>
+                    <Text style={styles.actionDescription}>
+                      {isTargetModerator ? 'Remove moderator privileges' : 'Grant moderator privileges'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
-          </View>
+
+            {/* Timeout Form */}
+            {selectedAction === 'timeout' && (
+              <View style={styles.form}>
+                <Text style={styles.formTitle}>Timeout Duration</Text>
+                <View style={styles.durationGrid}>
+                  {TIMEOUT_DURATIONS.map((duration) => (
+                    <TouchableOpacity
+                      key={duration}
+                      style={[
+                        styles.durationButton,
+                        timeoutDuration === duration && styles.durationButtonActive,
+                      ]}
+                      onPress={() => setTimeoutDuration(duration)}
+                    >
+                      <Text
+                        style={[
+                          styles.durationText,
+                          timeoutDuration === duration && styles.durationTextActive,
+                        ]}
+                      >
+                        {duration} min
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.formTitle}>Reason</Text>
+                <TextInput
+                  style={styles.reasonInput}
+                  placeholder="Enter reason for timeout..."
+                  placeholderTextColor={colors.placeholder}
+                  value={reason}
+                  onChangeText={setReason}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+
+                <View style={styles.formActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => {
+                      setSelectedAction(null);
+                      setReason('');
+                    }}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <View style={styles.confirmButton}>
+                    <GradientButton
+                      title={isProcessing ? 'Processing...' : 'Timeout User'}
+                      onPress={handleTimeout}
+                      size="medium"
+                      disabled={isProcessing}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Ban Form */}
+            {selectedAction === 'ban' && (
+              <View style={styles.form}>
+                <Text style={styles.formTitle}>Reason for Ban</Text>
+                <TextInput
+                  style={styles.reasonInput}
+                  placeholder="Enter reason for ban..."
+                  placeholderTextColor={colors.placeholder}
+                  value={reason}
+                  onChangeText={setReason}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+
+                <View style={styles.warningBox}>
+                  <IconSymbol
+                    ios_icon_name="exclamationmark.triangle.fill"
+                    android_material_icon_name="warning"
+                    size={20}
+                    color="#FF1744"
+                  />
+                  <Text style={styles.warningText}>
+                    This user will be banned from all your streams permanently.
+                  </Text>
+                </View>
+
+                <View style={styles.formActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => {
+                      setSelectedAction(null);
+                      setReason('');
+                    }}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <View style={styles.confirmButton}>
+                    <GradientButton
+                      title={isProcessing ? 'Processing...' : 'Ban User'}
+                      onPress={handleBan}
+                      size="medium"
+                      disabled={isProcessing}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -372,145 +460,174 @@ export default function UserActionModal({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingBottom: 40,
+    maxHeight: '80%',
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    alignItems: 'center',
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  username: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  closeButton: {
-    padding: 8,
-  },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  actions: {
-    padding: 20,
-  },
-  actionButton: {
+  userInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    gap: 12,
+  },
+  userAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dangerAction: {
-    backgroundColor: 'rgba(227, 0, 82, 0.1)',
-    borderColor: colors.gradientEnd,
-  },
-  warningAction: {
-    backgroundColor: 'rgba(255, 152, 0, 0.1)',
-    borderColor: '#FF9800',
-  },
-  actionText: {
+  displayName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.text,
-    flex: 1,
   },
-  dangerText: {
-    color: colors.gradientEnd,
-  },
-  timeoutPickerContainer: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 24,
-    marginHorizontal: 20,
-  },
-  timeoutTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  timeoutSubtitle: {
+  username: {
     fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  content: {
+    padding: 20,
+  },
+  statusSection: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 20,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  bannedBadge: {
+    backgroundColor: 'rgba(255, 23, 68, 0.1)',
+    borderColor: 'rgba(255, 23, 68, 0.3)',
+  },
+  timedOutBadge: {
+    backgroundColor: 'rgba(255, 165, 0, 0.1)',
+    borderColor: 'rgba(255, 165, 0, 0.3)',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  actionCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionCardFull: {
+    minWidth: '100%',
+  },
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  actionDescription: {
+    fontSize: 12,
     fontWeight: '400',
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
   },
-  timeoutInputContainer: {
+  form: {
+    gap: 16,
+  },
+  formTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  durationGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 24,
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  timeoutInput: {
+  durationButton: {
+    flex: 1,
+    minWidth: '30%',
     backgroundColor: colors.backgroundAlt,
     borderColor: colors.border,
     borderWidth: 2,
     borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    color: colors.text,
-    fontSize: 32,
-    fontWeight: '800',
-    textAlign: 'center',
-    minWidth: 100,
-  },
-  timeoutUnit: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  quickTimeoutButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-    gap: 8,
-  },
-  quickTimeoutButton: {
-    flex: 1,
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  quickTimeoutText: {
+  durationButtonActive: {
+    backgroundColor: 'rgba(164, 0, 40, 0.2)',
+    borderColor: colors.brandPrimary,
+  },
+  durationText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
+    color: colors.textSecondary,
   },
-  timeoutActions: {
+  durationTextActive: {
+    color: colors.brandPrimary,
+  },
+  reasonInput: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
+    minHeight: 80,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 23, 68, 0.1)',
+    borderColor: 'rgba(255, 23, 68, 0.3)',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.text,
+    lineHeight: 18,
+  },
+  formActions: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 8,
   },
-  timeoutCancelButton: {
+  cancelButton: {
     flex: 1,
     backgroundColor: colors.backgroundAlt,
     borderColor: colors.border,
@@ -519,21 +636,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  timeoutCancelText: {
+  cancelButtonText: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
   },
-  timeoutConfirmButton: {
+  confirmButton: {
     flex: 1,
-    backgroundColor: colors.gradientEnd,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  timeoutConfirmText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
   },
 });
