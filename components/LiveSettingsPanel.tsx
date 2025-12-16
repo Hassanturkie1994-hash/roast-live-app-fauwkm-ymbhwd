@@ -19,6 +19,7 @@ import { useModerators } from '@/contexts/ModeratorsContext';
 import { followService } from '@/app/services/followService';
 import { moderationService } from '@/app/services/moderationService';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { BattleFormat } from '@/app/services/battleService';
 
 interface LiveSettingsPanelProps {
   visible: boolean;
@@ -31,6 +32,11 @@ interface LiveSettingsPanelProps {
   setWhoCanWatch: (value: 'public' | 'followers' | 'vip_club') => void;
   selectedModerators: string[];
   setSelectedModerators: (moderators: string[]) => void;
+  // Battle mode props
+  streamMode?: 'solo' | 'battle';
+  setStreamMode?: (mode: 'solo' | 'battle') => void;
+  battleFormat?: BattleFormat | null;
+  setBattleFormat?: (format: BattleFormat | null) => void;
 }
 
 interface Follower {
@@ -39,6 +45,14 @@ interface Follower {
   username: string;
   avatar_url?: string | null;
 }
+
+const BATTLE_FORMATS: { format: BattleFormat; label: string; description: string }[] = [
+  { format: '1v1', label: '1v1', description: 'One-on-one roasting battle' },
+  { format: '2v2', label: '2v2', description: 'Team battle with 2 players each' },
+  { format: '3v3', label: '3v3', description: 'Team battle with 3 players each' },
+  { format: '4v4', label: '4v4', description: 'Team battle with 4 players each' },
+  { format: '5v5', label: '5v5', description: 'Epic team battle with 5 players each' },
+];
 
 function LiveSettingsPanelContent({
   visible,
@@ -51,6 +65,10 @@ function LiveSettingsPanelContent({
   setWhoCanWatch,
   selectedModerators,
   setSelectedModerators,
+  streamMode = 'solo',
+  setStreamMode,
+  battleFormat = null,
+  setBattleFormat,
 }: LiveSettingsPanelProps) {
   const { user } = useAuth();
   const { refreshModerators, addModerator, removeModerator } = useModerators();
@@ -197,6 +215,25 @@ function LiveSettingsPanelContent({
     );
   };
 
+  const handleStreamModeChange = (mode: 'solo' | 'battle') => {
+    if (setStreamMode) {
+      setStreamMode(mode);
+      console.log('🎮 [LiveSettings] Stream mode changed to:', mode);
+      
+      // Reset battle format when switching to solo
+      if (mode === 'solo' && setBattleFormat) {
+        setBattleFormat(null);
+      }
+    }
+  };
+
+  const handleBattleFormatChange = (format: BattleFormat) => {
+    if (setBattleFormat) {
+      setBattleFormat(format);
+      console.log('🔥 [LiveSettings] Battle format selected:', format);
+    }
+  };
+
   const displayList = searchQuery.trim() ? searchResults : followers;
 
   // Validate displayList for undefined or duplicate IDs
@@ -234,15 +271,147 @@ function LiveSettingsPanelContent({
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* Stream Mode Selection */}
+            {setStreamMode && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Stream Mode</Text>
+                <Text style={styles.sectionDescription}>
+                  Choose between solo streaming or battle mode
+                </Text>
+                
+                <TouchableOpacity
+                  style={[styles.optionButton, streamMode === 'solo' && styles.optionButtonActive]}
+                  onPress={() => handleStreamModeChange('solo')}
+                >
+                  <IconSymbol
+                    ios_icon_name="person.fill"
+                    android_material_icon_name="person"
+                    size={20}
+                    color={streamMode === 'solo' ? colors.brandPrimary : colors.textSecondary}
+                  />
+                  <Text style={[styles.optionText, streamMode === 'solo' && styles.optionTextActive]}>
+                    Solo Stream
+                  </Text>
+                  {streamMode === 'solo' && (
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={20}
+                      color={colors.brandPrimary}
+                    />
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.optionButton, streamMode === 'battle' && styles.optionButtonActive]}
+                  onPress={() => handleStreamModeChange('battle')}
+                >
+                  <IconSymbol
+                    ios_icon_name="flame.fill"
+                    android_material_icon_name="whatshot"
+                    size={20}
+                    color={streamMode === 'battle' ? colors.brandPrimary : colors.textSecondary}
+                  />
+                  <Text style={[styles.optionText, streamMode === 'battle' && styles.optionTextActive]}>
+                    Battle Mode
+                  </Text>
+                  {streamMode === 'battle' && (
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={20}
+                      color={colors.brandPrimary}
+                    />
+                  )}
+                </TouchableOpacity>
+
+                {streamMode === 'battle' && (
+                  <View style={styles.infoBox}>
+                    <IconSymbol
+                      ios_icon_name="flame.fill"
+                      android_material_icon_name="whatshot"
+                      size={16}
+                      color={colors.brandPrimary}
+                    />
+                    <Text style={styles.infoText}>
+                      Battle mode lets you compete against other streamers in real-time roasting battles!
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Battle Format Selection (only shown when battle mode is selected) */}
+            {streamMode === 'battle' && setBattleFormat && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Battle Format</Text>
+                <Text style={styles.sectionDescription}>
+                  Select the team size for your battle
+                </Text>
+
+                {BATTLE_FORMATS.map((item) => (
+                  <TouchableOpacity
+                    key={item.format}
+                    style={[
+                      styles.battleFormatButton,
+                      battleFormat === item.format && styles.battleFormatButtonActive,
+                    ]}
+                    onPress={() => handleBattleFormatChange(item.format)}
+                  >
+                    <View style={styles.battleFormatHeader}>
+                      <View
+                        style={[
+                          styles.battleFormatBadge,
+                          battleFormat === item.format && styles.battleFormatBadgeActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.battleFormatLabel,
+                            battleFormat === item.format && styles.battleFormatLabelActive,
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+                      {battleFormat === item.format && (
+                        <IconSymbol
+                          ios_icon_name="checkmark.circle.fill"
+                          android_material_icon_name="check_circle"
+                          size={20}
+                          color={colors.brandPrimary}
+                        />
+                      )}
+                    </View>
+                    <Text style={styles.battleFormatDescription}>{item.description}</Text>
+                  </TouchableOpacity>
+                ))}
+
+                {battleFormat && (
+                  <View style={styles.infoBox}>
+                    <IconSymbol
+                      ios_icon_name="info.circle.fill"
+                      android_material_icon_name="info"
+                      size={16}
+                      color={colors.brandPrimary}
+                    />
+                    <Text style={styles.infoText}>
+                      You&apos;ll be matched with another team of the same size. Viewers send gifts to support their favorite team!
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* About This Live */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>About this Live</Text>
               <Text style={styles.sectionDescription}>
-                Describe your roast session to attract viewers
+                Describe your {streamMode === 'battle' ? 'battle' : 'roast session'} to attract viewers
               </Text>
               <TextInput
                 style={styles.textArea}
-                placeholder="What's this stream about? Add tags or categories..."
+                placeholder={streamMode === 'battle' ? "What's your battle strategy? Add tags..." : "What's this stream about? Add tags or categories..."}
                 placeholderTextColor={colors.placeholder}
                 value={aboutLive}
                 onChangeText={setAboutLive}
@@ -294,201 +463,205 @@ function LiveSettingsPanelContent({
               )}
             </View>
 
-            {/* Who Can Watch */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Who can watch this live</Text>
-              <Text style={styles.sectionDescription}>
-                Control who has access to your stream
-              </Text>
-              <TouchableOpacity
-                style={[styles.optionButton, whoCanWatch === 'public' && styles.optionButtonActive]}
-                onPress={() => setWhoCanWatch('public')}
-              >
-                <IconSymbol
-                  ios_icon_name="globe"
-                  android_material_icon_name="public"
-                  size={20}
-                  color={whoCanWatch === 'public' ? colors.brandPrimary : colors.textSecondary}
-                />
-                <Text style={[styles.optionText, whoCanWatch === 'public' && styles.optionTextActive]}>
-                  Public - Everyone
+            {/* Who Can Watch (only for solo streams) */}
+            {streamMode === 'solo' && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Who can watch this live</Text>
+                <Text style={styles.sectionDescription}>
+                  Control who has access to your stream
                 </Text>
-                {whoCanWatch === 'public' && (
+                <TouchableOpacity
+                  style={[styles.optionButton, whoCanWatch === 'public' && styles.optionButtonActive]}
+                  onPress={() => setWhoCanWatch('public')}
+                >
                   <IconSymbol
-                    ios_icon_name="checkmark.circle.fill"
-                    android_material_icon_name="check_circle"
+                    ios_icon_name="globe"
+                    android_material_icon_name="public"
                     size={20}
-                    color={colors.brandPrimary}
+                    color={whoCanWatch === 'public' ? colors.brandPrimary : colors.textSecondary}
                   />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.optionButton, whoCanWatch === 'followers' && styles.optionButtonActive]}
-                onPress={() => setWhoCanWatch('followers')}
-              >
-                <IconSymbol
-                  ios_icon_name="person.2.fill"
-                  android_material_icon_name="group"
-                  size={20}
-                  color={whoCanWatch === 'followers' ? colors.brandPrimary : colors.textSecondary}
-                />
-                <Text style={[styles.optionText, whoCanWatch === 'followers' && styles.optionTextActive]}>
-                  Followers Only
-                </Text>
-                {whoCanWatch === 'followers' && (
-                  <IconSymbol
-                    ios_icon_name="checkmark.circle.fill"
-                    android_material_icon_name="check_circle"
-                    size={20}
-                    color={colors.brandPrimary}
-                  />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.optionButton, whoCanWatch === 'vip_club' && styles.optionButtonActive]}
-                onPress={() => setWhoCanWatch('vip_club')}
-              >
-                <IconSymbol
-                  ios_icon_name="star.circle.fill"
-                  android_material_icon_name="workspace_premium"
-                  size={20}
-                  color={whoCanWatch === 'vip_club' ? colors.brandPrimary : colors.textSecondary}
-                />
-                <Text style={[styles.optionText, whoCanWatch === 'vip_club' && styles.optionTextActive]}>
-                  VIP Club Only
-                </Text>
-                {whoCanWatch === 'vip_club' && (
-                  <IconSymbol
-                    ios_icon_name="checkmark.circle.fill"
-                    android_material_icon_name="check_circle"
-                    size={20}
-                    color={colors.brandPrimary}
-                  />
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Moderators */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Moderators</Text>
-              <Text style={styles.sectionDescription}>
-                Select users to help moderate your stream
-              </Text>
-              <TouchableOpacity 
-                style={styles.manageButton}
-                onPress={() => setShowModeratorSelector(!showModeratorSelector)}
-              >
-                <Text style={styles.manageButtonText}>
-                  {selectedModerators.length > 0 
-                    ? `${selectedModerators.length} Moderator${selectedModerators.length > 1 ? 's' : ''} Selected`
-                    : 'Select Moderators'}
-                </Text>
-                <IconSymbol
-                  ios_icon_name={showModeratorSelector ? 'chevron.up' : 'chevron.down'}
-                  android_material_icon_name={showModeratorSelector ? 'expand_less' : 'expand_more'}
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-
-              {showModeratorSelector && (
-                <View style={styles.moderatorList}>
-                  {/* Search Input */}
-                  <View style={styles.searchContainer}>
+                  <Text style={[styles.optionText, whoCanWatch === 'public' && styles.optionTextActive]}>
+                    Public - Everyone
+                  </Text>
+                  {whoCanWatch === 'public' && (
                     <IconSymbol
-                      ios_icon_name="magnifyingglass"
-                      android_material_icon_name="search"
-                      size={18}
-                      color={colors.textSecondary}
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={20}
+                      color={colors.brandPrimary}
                     />
-                    <TextInput
-                      style={styles.searchInput}
-                      placeholder="Search by username..."
-                      placeholderTextColor={colors.placeholder}
-                      value={searchQuery}
-                      onChangeText={handleSearch}
-                      autoCapitalize="none"
-                      autoCorrect={false}
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.optionButton, whoCanWatch === 'followers' && styles.optionButtonActive]}
+                  onPress={() => setWhoCanWatch('followers')}
+                >
+                  <IconSymbol
+                    ios_icon_name="person.2.fill"
+                    android_material_icon_name="group"
+                    size={20}
+                    color={whoCanWatch === 'followers' ? colors.brandPrimary : colors.textSecondary}
+                  />
+                  <Text style={[styles.optionText, whoCanWatch === 'followers' && styles.optionTextActive]}>
+                    Followers Only
+                  </Text>
+                  {whoCanWatch === 'followers' && (
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={20}
+                      color={colors.brandPrimary}
                     />
-                    {searchQuery.length > 0 && (
-                      <TouchableOpacity onPress={() => handleSearch('')}>
-                        <IconSymbol
-                          ios_icon_name="xmark.circle.fill"
-                          android_material_icon_name="cancel"
-                          size={18}
-                          color={colors.textSecondary}
-                        />
-                      </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.optionButton, whoCanWatch === 'vip_club' && styles.optionButtonActive]}
+                  onPress={() => setWhoCanWatch('vip_club')}
+                >
+                  <IconSymbol
+                    ios_icon_name="star.circle.fill"
+                    android_material_icon_name="workspace_premium"
+                    size={20}
+                    color={whoCanWatch === 'vip_club' ? colors.brandPrimary : colors.textSecondary}
+                  />
+                  <Text style={[styles.optionText, whoCanWatch === 'vip_club' && styles.optionTextActive]}>
+                    VIP Club Only
+                  </Text>
+                  {whoCanWatch === 'vip_club' && (
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check_circle"
+                      size={20}
+                      color={colors.brandPrimary}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Moderators (only for solo streams) */}
+            {streamMode === 'solo' && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Moderators</Text>
+                <Text style={styles.sectionDescription}>
+                  Select users to help moderate your stream
+                </Text>
+                <TouchableOpacity 
+                  style={styles.manageButton}
+                  onPress={() => setShowModeratorSelector(!showModeratorSelector)}
+                >
+                  <Text style={styles.manageButtonText}>
+                    {selectedModerators.length > 0 
+                      ? `${selectedModerators.length} Moderator${selectedModerators.length > 1 ? 's' : ''} Selected`
+                      : 'Select Moderators'}
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name={showModeratorSelector ? 'chevron.up' : 'chevron.down'}
+                    android_material_icon_name={showModeratorSelector ? 'expand_less' : 'expand_more'}
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+
+                {showModeratorSelector && (
+                  <View style={styles.moderatorList}>
+                    {/* Search Input */}
+                    <View style={styles.searchContainer}>
+                      <IconSymbol
+                        ios_icon_name="magnifyingglass"
+                        android_material_icon_name="search"
+                        size={18}
+                        color={colors.textSecondary}
+                      />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search by username..."
+                        placeholderTextColor={colors.placeholder}
+                        value={searchQuery}
+                        onChangeText={handleSearch}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => handleSearch('')}>
+                          <IconSymbol
+                            ios_icon_name="xmark.circle.fill"
+                            android_material_icon_name="cancel"
+                            size={18}
+                            color={colors.textSecondary}
+                          />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* User List */}
+                    {isLoadingFollowers || isSearching ? (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color={colors.brandPrimary} />
+                        <Text style={styles.loadingText}>
+                          {isSearching ? 'Searching...' : 'Loading followers...'}
+                        </Text>
+                      </View>
+                    ) : validatedDisplayList.length === 0 ? (
+                      <Text style={styles.emptyText}>
+                        {searchQuery.trim() 
+                          ? 'No users found' 
+                          : 'No followers to select as moderators'}
+                      </Text>
+                    ) : (
+                      <ScrollView style={styles.userScrollView} showsVerticalScrollIndicator={false}>
+                        {validatedDisplayList.map((follower, index) => {
+                          const isSelected = selectedModerators.includes(follower.id);
+                          const isProcessing = addingModerator === follower.id;
+                          
+                          // Use compound key: id + index for guaranteed uniqueness
+                          return (
+                            <TouchableOpacity
+                              key={`follower-${follower.id}-${index}`}
+                              style={[styles.followerItem, isSelected && styles.followerItemActive]}
+                              onPress={() => toggleModerator(follower.id)}
+                              disabled={isProcessing}
+                            >
+                              <View style={styles.followerAvatar}>
+                                <IconSymbol
+                                  ios_icon_name="person.fill"
+                                  android_material_icon_name="person"
+                                  size={16}
+                                  color={colors.textSecondary}
+                                />
+                              </View>
+                              <View style={styles.followerInfo}>
+                                <Text style={styles.followerName}>{follower.display_name}</Text>
+                                <Text style={styles.followerUsername}>@{follower.username}</Text>
+                              </View>
+                              {isProcessing ? (
+                                <ActivityIndicator size="small" color={colors.brandPrimary} />
+                              ) : isSelected ? (
+                                <IconSymbol
+                                  ios_icon_name="checkmark.circle.fill"
+                                  android_material_icon_name="check_circle"
+                                  size={20}
+                                  color={colors.brandPrimary}
+                                />
+                              ) : null}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
                     )}
                   </View>
+                )}
 
-                  {/* User List */}
-                  {isLoadingFollowers || isSearching ? (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color={colors.brandPrimary} />
-                      <Text style={styles.loadingText}>
-                        {isSearching ? 'Searching...' : 'Loading followers...'}
-                      </Text>
-                    </View>
-                  ) : validatedDisplayList.length === 0 ? (
-                    <Text style={styles.emptyText}>
-                      {searchQuery.trim() 
-                        ? 'No users found' 
-                        : 'No followers to select as moderators'}
-                    </Text>
-                  ) : (
-                    <ScrollView style={styles.userScrollView} showsVerticalScrollIndicator={false}>
-                      {validatedDisplayList.map((follower, index) => {
-                        const isSelected = selectedModerators.includes(follower.id);
-                        const isProcessing = addingModerator === follower.id;
-                        
-                        // Use compound key: id + index for guaranteed uniqueness
-                        return (
-                          <TouchableOpacity
-                            key={`follower-${follower.id}-${index}`}
-                            style={[styles.followerItem, isSelected && styles.followerItemActive]}
-                            onPress={() => toggleModerator(follower.id)}
-                            disabled={isProcessing}
-                          >
-                            <View style={styles.followerAvatar}>
-                              <IconSymbol
-                                ios_icon_name="person.fill"
-                                android_material_icon_name="person"
-                                size={16}
-                                color={colors.textSecondary}
-                              />
-                            </View>
-                            <View style={styles.followerInfo}>
-                              <Text style={styles.followerName}>{follower.display_name}</Text>
-                              <Text style={styles.followerUsername}>@{follower.username}</Text>
-                            </View>
-                            {isProcessing ? (
-                              <ActivityIndicator size="small" color={colors.brandPrimary} />
-                            ) : isSelected ? (
-                              <IconSymbol
-                                ios_icon_name="checkmark.circle.fill"
-                                android_material_icon_name="check_circle"
-                                size={20}
-                                color={colors.brandPrimary}
-                              />
-                            ) : null}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-                </View>
-              )}
-
-              {selectedModerators.length > 0 && (
-                <View style={styles.moderatorPerks}>
-                  <Text style={styles.perksTitle}>Moderator Permissions:</Text>
-                  <Text style={styles.perkItem}>- Pin chat messages</Text>
-                  <Text style={styles.perkItem}>- Timeout users</Text>
-                  <Text style={styles.perkItem}>- Ban users</Text>
-                </View>
-              )}
-            </View>
+                {selectedModerators.length > 0 && (
+                  <View style={styles.moderatorPerks}>
+                    <Text style={styles.perksTitle}>Moderator Permissions:</Text>
+                    <Text style={styles.perkItem}>- Pin chat messages</Text>
+                    <Text style={styles.perkItem}>- Timeout users</Text>
+                    <Text style={styles.perkItem}>- Ban users</Text>
+                  </View>
+                )}
+              </View>
+            )}
 
             {/* Safety Rules */}
             <View style={styles.section}>
@@ -659,6 +832,47 @@ const styles = StyleSheet.create({
   },
   optionTextActive: {
     color: colors.brandPrimary,
+  },
+  battleFormatButton: {
+    backgroundColor: colors.backgroundAlt,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+  },
+  battleFormatButtonActive: {
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.brandPrimary,
+    borderWidth: 2,
+  },
+  battleFormatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  battleFormatBadge: {
+    backgroundColor: 'rgba(164, 0, 40, 0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  battleFormatBadgeActive: {
+    backgroundColor: colors.brandPrimary,
+  },
+  battleFormatLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.brandPrimary,
+  },
+  battleFormatLabelActive: {
+    color: '#FFFFFF',
+  },
+  battleFormatDescription: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.textSecondary,
   },
   manageButton: {
     flexDirection: 'row',

@@ -27,6 +27,7 @@ import VIPClubPanel from '@/components/VIPClubPanel';
 import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverlay';
 import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOverlay';
+import { BattleFormat, battleService } from '@/app/services/battleService';
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
@@ -53,6 +54,10 @@ export default function PreLiveSetupScreen() {
   const [practiceMode, setPracticeMode] = useState(false);
   const [whoCanWatch, setWhoCanWatch] = useState<'public' | 'followers' | 'vip_club'>('public');
   const [selectedModerators, setSelectedModerators] = useState<string[]>([]);
+
+  // Battle mode states
+  const [streamMode, setStreamMode] = useState<'solo' | 'battle'>('solo');
+  const [battleFormat, setBattleFormat] = useState<BattleFormat | null>(null);
 
   // VIP Club state
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
@@ -164,6 +169,8 @@ export default function PreLiveSetupScreen() {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
     console.log('📊 [PRE-LIVE] Current state:', liveStreamState.currentState);
     console.log('🎯 [PRE-LIVE] Practice Mode:', practiceMode);
+    console.log('🎮 [PRE-LIVE] Stream Mode:', streamMode);
+    console.log('🔥 [PRE-LIVE] Battle Format:', battleFormat);
     console.log('🎨 [PRE-LIVE] Active filter:', activeFilter?.name || 'None');
     console.log('✨ [PRE-LIVE] Active effect:', activeEffect?.name || 'None');
 
@@ -183,7 +190,65 @@ export default function PreLiveSetupScreen() {
       return;
     }
 
-    // Check if we can go live
+    // Battle mode validation
+    if (streamMode === 'battle') {
+      if (!battleFormat) {
+        Alert.alert('Error', 'Please select a battle format in Settings');
+        setShowSettingsPanel(true);
+        return;
+      }
+
+      // Check if user is blocked from matchmaking
+      const isBlocked = await battleService.isUserBlocked(user.id);
+      if (isBlocked) {
+        Alert.alert(
+          'Matchmaking Blocked',
+          'You are temporarily blocked from matchmaking for declining a match. Please wait 3 minutes.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Navigate to battle format selection screen
+      console.log('🎮 [PRE-LIVE] Navigating to battle lobby creation');
+      
+      try {
+        setIsLoading(true);
+
+        // Create battle lobby
+        const { lobby, error } = await battleService.createLobby(
+          user.id,
+          battleFormat,
+          false,
+          null
+        );
+
+        if (error || !lobby) {
+          Alert.alert('Error', 'Failed to create battle lobby. Please try again.');
+          return;
+        }
+
+        console.log('✅ [PRE-LIVE] Battle lobby created:', lobby);
+
+        // Navigate to lobby screen
+        router.push({
+          pathname: '/screens/BattleLobbyScreen',
+          params: { lobbyId: lobby.id },
+        });
+
+        return;
+      } catch (error) {
+        console.error('❌ [PRE-LIVE] Error creating battle lobby:', error);
+        Alert.alert('Error', 'Failed to create battle lobby. Please try again.');
+        return;
+      } finally {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    // Check if we can go live (solo mode)
     if (!liveStreamState.canGoLive()) {
       console.warn('⚠️ [PRE-LIVE] Cannot go live from current state:', liveStreamState.currentState);
       Alert.alert('Error', 'Please complete setup before going live');
@@ -245,7 +310,7 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, hasActiveFilter, hasActiveEffect, activeFilter, activeEffect]);
+  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, hasActiveFilter, hasActiveEffect, activeFilter, activeEffect, streamMode, battleFormat]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -328,7 +393,7 @@ export default function PreLiveSetupScreen() {
         <View style={styles.titleContainer}>
           <TextInput
             style={styles.titleInput}
-            placeholder="What are you streaming?"
+            placeholder={streamMode === 'battle' ? 'Battle title...' : 'What are you streaming?'}
             placeholderTextColor="rgba(255, 255, 255, 0.6)"
             value={streamTitle}
             onChangeText={setStreamTitle}
@@ -355,6 +420,19 @@ export default function PreLiveSetupScreen() {
               color="#FFFFFF"
             />
           </TouchableOpacity>
+        )}
+
+        {/* STREAM MODE INDICATOR */}
+        {streamMode === 'battle' && battleFormat && (
+          <View style={styles.battleModeIndicator}>
+            <IconSymbol
+              ios_icon_name="flame.fill"
+              android_material_icon_name="whatshot"
+              size={16}
+              color="#FF6B00"
+            />
+            <Text style={styles.battleModeText}>Battle Mode: {battleFormat.toUpperCase()}</Text>
+          </View>
         )}
 
         {/* BOTTOM ACTION BAR */}
@@ -412,7 +490,7 @@ export default function PreLiveSetupScreen() {
               color="#FFFFFF"
             />
             <Text style={styles.actionButtonText}>Settings</Text>
-            {(selectedModerators.length > 0 || practiceMode) && <View style={styles.activeDot} />}
+            {(selectedModerators.length > 0 || practiceMode || streamMode === 'battle') && <View style={styles.activeDot} />}
           </TouchableOpacity>
         </View>
 
@@ -437,16 +515,24 @@ export default function PreLiveSetupScreen() {
             </TouchableOpacity>
           ) : (
             <GradientButton
-              title={isLoading ? 'LOADING...' : practiceMode ? 'START PRACTICE' : 'GO LIVE'}
+              title={
+                isLoading 
+                  ? 'LOADING...' 
+                  : streamMode === 'battle' 
+                    ? 'CREATE BATTLE LOBBY' 
+                    : practiceMode 
+                      ? 'START PRACTICE' 
+                      : 'GO LIVE'
+              }
               onPress={handleGoLive}
               size="large"
-              disabled={isLoading || !liveStreamState.canGoLive()}
+              disabled={isLoading || (streamMode === 'solo' && !liveStreamState.canGoLive()) || (streamMode === 'battle' && !battleFormat)}
             />
           )}
         </View>
 
         {/* PRACTICE MODE INDICATOR */}
-        {practiceMode && (
+        {practiceMode && streamMode === 'solo' && (
           <View style={styles.practiceModeIndicator}>
             <IconSymbol
               ios_icon_name="eye.slash.fill"
@@ -462,6 +548,8 @@ export default function PreLiveSetupScreen() {
         {__DEV__ && (
           <View style={styles.debugContainer}>
             <Text style={styles.debugText}>State: {liveStreamState.currentState}</Text>
+            <Text style={styles.debugText}>Mode: {streamMode.toUpperCase()}</Text>
+            <Text style={styles.debugText}>Format: {battleFormat || 'NONE'}</Text>
             <Text style={styles.debugText}>Practice: {practiceMode ? 'YES' : 'NO'}</Text>
             <Text style={styles.debugText}>Filter: {activeFilter?.name || 'NONE'}</Text>
             <Text style={styles.debugText}>Effect: {activeEffect?.name || 'NONE'}</Text>
@@ -495,7 +583,7 @@ export default function PreLiveSetupScreen() {
           onSelectClub={setSelectedVIPClub}
         />
 
-        {/* SETTINGS PANEL */}
+        {/* SETTINGS PANEL - Now includes battle mode settings */}
         <LiveSettingsPanel
           visible={showSettingsPanel}
           onClose={() => setShowSettingsPanel(false)}
@@ -507,6 +595,10 @@ export default function PreLiveSetupScreen() {
           setWhoCanWatch={setWhoCanWatch}
           selectedModerators={selectedModerators}
           setSelectedModerators={setSelectedModerators}
+          streamMode={streamMode}
+          setStreamMode={setStreamMode}
+          battleFormat={battleFormat}
+          setBattleFormat={setBattleFormat}
         />
       </View>
     </>
@@ -628,6 +720,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  battleModeIndicator: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 350 : 340,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 107, 0, 0.9)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 8,
+    zIndex: 10,
+  },
+  battleModeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   bottomBar: {
     position: 'absolute',
     bottom: 180,
@@ -713,7 +825,7 @@ const styles = StyleSheet.create({
   },
   debugContainer: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 350 : 340,
+    top: Platform.OS === 'android' ? 420 : 410,
     left: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     borderRadius: 8,
