@@ -1,6 +1,8 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
 
+export type AdminRole = 'HEAD_ADMIN' | 'ADMIN' | 'SUPPORT' | 'MODERATOR' | null;
+
 interface SearchUserResult {
   id: string;
   username: string;
@@ -11,6 +13,41 @@ interface SearchUserResult {
 }
 
 class AdminService {
+  /**
+   * Check if a user has an admin role
+   */
+  async checkAdminRole(userId: string): Promise<{ role: AdminRole; isAdmin: boolean }> {
+    try {
+      console.log('Checking admin role for user:', userId);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error checking admin role:', error);
+        return { role: null, isAdmin: false };
+      }
+
+      if (!data) {
+        console.log('No profile found for user');
+        return { role: null, isAdmin: false };
+      }
+
+      const role = data.role?.toUpperCase() as AdminRole;
+      const isAdmin = ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'MODERATOR'].includes(role || '');
+      
+      console.log('User role:', role, 'Is admin:', isAdmin);
+      
+      return { role, isAdmin };
+    } catch (error) {
+      console.error('Error in checkAdminRole:', error);
+      return { role: null, isAdmin: false };
+    }
+  }
+
   /**
    * Search users by username, display name, or email
    * Uses the database function for efficient searching
