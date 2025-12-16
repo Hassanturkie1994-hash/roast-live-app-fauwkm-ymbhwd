@@ -9,7 +9,7 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
-} from 'react';
+} from 'react-native';
 import { router } from 'expo-router';
 import RoastIcon from '@/components/Icons/RoastIcon';
 import { useAuth } from '@/contexts/AuthContext';
