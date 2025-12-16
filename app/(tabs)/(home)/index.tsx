@@ -18,7 +18,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import StreamPreviewCard from '@/components/StreamPreviewCard';
 import StoriesBar from '@/components/StoriesBar';
 import AppLogo from '@/components/AppLogo';
-import { IconSymbol } from '@/components/IconSymbol';
+import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import GradientButton from '@/components/GradientButton';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
 import CreatorRulesModal from '@/components/CreatorRulesModal';
@@ -85,9 +85,8 @@ const PostItem = React.memo(({
 
       <View style={styles.postActions}>
         <TouchableOpacity style={styles.postAction}>
-          <IconSymbol
-            ios_icon_name="heart"
-            android_material_icon_name="favorite_border"
+          <UnifiedRoastIcon
+            name="heart"
             size={24}
             color={colors.text}
           />
@@ -95,9 +94,8 @@ const PostItem = React.memo(({
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.postAction}>
-          <IconSymbol
-            ios_icon_name="bubble.left"
-            android_material_icon_name="comment"
+          <UnifiedRoastIcon
+            name="comment"
             size={24}
             color={colors.text}
           />
@@ -105,9 +103,8 @@ const PostItem = React.memo(({
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.postAction}>
-          <IconSymbol
-            ios_icon_name="paperplane"
-            android_material_icon_name="send"
+          <UnifiedRoastIcon
+            name="send"
             size={24}
             color={colors.text}
           />
@@ -132,7 +129,10 @@ export default function HomeScreen() {
   const [streams, setStreams] = useState<NormalizedStream[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'live' | 'posts'>('live');
+  const [activeTab, setActiveTab] = useState<'explore' | 'friends' | 'foryou'>('foryou');
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showLiveOnly, setShowLiveOnly] = useState(false);
 
   // Go Live modal states
   const [showGoLiveModal, setShowGoLiveModal] = useState(false);
@@ -147,7 +147,6 @@ export default function HomeScreen() {
       const data = await queryCache.getCached(
         'streams_live',
         async () => {
-          // Query with user join to get profile data
           const { data, error } = await supabase
             .from('streams')
             .select(`
@@ -167,10 +166,9 @@ export default function HomeScreen() {
             return [];
           }
 
-          // Normalize streams to ensure consistent data shape
           return normalizeStreams((data || []) as RawStreamData[]);
         },
-        30000 // 30 seconds cache for live streams
+        30000
       );
 
       setStreams(data);
@@ -198,7 +196,7 @@ export default function HomeScreen() {
 
           return data || [];
         },
-        60000 // 1 minute cache for posts
+        60000
       );
 
       setPosts(data as any);
@@ -209,12 +207,8 @@ export default function HomeScreen() {
 
   // Memoize fetch data function
   const fetchData = useCallback(async () => {
-    if (activeTab === 'live') {
-      await fetchStreams();
-    } else {
-      await fetchPosts();
-    }
-  }, [activeTab, fetchStreams, fetchPosts]);
+    await Promise.all([fetchStreams(), fetchPosts()]);
+  }, [fetchStreams, fetchPosts]);
 
   useEffect(() => {
     fetchData();
@@ -223,17 +217,11 @@ export default function HomeScreen() {
   // Memoize refresh handler
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    
-    // Invalidate cache
-    if (activeTab === 'live') {
-      queryCache.invalidate('streams_live');
-    } else {
-      queryCache.invalidate('posts_feed');
-    }
-    
+    queryCache.invalidate('streams_live');
+    queryCache.invalidate('posts_feed');
     await fetchData();
     setRefreshing(false);
-  }, [activeTab, fetchData]);
+  }, [fetchData]);
 
   // Memoize stream press handler
   const handleStreamPress = useCallback((stream: NormalizedStream) => {
@@ -251,75 +239,70 @@ export default function HomeScreen() {
   // Go Live handlers
   const handleGoLivePress = async () => {
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to start streaming');
+      Alert.alert('Fel', 'Du måste vara inloggad för att starta streaming');
       return;
     }
 
     try {
-      // Check if user is under forced review lock
       const isLocked = await enhancedContentSafetyService.isUserLockedForReview(user.id);
       if (isLocked) {
-        Alert.alert('Cannot Start Stream', 'Your account is under review. Please contact support.');
+        Alert.alert('Kan inte starta stream', 'Ditt konto är under granskning. Kontakta support.');
         return;
       }
 
-      // Check if user has accepted safety guidelines
       const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
       if (!canStream.canStream) {
-        Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+        Alert.alert('Kan inte starta stream', canStream.reason, [{ text: 'OK' }]);
         return;
       }
 
       setShowGoLiveModal(true);
     } catch (error) {
       console.error('Error in handleGoLivePress:', error);
-      Alert.alert('Error', 'Failed to start live setup. Please try again.');
+      Alert.alert('Fel', 'Kunde inte starta live-inställning. Försök igen.');
     }
   };
 
   const handleTitleNext = async () => {
     if (!streamTitle.trim()) {
-      Alert.alert('Missing title', 'Please enter a stream title');
+      Alert.alert('Titel saknas', 'Ange en streamtitel');
       return;
     }
 
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to start streaming');
+      Alert.alert('Fel', 'Du måste vara inloggad för att starta streaming');
       return;
     }
 
     try {
-      // Validate stream start (check for suspensions and strikes)
       const validation = await contentSafetyService.validateStreamStart(user.id);
       if (!validation.canStream) {
         Alert.alert(
-          'Cannot Start Stream',
-          validation.reason || 'You are not allowed to stream at this time.',
+          'Kan inte starta stream',
+          validation.reason || 'Du får inte streama just nu.',
           [{ text: 'OK' }]
         );
         setShowGoLiveModal(false);
         return;
       }
 
-      // Close title modal and show content label modal
       setShowGoLiveModal(false);
       setShowContentLabelModal(true);
     } catch (error) {
       console.error('Error in handleTitleNext:', error);
-      Alert.alert('Error', 'Failed to validate stream start. Please try again.');
+      Alert.alert('Fel', 'Kunde inte validera streamstart. Försök igen.');
     }
   };
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     setContentLabel(label);
     setShowContentLabelModal(false);
-    // Show creator rules modal
     setShowCreatorRulesModal(true);
   };
 
   const handleCreatorRulesConfirm = async () => {
     if (!user || !contentLabel || !streamTitle.trim()) {
-      Alert.alert('Error', 'Missing required information');
+      Alert.alert('Fel', 'Information saknas');
       return;
     }
 
@@ -328,7 +311,6 @@ export default function HomeScreen() {
     console.log('🏷️ [CONFIRM] Content label:', contentLabel);
 
     try {
-      // Log creator rules acceptance (non-blocking)
       try {
         await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
         console.log('✅ [CONFIRM] Creator rules acceptance logged');
@@ -336,11 +318,8 @@ export default function HomeScreen() {
         console.warn('⚠️ [CONFIRM] Failed to log creator rules (continuing anyway):', rulesError);
       }
 
-      // Close modal
       setShowCreatorRulesModal(false);
 
-      // CRITICAL: Navigate IMMEDIATELY to broadcaster screen
-      // Pass title and content label as params
       console.log('🚀 [CONFIRM] Navigating to broadcaster screen...');
       router.push({
         pathname: '/(tabs)/broadcaster',
@@ -350,144 +329,183 @@ export default function HomeScreen() {
         },
       });
 
-      // Reset state
       setStreamTitle('');
       setContentLabel(null);
 
       console.log('✅ [CONFIRM] Navigation complete - stream creation will happen in broadcaster screen');
     } catch (error) {
       console.error('❌ [CONFIRM-ERROR] Error in handleCreatorRulesConfirm:', error);
-      Alert.alert('Error', 'Failed to start stream. Please try again.');
+      Alert.alert('Fel', 'Kunde inte starta stream. Försök igen.');
     }
   };
 
-  // Memoize stream render function
-  const renderStream = useCallback(({ item }: { item: NormalizedStream }) => (
-    <StreamPreviewCard
-      stream={item}
-      onPress={() => handleStreamPress(item)}
-    />
-  ), [handleStreamPress]);
+  // Filter content based on active tab
+  const filteredContent = useMemo(() => {
+    if (showLiveOnly) {
+      return streams;
+    }
+    
+    // Mix streams and posts for feed
+    const mixed: any[] = [];
+    const maxItems = Math.max(streams.length, posts.length);
+    
+    for (let i = 0; i < maxItems; i++) {
+      if (i < streams.length) mixed.push({ type: 'stream', data: streams[i] });
+      if (i < posts.length) mixed.push({ type: 'post', data: posts[i] });
+    }
+    
+    return mixed;
+  }, [streams, posts, showLiveOnly]);
 
-  // Memoize post render function
-  const renderPost = useCallback(({ item }: { item: Post }) => (
-    <PostItem
-      post={item}
-      onPress={handlePostPress}
-      colors={colors}
-    />
-  ), [handlePostPress, colors]);
+  // Memoize render function
+  const renderItem = useCallback(({ item }: { item: any }) => {
+    if (showLiveOnly || item.type === 'stream') {
+      const stream = showLiveOnly ? item : item.data;
+      return (
+        <StreamPreviewCard
+          stream={stream}
+          onPress={() => handleStreamPress(stream)}
+        />
+      );
+    } else {
+      return (
+        <PostItem
+          post={item.data}
+          onPress={handlePostPress}
+          colors={colors}
+        />
+      );
+    }
+  }, [showLiveOnly, handleStreamPress, handlePostPress, colors]);
 
-  // Memoize key extractors
-  const streamKeyExtractor = useCallback((item: NormalizedStream) => item.id, []);
-  const postKeyExtractor = useCallback((item: Post) => item.id, []);
-
-  // Memoize tab change handlers
-  const handleLiveTab = useCallback(() => {
-    setActiveTab('live');
-  }, []);
-
-  const handlePostsTab = useCallback(() => {
-    setActiveTab('posts');
-  }, []);
+  // Memoize key extractor
+  const keyExtractor = useCallback((item: any, index: number) => {
+    if (showLiveOnly) {
+      return item.id;
+    }
+    return `${item.type}-${item.data.id}-${index}`;
+  }, [showLiveOnly]);
 
   // Memoize header component
   const ListHeaderComponent = useMemo(() => <StoriesBar />, []);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header with Logo - Go Live button removed */}
+      {/* Header with Logo and Search */}
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <AppLogo size="small" alignment="center" withShadow />
+        <TouchableOpacity 
+          style={styles.searchButton}
+          onPress={() => setShowSearch(!showSearch)}
+        >
+          <UnifiedRoastIcon
+            name="search"
+            size={24}
+            color={colors.text}
+          />
+        </TouchableOpacity>
       </View>
 
+      {/* Search Bar */}
+      {showSearch && (
+        <View style={[styles.searchBar, { backgroundColor: colors.backgroundAlt, borderBottomColor: colors.border }]}>
+          <UnifiedRoastIcon
+            name="search"
+            size={20}
+            color={colors.textSecondary}
+          />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Sök profiler, live-streams, inlägg..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <UnifiedRoastIcon
+                name="close"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Tabs */}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'live' && { borderBottomColor: colors.brandPrimary }]}
-          onPress={handleLiveTab}
+          style={[styles.tabButton, activeTab === 'explore' && { borderBottomColor: colors.brandPrimary }]}
+          onPress={() => setActiveTab('explore')}
         >
-          <IconSymbol
-            ios_icon_name="video.fill"
-            android_material_icon_name="videocam"
-            size={20}
-            color={activeTab === 'live' ? colors.brandPrimary : colors.textSecondary}
-          />
-          <Text style={[styles.tabButtonText, { color: activeTab === 'live' ? colors.brandPrimary : colors.textSecondary }]}>
+          <Text style={[styles.tabButtonText, { color: activeTab === 'explore' ? colors.brandPrimary : colors.textSecondary }]}>
+            Utforska
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'friends' && { borderBottomColor: colors.brandPrimary }]}
+          onPress={() => setActiveTab('friends')}
+        >
+          <Text style={[styles.tabButtonText, { color: activeTab === 'friends' ? colors.brandPrimary : colors.textSecondary }]}>
+            Följer
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'foryou' && { borderBottomColor: colors.brandPrimary }]}
+          onPress={() => setActiveTab('foryou')}
+        >
+          <Text style={[styles.tabButtonText, { color: activeTab === 'foryou' ? colors.brandPrimary : colors.textSecondary }]}>
+            För dig
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.liveButton, showLiveOnly && { backgroundColor: colors.brandPrimary }]}
+          onPress={() => setShowLiveOnly(!showLiveOnly)}
+        >
+          <View style={[styles.liveDot, !showLiveOnly && { backgroundColor: '#FF0000' }]} />
+          <Text style={[styles.liveButtonText, { color: showLiveOnly ? '#FFFFFF' : colors.text }]}>
             LIVE
           </Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'posts' && { borderBottomColor: colors.brandPrimary }]}
-          onPress={handlePostsTab}
-        >
-          <IconSymbol
-            ios_icon_name="square.grid.2x2.fill"
-            android_material_icon_name="grid_view"
-            size={20}
-            color={activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary}
-          />
-          <Text style={[styles.tabButtonText, { color: activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary }]}>
-            POSTS
-          </Text>
-        </TouchableOpacity>
       </View>
 
-      {activeTab === 'live' ? (
-        <FlatList
-          data={streams}
-          keyExtractor={streamKeyExtractor}
-          renderItem={renderStream}
-          ListHeaderComponent={ListHeaderComponent}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.brandPrimary}
-            />
-          }
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={5}
-          updateCellsBatchingPeriod={50}
-          initialNumToRender={5}
-          windowSize={5}
-        />
-      ) : (
-        <FlatList
-          data={posts}
-          keyExtractor={postKeyExtractor}
-          renderItem={renderPost}
-          ListHeaderComponent={ListHeaderComponent}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.brandPrimary}
-            />
-          }
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={5}
-          updateCellsBatchingPeriod={50}
-          initialNumToRender={5}
-          windowSize={5}
-        />
-      )}
+      <FlatList
+        data={filteredContent}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ListHeaderComponent={ListHeaderComponent}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brandPrimary}
+          />
+        }
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={5}
+        windowSize={5}
+      />
 
       {/* Go Live Title Modal */}
       <Modal visible={showGoLiveModal} transparent animationType="slide">
         <View style={styles.modal}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <AppLogo size="medium" alignment="center" style={styles.modalLogo} />
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Setup Your Stream</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Konfigurera din stream</Text>
             
             <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: colors.text }]}>Stream Title</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Streamtitel</Text>
               <TextInput
-                placeholder="What are you streaming?"
+                placeholder="Vad streamar du?"
                 placeholderTextColor={colors.textSecondary}
                 value={streamTitle}
                 onChangeText={setStreamTitle}
@@ -498,14 +516,13 @@ export default function HomeScreen() {
             </View>
 
             <View style={styles.infoBox}>
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
+              <UnifiedRoastIcon
+                name="fire-info"
                 size={20}
                 color={colors.gradientEnd}
               />
               <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Your stream will be broadcast live to all viewers. Make sure you have a stable internet connection!
+                Din stream kommer att sändas live till alla tittare. Se till att du har en stabil internetanslutning!
               </Text>
             </View>
 
@@ -517,11 +534,11 @@ export default function HomeScreen() {
                   setStreamTitle('');
                 }}
               >
-                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, { color: colors.text }]}>Avbryt</Text>
               </TouchableOpacity>
               <View style={styles.startButtonContainer}>
                 <GradientButton
-                  title="NEXT"
+                  title="NÄSTA"
                   onPress={handleTitleNext}
                   disabled={!streamTitle.trim()}
                   size="medium"
@@ -568,10 +585,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  searchButton: {
+    position: 'absolute',
+    right: 16,
+    top: 60,
+    padding: 8,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '400',
   },
   tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,
+    alignItems: 'center',
   },
   tabButton: {
     flex: 1,
@@ -586,6 +624,26 @@ const styles = StyleSheet.create({
   tabButtonText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  liveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 12,
+    borderRadius: 20,
+    gap: 6,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+  },
+  liveButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   listContent: {
     paddingBottom: 100,

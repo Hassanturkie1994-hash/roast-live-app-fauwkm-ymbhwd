@@ -146,24 +146,24 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 forceTheme={theme}
               />
               <Text style={[styles.tabLabel, { color: isActive('/(tabs)/(home)') ? colors.brandPrimary : colors.tabIconColor }]}>
-                Home
+                Hem
               </Text>
             </TouchableOpacity>
 
-            {/* Explore Tab */}
+            {/* Friends Tab (renamed from Explore) */}
             <TouchableOpacity
               style={styles.tab}
               onPress={() => handleTabPress('/(tabs)/explore')}
               activeOpacity={0.7}
             >
               <UnifiedRoastIcon
-                name="roast-compass"
+                name="people"
                 size={28}
                 color={isActive('/explore') ? colors.brandPrimary : colors.tabIconColor}
                 forceTheme={theme}
               />
               <Text style={[styles.tabLabel, { color: isActive('/explore') ? colors.brandPrimary : colors.tabIconColor }]}>
-                Explore
+                Vänner
               </Text>
             </TouchableOpacity>
 
@@ -209,7 +209,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 )}
               </View>
               <Text style={[styles.tabLabel, { color: isActive('/inbox') ? colors.brandPrimary : colors.tabIconColor }]}>
-                Inbox
+                Inkorg
               </Text>
             </TouchableOpacity>
 
@@ -226,7 +226,7 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 forceTheme={theme}
               />
               <Text style={[styles.tabLabel, { color: isActive('/profile') ? colors.brandPrimary : colors.tabIconColor }]}>
-                Profile
+                Profil
               </Text>
             </TouchableOpacity>
           </View>

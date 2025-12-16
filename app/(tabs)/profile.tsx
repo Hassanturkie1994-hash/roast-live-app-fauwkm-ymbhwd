@@ -9,11 +9,11 @@ import {
   Image,
   Dimensions,
   Alert,
-} from 'react-native';
+} from 'react';
 import { router } from 'expo-router';
-import RoastIcon from '@/components/Icons/RoastIcon';
+import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import GradientButton from '@/components/GradientButton';
-import RoastLiveLogo from '@/components/RoastLiveLogo';
+import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -134,17 +134,17 @@ export default function ProfileScreen() {
     if (activeTab === 'replays') {
       return (
         <View style={styles.emptyState}>
-          <RoastIcon
+          <UnifiedRoastIcon
             name="video"
             size={48}
             color={colors.textSecondary}
           />
-          <Text style={[styles.emptyText, { color: colors.text }]}>No live replays yet</Text>
+          <Text style={[styles.emptyText, { color: colors.text }]}>Inga live-repriser än</Text>
           <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-            Your past livestreams will appear here
+            Dina tidigare livestreams kommer att visas här
           </Text>
           <TouchableOpacity style={[styles.viewAllButton, { backgroundColor: colors.brandPrimary }]} onPress={handleArchivedStreams}>
-            <Text style={styles.viewAllButtonText}>View Stream History</Text>
+            <Text style={styles.viewAllButtonText}>Visa streamhistorik</Text>
           </TouchableOpacity>
         </View>
       );
@@ -154,17 +154,17 @@ export default function ProfileScreen() {
       if (posts.length === 0) {
         return (
           <View style={styles.emptyState}>
-            <RoastIcon
+            <UnifiedRoastIcon
               name="burned-photo"
               size={48}
               color={colors.textSecondary}
             />
-            <Text style={[styles.emptyText, { color: colors.text }]}>No posts yet</Text>
+            <Text style={[styles.emptyText, { color: colors.text }]}>Inga inlägg än</Text>
             <TouchableOpacity 
               style={[styles.createButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
               onPress={handleCreatePost}
             >
-              <Text style={[styles.createButtonText, { color: colors.text }]}>Create your first post</Text>
+              <Text style={[styles.createButtonText, { color: colors.text }]}>Skapa ditt första inlägg</Text>
             </TouchableOpacity>
           </View>
         );
@@ -182,7 +182,7 @@ export default function ProfileScreen() {
               <View style={styles.postOverlay}>
                 <View style={styles.postStats}>
                   <View style={styles.postStat}>
-                    <RoastIcon
+                    <UnifiedRoastIcon
                       name="heart"
                       size={16}
                       color="#FFFFFF"
@@ -190,7 +190,7 @@ export default function ProfileScreen() {
                     <Text style={styles.postStatText}>{post.likes_count}</Text>
                   </View>
                   <View style={styles.postStat}>
-                    <RoastIcon
+                    <UnifiedRoastIcon
                       name="comment"
                       size={16}
                       color="#FFFFFF"
@@ -208,17 +208,17 @@ export default function ProfileScreen() {
     // Stories tab
     return (
       <View style={styles.emptyState}>
-        <RoastIcon
+        <UnifiedRoastIcon
           name="hot-circle"
           size={48}
           color={colors.textSecondary}
         />
-        <Text style={[styles.emptyText, { color: colors.text }]}>No story highlights</Text>
+        <Text style={[styles.emptyText, { color: colors.text }]}>Inga story-höjdpunkter</Text>
         <TouchableOpacity 
           style={[styles.createButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
           onPress={handleCreateStory}
         >
-          <Text style={[styles.createButtonText, { color: colors.text }]}>Create a story</Text>
+          <Text style={[styles.createButtonText, { color: colors.text }]}>Skapa en story</Text>
         </TouchableOpacity>
       </View>
     );
@@ -227,7 +227,7 @@ export default function ProfileScreen() {
   if (!profile) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading profile...</Text>
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Laddar profil...</Text>
       </View>
     );
   }
@@ -239,15 +239,19 @@ export default function ProfileScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.logoHeader, { borderBottomColor: colors.border }]}>
-          <View style={styles.logoPlaceholder} />
-          <TouchableOpacity onPress={handleSettings} style={styles.settingsButton}>
-            <RoastIcon
-              name="heated-gear"
-              size={28}
-              color={colors.text}
-            />
-          </TouchableOpacity>
+        {/* Fixed Header with Logo and Settings */}
+        <View style={[styles.fixedHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerLeft} />
+            <AppLogo size="small" alignment="center" />
+            <TouchableOpacity onPress={handleSettings} style={styles.settingsButton}>
+              <UnifiedRoastIcon
+                name="heated-gear"
+                size={28}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Banner */}
@@ -255,12 +259,8 @@ export default function ProfileScreen() {
           <Image source={{ uri: profile.banner_url }} style={[styles.banner, { backgroundColor: colors.backgroundAlt }]} />
         )}
 
-        {/* Profile Header with Logo */}
+        {/* Profile Header */}
         <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <RoastLiveLogo size="medium" />
-          </View>
-          
           <Image
             source={{
               uri: profile.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
@@ -279,17 +279,17 @@ export default function ProfileScreen() {
           <View style={styles.statsContainer}>
             <View style={styles.stat}>
               <Text style={[styles.statValue, { color: colors.text }]}>{formatCount(followersCount)}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Followers</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Följare</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
             <View style={styles.stat}>
               <Text style={[styles.statValue, { color: colors.text }]}>{formatCount(followingCount)}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Following</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Följer</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
             <View style={styles.stat}>
               <Text style={[styles.statValue, { color: colors.text }]}>{posts.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Inlägg</Text>
             </View>
           </View>
 
@@ -300,12 +300,12 @@ export default function ProfileScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.walletLeft}>
-              <RoastIcon name="lava-wallet" size={24} />
-              <Text style={[styles.walletLabel, { color: colors.text }]}>Saldo Balance</Text>
+              <UnifiedRoastIcon name="lava-wallet" size={24} />
+              <Text style={[styles.walletLabel, { color: colors.text }]}>Saldo</Text>
             </View>
             <View style={styles.walletRight}>
               <Text style={[styles.walletAmount, { color: colors.brandPrimary }]}>{walletBalance.toFixed(2)} SEK</Text>
-              <RoastIcon
+              <UnifiedRoastIcon
                 name="chevron-right"
                 size={16}
                 color={colors.textSecondary}
@@ -320,10 +320,10 @@ export default function ProfileScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.savedStreamsLeft}>
-              <RoastIcon name="video" size={24} />
-              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Saved Streams</Text>
+              <UnifiedRoastIcon name="video" size={24} />
+              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Sparade streams</Text>
             </View>
-            <RoastIcon
+            <UnifiedRoastIcon
               name="chevron-right"
               size={16}
               color={colors.textSecondary}
@@ -337,10 +337,10 @@ export default function ProfileScreen() {
             activeOpacity={0.7}
           >
             <View style={styles.savedStreamsLeft}>
-              <RoastIcon name="history" size={24} />
-              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Stream History</Text>
+              <UnifiedRoastIcon name="history" size={24} />
+              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Streamhistorik</Text>
             </View>
-            <RoastIcon
+            <UnifiedRoastIcon
               name="chevron-right"
               size={16}
               color={colors.textSecondary}
@@ -349,13 +349,13 @@ export default function ProfileScreen() {
 
           <View style={styles.buttonRow}>
             <View style={styles.buttonFlex}>
-              <GradientButton title="Edit Profile" onPress={handleEditProfile} size="medium" />
+              <GradientButton title="Redigera profil" onPress={handleEditProfile} size="medium" />
             </View>
             <TouchableOpacity 
               style={[styles.iconButton, { backgroundColor: colors.card, borderColor: colors.border }]} 
               onPress={handleShare}
             >
-              <RoastIcon
+              <UnifiedRoastIcon
                 name="share"
                 size={20}
                 color={colors.text}
@@ -368,14 +368,14 @@ export default function ProfileScreen() {
               style={[styles.actionButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
               onPress={handleCreatePost}
             >
-              <RoastIcon name="burned-photo" size={24} />
-              <Text style={[styles.actionButtonText, { color: colors.text }]}>Post</Text>
+              <UnifiedRoastIcon name="burned-photo" size={24} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>Inlägg</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
               onPress={handleCreateStory}
             >
-              <RoastIcon name="hot-circle" size={24} />
+              <UnifiedRoastIcon name="hot-circle" size={24} />
               <Text style={[styles.actionButtonText, { color: colors.text }]}>Story</Text>
             </TouchableOpacity>
           </View>
@@ -387,13 +387,13 @@ export default function ProfileScreen() {
             style={[styles.tab, activeTab === 'replays' && { borderBottomColor: colors.brandPrimary }]}
             onPress={() => setActiveTab('replays')}
           >
-            <RoastIcon
+            <UnifiedRoastIcon
               name="video"
               size={20}
               color={activeTab === 'replays' ? colors.brandPrimary : colors.textSecondary}
             />
             <Text style={[styles.tabText, { color: activeTab === 'replays' ? colors.brandPrimary : colors.textSecondary }]}>
-              LIVE REPLAYS
+              LIVE
             </Text>
           </TouchableOpacity>
 
@@ -401,13 +401,13 @@ export default function ProfileScreen() {
             style={[styles.tab, activeTab === 'posts' && { borderBottomColor: colors.brandPrimary }]}
             onPress={() => setActiveTab('posts')}
           >
-            <RoastIcon
+            <UnifiedRoastIcon
               name="burned-photo"
               size={20}
               color={activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary}
             />
             <Text style={[styles.tabText, { color: activeTab === 'posts' ? colors.brandPrimary : colors.textSecondary }]}>
-              POSTS
+              INLÄGG
             </Text>
           </TouchableOpacity>
 
@@ -415,7 +415,7 @@ export default function ProfileScreen() {
             style={[styles.tab, activeTab === 'stories' && { borderBottomColor: colors.brandPrimary }]}
             onPress={() => setActiveTab('stories')}
           >
-            <RoastIcon
+            <UnifiedRoastIcon
               name="hot-circle"
               size={20}
               color={activeTab === 'stories' ? colors.brandPrimary : colors.textSecondary}
@@ -462,15 +462,23 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 100,
   },
-  logoHeader: {
+  fixedHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    paddingTop: 48,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
   },
-  logoPlaceholder: {
+  headerLeft: {
     width: 40,
   },
   settingsButton: {
@@ -482,15 +490,13 @@ const styles = StyleSheet.create({
   banner: {
     width: '100%',
     height: 150,
+    marginTop: 60,
   },
   header: {
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 24,
-  },
-  logoContainer: {
-    marginBottom: 16,
   },
   avatar: {
     width: 100,

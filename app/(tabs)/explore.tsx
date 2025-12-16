@@ -11,24 +11,27 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Image,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/app/integrations/supabase/client';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import AppLogo from '@/components/AppLogo';
 import { CDNImage } from '@/components/CDNImage';
 import { useExplorePrefetch } from '@/hooks/useExplorePrefetch';
 import { cdnService } from '@/app/services/cdnService';
 import { fetchLiveStreams } from '@/app/services/streamService';
 import { NormalizedStream } from '@/utils/streamNormalizer';
-import { IconSymbol } from '@/components/IconSymbol';
+import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
+import StoriesBar from '@/components/StoriesBar';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = (width - 48) / 2;
 
-interface ExploreItem {
+interface FriendContent {
   id: string;
-  type: 'post' | 'story' | 'stream';
+  type: 'post' | 'story' | 'stream' | 'reel';
   mediaUrl: string;
   username: string;
   userId: string;
@@ -39,13 +42,16 @@ interface ExploreItem {
   isLive?: boolean;
 }
 
-export default function ExploreScreen() {
+export default function FriendsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const [items, setItems] = useState<ExploreItem[]>([]);
+  const { user } = useAuth();
+  const [items, setItems] = useState<FriendContent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const {
@@ -59,7 +65,9 @@ export default function ExploreScreen() {
     prefetchThreshold: 0.5,
   });
 
-  const loadExploreContent = useCallback(async (pageNum: number = 0) => {
+  const loadFriendsContent = useCallback(async (pageNum: number = 0) => {
+    if (!user) return;
+
     try {
       setLoading(pageNum === 0);
 
@@ -67,8 +75,27 @@ export default function ExploreScreen() {
       const start = pageNum * itemsPerPage;
       const end = start + itemsPerPage - 1;
 
-      const liveStreams = await fetchLiveStreams();
+      // Get user's following list
+      const { data: following } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id);
 
+      const followingIds = following?.map(f => f.following_id) || [];
+
+      if (followingIds.length === 0) {
+        setItems([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch friends' live streams
+      const liveStreams = await fetchLiveStreams();
+      const friendStreams = liveStreams.filter(stream => 
+        followingIds.includes(stream.user.id)
+      );
+
+      // Fetch friends' posts
       const { data: posts } = await supabase
         .from('posts')
         .select(`
@@ -82,9 +109,11 @@ export default function ExploreScreen() {
             avatar_url
           )
         `)
+        .in('user_id', followingIds)
         .order('created_at', { ascending: false })
         .range(start, end);
 
+      // Fetch friends' stories
       const { data: stories } = await supabase
         .from('stories')
         .select(`
@@ -97,11 +126,12 @@ export default function ExploreScreen() {
             avatar_url
           )
         `)
+        .in('user_id', followingIds)
         .gt('expires_at', new Date().toISOString())
         .order('created_at', { ascending: false })
         .range(start, end);
 
-      const streamItems: ExploreItem[] = liveStreams.map(stream => ({
+      const streamItems: FriendContent[] = friendStreams.map(stream => ({
         id: stream.id,
         type: 'stream' as const,
         mediaUrl: stream.thumbnail_url,
@@ -114,7 +144,7 @@ export default function ExploreScreen() {
         isLive: stream.is_live,
       }));
 
-      const postItems: ExploreItem[] = (posts || []).map(post => ({
+      const postItems: FriendContent[] = (posts || []).map(post => ({
         id: post.id,
         type: 'post' as const,
         mediaUrl: post.media_url,
@@ -125,7 +155,7 @@ export default function ExploreScreen() {
         createdAt: post.created_at,
       }));
 
-      const storyItems: ExploreItem[] = (stories || []).map(story => ({
+      const storyItems: FriendContent[] = (stories || []).map(story => ({
         id: story.id,
         type: 'story' as const,
         mediaUrl: story.media_url,
@@ -136,7 +166,7 @@ export default function ExploreScreen() {
       }));
 
       const allItems = [...streamItems, ...postItems, ...storyItems].sort(
-        () => Math.random() - 0.5
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
 
       if (pageNum === 0) {
@@ -152,37 +182,37 @@ export default function ExploreScreen() {
         await prefetchNextPage(pageNum);
       }
     } catch (error) {
-      console.error('Error loading explore content:', error);
+      console.error('Error loading friends content:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [prefetchNextPage, setCurrentPage]);
+  }, [user, prefetchNextPage, setCurrentPage]);
 
   useEffect(() => {
     let mounted = true;
 
-    if (mounted) {
-      loadExploreContent();
+    if (mounted && user) {
+      loadFriendsContent();
     }
 
     return () => {
       mounted = false;
       clearCache();
     };
-  }, [loadExploreContent, clearCache]);
+  }, [user, loadFriendsContent, clearCache]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     clearCache();
-    loadExploreContent(0);
-  }, [clearCache, loadExploreContent]);
+    loadFriendsContent(0);
+  }, [clearCache, loadFriendsContent]);
 
   const handleLoadMore = useCallback(() => {
     if (!loading) {
-      loadExploreContent(page + 1);
+      loadFriendsContent(page + 1);
     }
-  }, [loading, page, loadExploreContent]);
+  }, [loading, page, loadFriendsContent]);
 
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -204,7 +234,7 @@ export default function ExploreScreen() {
     [handlePrefetchScroll, loading, handleLoadMore]
   );
 
-  const handleItemPress = useCallback((item: ExploreItem) => {
+  const handleItemPress = useCallback((item: FriendContent) => {
     if (item.type === 'stream') {
       router.push({
         pathname: '/live-player',
@@ -217,7 +247,14 @@ export default function ExploreScreen() {
     }
   }, [router]);
 
-  const renderItem = useCallback((item: ExploreItem, index: number) => (
+  const filteredItems = searchQuery.trim() 
+    ? items.filter(item => 
+        item.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.caption?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : items;
+
+  const renderItem = useCallback((item: FriendContent, index: number) => (
     <TouchableOpacity
       key={`${item.type}-${item.id}-${index}`}
       style={styles.item}
@@ -251,6 +288,13 @@ export default function ExploreScreen() {
           </View>
         )}
 
+        {item.type === 'reel' && (
+          <View style={[styles.reelBadge, { backgroundColor: '#8B00FF' }]}>
+            <UnifiedRoastIcon name="video" size={12} color="#FFFFFF" />
+            <Text style={styles.reelBadgeText}>REEL</Text>
+          </View>
+        )}
+
         {item.type === 'stream' && item.isLive && (
           <View style={styles.liveBadgeContainer}>
             <View style={styles.liveBadge}>
@@ -259,9 +303,8 @@ export default function ExploreScreen() {
             </View>
             {item.viewerCount !== undefined && (
               <View style={styles.viewerBadge}>
-                <IconSymbol
-                  ios_icon_name="eye.fill"
-                  android_material_icon_name="visibility"
+                <UnifiedRoastIcon
+                  name="people"
                   size={12}
                   color="#FFFFFF"
                 />
@@ -274,14 +317,66 @@ export default function ExploreScreen() {
     </TouchableOpacity>
   ), [colors, handleItemPress]);
 
+  if (!user) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+          <AppLogo size="small" alignment="center" />
+        </View>
+        <View style={styles.emptyState}>
+          <UnifiedRoastIcon name="people" size={64} color={colors.textSecondary} />
+          <Text style={[styles.emptyText, { color: colors.text }]}>Logga in för att se vänners innehåll</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <AppLogo size="small" alignment="left" />
-        <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-          Discover trending content
-        </Text>
+        <AppLogo size="small" alignment="center" />
+        <TouchableOpacity 
+          style={styles.searchButton}
+          onPress={() => setShowSearch(!showSearch)}
+        >
+          <UnifiedRoastIcon
+            name="search"
+            size={24}
+            color={colors.text}
+          />
+        </TouchableOpacity>
       </View>
+
+      {showSearch && (
+        <View style={[styles.searchBar, { backgroundColor: colors.backgroundAlt, borderBottomColor: colors.border }]}>
+          <UnifiedRoastIcon
+            name="search"
+            size={20}
+            color={colors.textSecondary}
+          />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Sök bland följda profiler..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <UnifiedRoastIcon
+                name="close"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+        Innehåll från personer du följer
+      </Text>
 
       <ScrollView
         ref={scrollViewRef}
@@ -298,21 +393,33 @@ export default function ExploreScreen() {
         }
         onScroll={handleScroll}
         scrollEventThrottle={16}
+        ListHeaderComponent={<StoriesBar />}
       >
-        {items.map((item, index) => renderItem(item, index))}
+        {filteredItems.length === 0 && !loading ? (
+          <View style={styles.emptyState}>
+            <UnifiedRoastIcon name="people" size={64} color={colors.textSecondary} />
+            <Text style={[styles.emptyText, { color: colors.text }]}>
+              {searchQuery ? 'Inga resultat' : 'Följ personer för att se deras innehåll här'}
+            </Text>
+            {!searchQuery && (
+              <TouchableOpacity 
+                style={[styles.exploreButton, { backgroundColor: colors.brandPrimary }]}
+                onPress={() => router.push('/(tabs)/(home)/')}
+              >
+                <Text style={styles.exploreButtonText}>Utforska</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          filteredItems.map((item, index) => renderItem(item, index))
+        )}
 
         {loading && page === 0 && (
           <View style={styles.loadingContainer}>
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading...</Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Laddar...</Text>
           </View>
         )}
       </ScrollView>
-
-      <View style={styles.deviceTierIndicator}>
-        <Text style={[styles.deviceTierText, { color: colors.textSecondary }]}>
-          Device: {cdnService.getDeviceTier().toUpperCase()}
-        </Text>
-      </View>
     </View>
   );
 }
@@ -324,12 +431,36 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 60,
-    paddingBottom: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  searchButton: {
+    position: 'absolute',
+    right: 20,
+    top: 60,
+    padding: 8,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
     borderBottomWidth: 1,
   },
-  headerSubtitle: {
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  subtitle: {
     fontSize: 14,
-    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
   scrollView: {
     flex: 1,
@@ -384,6 +515,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+  reelBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  reelBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
   liveBadgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -431,17 +576,27 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 14,
   },
-  deviceTierIndicator: {
-    position: 'absolute',
-    bottom: 100,
-    right: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+  emptyState: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    gap: 16,
   },
-  deviceTierText: {
-    fontSize: 10,
+  emptyText: {
+    fontSize: 16,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  exploreButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    marginTop: 8,
+  },
+  exploreButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
