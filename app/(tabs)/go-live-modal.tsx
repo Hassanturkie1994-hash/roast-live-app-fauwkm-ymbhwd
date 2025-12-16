@@ -12,9 +12,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStreaming } from '@/contexts/StreamingContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 
+type StreamMode = 'solo' | 'battle';
+
 export default function GoLiveModal() {
   const { user } = useAuth();
   const { setIsStreaming } = useStreaming();
+  const [streamMode, setStreamMode] = useState<StreamMode>('solo');
   const [streamTitle, setStreamTitle] = useState('');
   const [contentLabel, setContentLabel] = useState<ContentLabel | null>(null);
   const [showContentLabelModal, setShowContentLabelModal] = useState(false);
@@ -38,6 +41,15 @@ export default function GoLiveModal() {
 
     if (!user) {
       Alert.alert('Error', 'You must be logged in to start streaming');
+      return;
+    }
+
+    // If Battle mode, navigate to battle format selection
+    if (streamMode === 'battle') {
+      router.push({
+        pathname: '/screens/BattleFormatSelectionScreen',
+        params: { streamTitle },
+      });
       return;
     }
 
@@ -116,11 +128,62 @@ export default function GoLiveModal() {
           <AppLogo size="medium" alignment="center" style={styles.modalLogo} />
           <Text style={styles.modalTitle}>Setup Your Stream</Text>
 
+          {/* Stream Mode Selection */}
+          <View style={styles.modeContainer}>
+            <TouchableOpacity
+              style={[
+                styles.modeButton,
+                streamMode === 'solo' && styles.modeButtonActive,
+              ]}
+              onPress={() => setStreamMode('solo')}
+              disabled={isLoading}
+            >
+              <IconSymbol
+                ios_icon_name="person.fill"
+                android_material_icon_name="person"
+                size={24}
+                color={streamMode === 'solo' ? '#FFFFFF' : colors.text}
+              />
+              <Text
+                style={[
+                  styles.modeButtonText,
+                  streamMode === 'solo' && styles.modeButtonTextActive,
+                ]}
+              >
+                Solo Live
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.modeButton,
+                streamMode === 'battle' && styles.modeButtonActive,
+              ]}
+              onPress={() => setStreamMode('battle')}
+              disabled={isLoading}
+            >
+              <IconSymbol
+                ios_icon_name="flame.fill"
+                android_material_icon_name="whatshot"
+                size={24}
+                color={streamMode === 'battle' ? '#FFFFFF' : colors.text}
+              />
+              <Text
+                style={[
+                  styles.modeButtonText,
+                  streamMode === 'battle' && styles.modeButtonTextActive,
+                ]}
+              >
+                Battle
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Stream Title</Text>
             <TextInput
               style={styles.input}
-              placeholder="What are you streaming?"
+              placeholder={streamMode === 'battle' ? 'Battle title...' : 'What are you streaming?'}
               placeholderTextColor={colors.placeholder}
               value={streamTitle}
               onChangeText={setStreamTitle}
@@ -208,6 +271,35 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 24,
     textAlign: 'center',
+  },
+  modeContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.backgroundAlt,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.brandPrimary || '#A40028',
+    borderColor: colors.brandPrimary || '#A40028',
+  },
+  modeButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modeButtonTextActive: {
+    color: '#FFFFFF',
   },
   inputContainer: {
     marginBottom: 16,
