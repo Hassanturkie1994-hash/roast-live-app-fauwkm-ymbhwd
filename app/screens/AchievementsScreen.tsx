@@ -13,7 +13,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { achievementService, Achievement, UserAchievement } from '@/app/services/achievementService';
 import { AchievementBadge } from '@/components/AchievementBadge';
-import { LinearGradient } from 'expo-linear-gradient';
 
 export default function AchievementsScreen() {
   const { user } = useAuth();
@@ -143,7 +142,7 @@ export default function AchievementsScreen() {
             {selectedBadges.map((badgeKey, index) => {
               const achievement = allAchievements.find((a) => a.achievement_key === badgeKey);
               return (
-                <View key={`selected-badge-${index}`} style={styles.selectedBadgeSlot}>
+                <View key={`selected-badge-slot-${index}`} style={styles.selectedBadgeSlot}>
                   {achievement ? (
                     <AchievementBadge
                       emoji={achievement.emoji}
@@ -180,12 +179,12 @@ export default function AchievementsScreen() {
               {categoryTitles[category as keyof typeof categoryTitles]}
             </Text>
             <View style={styles.achievementsGrid}>
-              {achievements.map((achievement, achievementIndex) => {
+              {achievements.map((achievement) => {
                 const unlocked = isUnlocked(achievement.achievement_key);
                 const isSelected = selectedBadges.includes(achievement.achievement_key);
 
                 return (
-                  <View key={`achievement-${achievement.id}-${achievementIndex}`} style={styles.achievementWrapper}>
+                  <View key={`achievement-${achievement.id}`} style={styles.achievementWrapper}>
                     <AchievementBadge
                       emoji={achievement.emoji}
                       name={achievement.name}

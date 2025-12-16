@@ -31,6 +31,20 @@ export function IconSymbol({
   style?: StyleProp<ViewStyle>;
   weight?: SymbolWeight;
 }) {
+  // Validate that the icon name exists in Ionicons
+  if (!Ionicons.glyphMap[android_material_icon_name]) {
+    console.warn(`⚠️ IconSymbol: Invalid android_material_icon_name "${android_material_icon_name}"`);
+    // Fallback to a safe default icon
+    return (
+      <Ionicons
+        color={color}
+        size={size}
+        name="help-circle-outline"
+        style={style as StyleProp<TextStyle>}
+      />
+    );
+  }
+
   return (
     <Ionicons
       color={color}

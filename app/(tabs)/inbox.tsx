@@ -44,17 +44,17 @@ const CATEGORY_CONFIG = {
   gifts: {
     title: '🎁 Gifts',
     icon: 'gift.fill' as const,
-    androidIcon: 'card_giftcard' as const,
+    androidIcon: 'gift' as const,
   },
   safety: {
     title: '🛡️ Safety',
     icon: 'shield.fill' as const,
-    androidIcon: 'security' as const,
+    androidIcon: 'shield' as const,
   },
   wallet: {
     title: '💰 Wallet & Earnings',
     icon: 'dollarsign.circle.fill' as const,
-    androidIcon: 'account_balance_wallet' as const,
+    androidIcon: 'wallet' as const,
   },
   admin: {
     title: '📢 Admin & System',
@@ -184,24 +184,24 @@ export default function InboxScreen() {
   const getNotificationIcon = useCallback((type: string) => {
     switch (type) {
       case 'like':
-        return { ios: 'heart.fill', android: 'favorite' };
+        return { ios: 'heart.fill', android: 'heart' as const };
       case 'comment':
-        return { ios: 'bubble.left.fill', android: 'comment' };
+        return { ios: 'bubble.left.fill', android: 'chatbubble' as const };
       case 'follow':
-        return { ios: 'person.badge.plus.fill', android: 'person_add' };
+        return { ios: 'person.badge.plus.fill', android: 'person-add' as const };
       case 'gift_received':
-        return { ios: 'gift.fill', android: 'card_giftcard' };
+        return { ios: 'gift.fill', android: 'gift' as const };
       case 'payout_completed':
-        return { ios: 'checkmark.circle.fill', android: 'check_circle' };
+        return { ios: 'checkmark.circle.fill', android: 'checkmark-circle' as const };
       case 'warning':
       case 'timeout_ended':
       case 'ban_lifted':
-        return { ios: 'exclamationmark.triangle.fill', android: 'warning' };
+        return { ios: 'exclamationmark.triangle.fill', android: 'warning' as const };
       case 'admin_announcement':
       case 'system_update':
-        return { ios: 'megaphone.fill', android: 'campaign' };
+        return { ios: 'megaphone.fill', android: 'campaign' as const };
       default:
-        return { ios: 'bell.fill', android: 'notifications' };
+        return { ios: 'bell.fill', android: 'notifications' as const };
     }
   }, []);
 
@@ -230,7 +230,7 @@ export default function InboxScreen() {
           contentContainerStyle={styles.categoryScrollContent}
         >
           <TouchableOpacity
-            key="all"
+            key="category-all"
             style={[
               styles.categoryChip,
               {
@@ -252,7 +252,7 @@ export default function InboxScreen() {
 
           {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
             <TouchableOpacity
-              key={key}
+              key={`category-${key}`}
               style={[
                 styles.categoryChip,
                 {
@@ -306,7 +306,7 @@ export default function InboxScreen() {
           <View style={styles.emptyState}>
             <IconSymbol
               ios_icon_name="bell.slash"
-              android_material_icon_name="notifications_off"
+              android_material_icon_name="notifications-off"
               size={64}
               color={colors.textSecondary}
             />
@@ -316,11 +316,11 @@ export default function InboxScreen() {
             </Text>
           </View>
         ) : (
-          notifications.map((notification, index) => {
+          notifications.map((notification) => {
             const icon = getNotificationIcon(notification.type);
             return (
               <TouchableOpacity
-                key={`notification-${notification.id}-${index}`}
+                key={`notification-${notification.id}`}
                 style={[
                   styles.notificationCard,
                   {

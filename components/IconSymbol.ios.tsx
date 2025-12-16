@@ -18,6 +18,15 @@ export function IconSymbol({
   style?: StyleProp<ViewStyle>;
   weight?: SymbolWeight;
 }) {
+  // Validate android fallback icon
+  const validAndroidIcon = Ionicons.glyphMap[android_material_icon_name] 
+    ? android_material_icon_name 
+    : "help-circle-outline";
+
+  if (!Ionicons.glyphMap[android_material_icon_name]) {
+    console.warn(`⚠️ IconSymbol: Invalid android_material_icon_name "${android_material_icon_name}"`);
+  }
+
   // If ios_icon_name is provided and valid, use SF Symbols
   // Otherwise fall back to Ionicons
   if (ios_icon_name) {
@@ -36,7 +45,7 @@ export function IconSymbol({
         ]}
         fallback={
           <Ionicons
-            name={android_material_icon_name}
+            name={validAndroidIcon}
             size={size}
             color={color}
             style={style as any}
@@ -49,7 +58,7 @@ export function IconSymbol({
   // Use Ionicons as fallback
   return (
     <Ionicons
-      name={android_material_icon_name}
+      name={validAndroidIcon}
       size={size}
       color={color}
       style={style as any}

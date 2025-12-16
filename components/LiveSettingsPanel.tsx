@@ -295,7 +295,7 @@ function LiveSettingsPanelContent({
                   {streamMode === 'solo' && (
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
+                      android_material_icon_name="check-circle"
                       size={20}
                       color={colors.brandPrimary}
                     />
@@ -318,7 +318,7 @@ function LiveSettingsPanelContent({
                   {streamMode === 'battle' && (
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
+                      android_material_icon_name="check-circle"
                       size={20}
                       color={colors.brandPrimary}
                     />
@@ -351,7 +351,7 @@ function LiveSettingsPanelContent({
 
                 {BATTLE_FORMATS.map((item) => (
                   <TouchableOpacity
-                    key={item.format}
+                    key={`battle-format-${item.format}`}
                     style={[
                       styles.battleFormatButton,
                       battleFormat === item.format && styles.battleFormatButtonActive,
@@ -377,7 +377,7 @@ function LiveSettingsPanelContent({
                       {battleFormat === item.format && (
                         <IconSymbol
                           ios_icon_name="checkmark.circle.fill"
-                          android_material_icon_name="check_circle"
+                          android_material_icon_name="check-circle"
                           size={20}
                           color={colors.brandPrimary}
                         />
@@ -452,7 +452,7 @@ function LiveSettingsPanelContent({
                 <View style={styles.infoBox}>
                   <IconSymbol
                     ios_icon_name="eye.slash.fill"
-                    android_material_icon_name="visibility_off"
+                    android_material_icon_name="visibility-off"
                     size={16}
                     color={colors.brandPrimary}
                   />
@@ -486,7 +486,7 @@ function LiveSettingsPanelContent({
                   {whoCanWatch === 'public' && (
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
+                      android_material_icon_name="check-circle"
                       size={20}
                       color={colors.brandPrimary}
                     />
@@ -508,7 +508,7 @@ function LiveSettingsPanelContent({
                   {whoCanWatch === 'followers' && (
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
+                      android_material_icon_name="check-circle"
                       size={20}
                       color={colors.brandPrimary}
                     />
@@ -520,7 +520,7 @@ function LiveSettingsPanelContent({
                 >
                   <IconSymbol
                     ios_icon_name="star.circle.fill"
-                    android_material_icon_name="workspace_premium"
+                    android_material_icon_name="workspace-premium"
                     size={20}
                     color={whoCanWatch === 'vip_club' ? colors.brandPrimary : colors.textSecondary}
                   />
@@ -530,7 +530,7 @@ function LiveSettingsPanelContent({
                   {whoCanWatch === 'vip_club' && (
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
-                      android_material_icon_name="check_circle"
+                      android_material_icon_name="check-circle"
                       size={20}
                       color={colors.brandPrimary}
                     />
@@ -557,7 +557,7 @@ function LiveSettingsPanelContent({
                   </Text>
                   <IconSymbol
                     ios_icon_name={showModeratorSelector ? 'chevron.up' : 'chevron.down'}
-                    android_material_icon_name={showModeratorSelector ? 'expand_less' : 'expand_more'}
+                    android_material_icon_name={showModeratorSelector ? 'expand-less' : 'expand-more'}
                     size={20}
                     color={colors.textSecondary}
                   />
@@ -610,14 +610,13 @@ function LiveSettingsPanelContent({
                       </Text>
                     ) : (
                       <ScrollView style={styles.userScrollView} showsVerticalScrollIndicator={false}>
-                        {validatedDisplayList.map((follower, index) => {
+                        {validatedDisplayList.map((follower) => {
                           const isSelected = selectedModerators.includes(follower.id);
                           const isProcessing = addingModerator === follower.id;
                           
-                          // Use compound key: id + index for guaranteed uniqueness
                           return (
                             <TouchableOpacity
-                              key={`follower-${follower.id}-${index}`}
+                              key={`follower-${follower.id}`}
                               style={[styles.followerItem, isSelected && styles.followerItemActive]}
                               onPress={() => toggleModerator(follower.id)}
                               disabled={isProcessing}
@@ -639,7 +638,7 @@ function LiveSettingsPanelContent({
                               ) : isSelected ? (
                                 <IconSymbol
                                   ios_icon_name="checkmark.circle.fill"
-                                  android_material_icon_name="check_circle"
+                                  android_material_icon_name="check-circle"
                                   size={20}
                                   color={colors.brandPrimary}
                                 />
