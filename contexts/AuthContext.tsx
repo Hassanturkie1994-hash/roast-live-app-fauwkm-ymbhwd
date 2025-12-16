@@ -41,39 +41,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   usePushNotifications(user?.id || null);
 
-  const ensureWalletExists = useCallback(async (userId: string) => {
-    try {
-      const { data: existingWallet } = await supabase
-        .from('wallet')
-        .select('user_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (!existingWallet) {
-        console.log('Creating wallet for user:', userId);
-        const { error } = await supabase.from('wallet').insert({
-          user_id: userId,
-          balance: 0.00,
-          last_updated: new Date().toISOString(),
-        });
-
-        if (error) {
-          console.error('Error creating wallet:', error);
-        } else {
-          console.log('Wallet created successfully');
-        }
-      }
-    } catch (error) {
-      console.error('Error in ensureWalletExists:', error);
-    }
-  }, []);
-
   const checkDeviceBan = useCallback(async (): Promise<boolean> => {
     const { banned } = await deviceBanService.isDeviceBanned();
     return banned;
   }, []);
 
-  const fetchProfile = useCallback(async (userId: string, userEmail?: string) => {
+  const fetchProfile = useCallback(async (userId: string) => {
     try {
       console.log('Fetching profile for user:', userId);
       
@@ -89,52 +62,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!data) {
-        console.log('Profile not found, creating new profile for user:', userId);
+        console.log('Profile not found for user:', userId);
+        // Profile should be created by the database trigger
+        // Wait a moment and try again
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        const username = userEmail ? userEmail.split('@')[0] : `user_${userId.substring(0, 8)}`;
-        
-        const { data: newProfile, error: createError } = await supabase
+        const { data: retryData, error: retryError } = await supabase
           .from('profiles')
-          .insert({
-            id: userId,
-            username: username,
-            display_name: username,
-            avatar_url: null,
-            unique_profile_link: `roastlive.com/@${username}`,
-            followers_count: 0,
-            following_count: 0,
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          console.error('Error creating profile:', createError);
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+        
+        if (retryError || !retryData) {
+          console.error('Profile still not found after retry');
           return null;
         }
-
-        console.log('Profile created successfully:', newProfile);
         
-        await ensureWalletExists(userId);
+        console.log('Profile fetched successfully on retry:', retryData);
         await deviceBanService.storeDeviceFingerprint(userId);
-        
-        return newProfile;
+        return retryData;
       }
 
       console.log('Profile fetched successfully:', data);
-      
-      await ensureWalletExists(userId);
       await deviceBanService.storeDeviceFingerprint(userId);
-      
       return data;
     } catch (error) {
       console.error('Error in fetchProfile:', error);
       return null;
     }
-  }, [ensureWalletExists]);
+  }, []);
 
   const refreshProfile = useCallback(async () => {
     if (user) {
-      const profileData = await fetchProfile(user.id, user.email);
+      const profileData = await fetchProfile(user.id);
       setProfile(profileData);
     }
   }, [user, fetchProfile]);
@@ -172,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         // Fetch profile if user exists
         if (currentSession?.user) {
-          const profileData = await fetchProfile(currentSession.user.id, currentSession.user.email);
+          const profileData = await fetchProfile(currentSession.user.id);
           if (mounted) {
             setProfile(profileData);
           }
@@ -226,7 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Fetch profile for new user
       if (newSession?.user) {
-        const profileData = await fetchProfile(newSession.user.id, newSession.user.email);
+        const profileData = await fetchProfile(newSession.user.id);
         if (mounted) {
           setProfile(profileData);
         }
@@ -283,6 +243,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Sign up with Supabase
+      // Profile and wallet will be created automatically by database triggers
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -300,21 +261,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
+        // Create profile manually (will trigger wallet creation via database trigger)
         const username = displayName.toLowerCase().replace(/[^a-z0-9_]/g, '') || email.split('@')[0];
         
         const { error: profileError } = await supabase.from('profiles').insert({
           id: data.user.id,
           username: username,
           display_name: displayName,
+          email: email,
           avatar_url: null,
           unique_profile_link: `roastlive.com/@${username}`,
           followers_count: 0,
           following_count: 0,
+          role: 'USER',
         });
 
         if (profileError) {
-          console.error('❌ Error creating profile:', profileError);
-          return { error: profileError };
+          // Check if it's a duplicate key error (profile already exists)
+          if (profileError.code === '23505') {
+            console.log('Profile already exists, continuing...');
+          } else {
+            console.error('❌ Error creating profile:', profileError);
+            return { error: profileError };
+          }
         }
 
         await deviceBanService.storeDeviceFingerprint(data.user.id);
