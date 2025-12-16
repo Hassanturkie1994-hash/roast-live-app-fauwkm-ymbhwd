@@ -9,7 +9,7 @@ import {
   Image,
   Dimensions,
   Alert,
-} from 'react';
+} from 'react-native';
 import { router } from 'expo-router';
 import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import GradientButton from '@/components/GradientButton';
@@ -17,8 +17,6 @@ import AppLogo from '@/components/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
-
-const { width: screenWidth } = Dimensions.get('window');
 
 interface Post {
   id: string;
@@ -38,6 +36,18 @@ export default function ProfileScreen() {
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
+
+  // Update screen width on dimension changes
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenWidth(window.width);
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, []);
 
   const fetchUserData = useCallback(async () => {
     if (!user) return;
@@ -175,7 +185,7 @@ export default function ProfileScreen() {
           {posts.map((post, index) => (
             <TouchableOpacity
               key={index}
-              style={[styles.postCard, { backgroundColor: colors.card }]}
+              style={[styles.postCard, { backgroundColor: colors.card, width: (screenWidth - 6) / 3 }]}
               activeOpacity={0.8}
             >
               <Image source={{ uri: post.media_url }} style={styles.postImage} />
@@ -696,7 +706,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   postCard: {
-    width: (screenWidth - 6) / 3,
     aspectRatio: 9 / 16,
     position: 'relative',
   },
