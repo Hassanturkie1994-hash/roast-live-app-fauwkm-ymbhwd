@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
+import { AppIcon, ROAST_ICONS } from '@/components/Icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -139,8 +139,9 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
               onPress={() => handleTabPress('/(tabs)/(home)/')}
               activeOpacity={0.7}
             >
-              <UnifiedRoastIcon
-                name="flame-home"
+              <AppIcon
+                name={ROAST_ICONS.HOME}
+                type="roast"
                 size={28}
                 color={isActive('/(tabs)/(home)') ? colors.brandPrimary : colors.tabIconColor}
                 forceTheme={theme}
@@ -156,8 +157,9 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
               onPress={() => handleTabPress('/(tabs)/explore')}
               activeOpacity={0.7}
             >
-              <UnifiedRoastIcon
-                name="people"
+              <AppIcon
+                name={ROAST_ICONS.PEOPLE}
+                type="roast"
                 size={28}
                 color={isActive('/explore') ? colors.brandPrimary : colors.tabIconColor}
                 forceTheme={theme}
@@ -179,8 +181,9 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
                 end={{ x: 1, y: 0 }}
                 style={styles.centerButtonGradient}
               >
-                <UnifiedRoastIcon
-                  name="fire-camera"
+                <AppIcon
+                  name={ROAST_ICONS.CAMERA}
+                  type="roast"
                   size={24}
                   color="#FFFFFF"
                   forceTheme="dark"
@@ -196,8 +199,9 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
               activeOpacity={0.7}
             >
               <View style={styles.iconContainer}>
-                <UnifiedRoastIcon
-                  name="smoke-message"
+                <AppIcon
+                  name={ROAST_ICONS.INBOX}
+                  type="roast"
                   size={28}
                   color={isActive('/inbox') ? colors.brandPrimary : colors.tabIconColor}
                   forceTheme={theme}
@@ -219,8 +223,9 @@ export default function TikTokTabBar({ isStreaming = false }: TikTokTabBarProps)
               onPress={() => handleTabPress('/(tabs)/profile')}
               activeOpacity={0.7}
             >
-              <UnifiedRoastIcon
-                name="roast-badge"
+              <AppIcon
+                name={ROAST_ICONS.PROFILE}
+                type="roast"
                 size={28}
                 color={isActive('/profile') ? colors.brandPrimary : colors.tabIconColor}
                 forceTheme={theme}

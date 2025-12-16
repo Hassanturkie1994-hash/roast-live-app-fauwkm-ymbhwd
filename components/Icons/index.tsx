@@ -3,16 +3,34 @@
  * Roast Live Icon System - Central Export
  * 
  * This file exports all icon-related components for easy importing.
- * Use UnifiedRoastIcon for all new code.
+ * 
+ * USAGE:
+ * import { AppIcon, ROAST_ICONS, SYSTEM_ICONS } from '@/components/Icons';
+ * 
+ * <AppIcon name={ROAST_ICONS.HOME} type="roast" size={24} color={colors.text} />
+ * <AppIcon type="system" iosName={SYSTEM_ICONS.CHEVRON_LEFT.ios} androidName={SYSTEM_ICONS.CHEVRON_LEFT.android} />
  */
 
 // Main icon components
+export { default as AppIcon } from './AppIcon';
 export { default as UnifiedRoastIcon } from './UnifiedRoastIcon';
 export { default as RoastIcon } from './RoastIcon';
+
+// Icon registry
+export { 
+  ROAST_ICONS, 
+  SYSTEM_ICONS,
+  isValidRoastIcon,
+  isValidSystemIcon,
+  getRoastIcon,
+  getSystemIcon,
+} from './iconRegistry';
 
 // Type exports
 export type { UnifiedIconName } from './UnifiedRoastIcon';
 export type { RoastIconName } from './RoastIcon';
+export type { AppIconType } from './AppIcon';
+export type { SystemIconDefinition } from './iconRegistry';
 
 // Individual SVG icon exports (for advanced use cases)
 export { default as FlameHomeIcon } from './svg/FlameHomeIcon';

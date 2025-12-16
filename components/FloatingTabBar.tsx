@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { IconSymbol } from '@/components/IconSymbol';
+import { AppIcon, SYSTEM_ICONS } from '@/components/Icons';
 import { BlurView } from 'expo-blur';
 import {
   useAnimatedStyle,
@@ -20,7 +20,7 @@ import {
   interpolate,
 } from 'react-native-reanimated';
 import AnimatedView from 'react-native-reanimated';
-import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { Ionicons } from '@expo/vector-icons';
 import { Href } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -29,7 +29,7 @@ const { width: screenWidth } = Dimensions.get('window');
 export interface TabBarItem {
   name: string;
   route: Href;
-  icon: keyof typeof MaterialIcons.glyphMap;
+  icon: keyof typeof Ionicons.glyphMap;
   label: string;
   isCenter?: boolean;
 }
@@ -229,9 +229,10 @@ export default function FloatingTabBar({
                       activeOpacity={0.7}
                     >
                       <View style={styles.tabContent}>
-                        <IconSymbol
-                          android_material_icon_name={tab.icon}
-                          ios_icon_name={tab.icon}
+                        <AppIcon
+                          type="system"
+                          androidName={tab.icon}
+                          iosName={tab.icon}
                           size={24}
                           color={isActive ? colors.brandPrimary : colors.textSecondary}
                         />
