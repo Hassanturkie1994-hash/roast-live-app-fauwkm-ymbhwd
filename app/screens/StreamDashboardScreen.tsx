@@ -18,11 +18,9 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { moderationService, Moderator, BannedUser } from '@/app/services/moderationService';
 import { supabase } from '@/app/integrations/supabase/client';
-import UnifiedBadgeEditorModal from '@/components/UnifiedBadgeEditorModal';
+import BadgeEditorModal from '@/components/BadgeEditorModal';
 import { cdnService } from '@/app/services/cdnService';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { unifiedVIPClubService, VIPClubMember } from '@/app/services/unifiedVIPClubService';
-import { useVIPClub } from '@/contexts/VIPClubContext';
 
 const BADGE_COLORS = [
   '#FF1493', // Deep Pink
@@ -35,7 +33,18 @@ const BADGE_COLORS = [
   '#FF6347', // Tomato
 ];
 
-// VIPMember interface now imported from unifiedVIPClubService
+interface VIPMember {
+  id: string;
+  subscriber_id: string;
+  started_at: string;
+  renewed_at: string;
+  status: string;
+  profiles?: {
+    username: string;
+    display_name: string;
+    avatar_url: string | null;
+  };
+}
 
 interface CacheHitPerUser {
   userId: string;
@@ -45,10 +54,9 @@ interface CacheHitPerUser {
 
 function StreamDashboardContent() {
   const { user } = useAuth();
-  const { club, refreshClub } = useVIPClub();
   const [moderators, setModerators] = useState<Moderator[]>([]);
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
-  const [vipMembers, setVipMembers] = useState<VIPClubMember[]>([]);
+  const [vipMembers, setVipMembers] = useState<VIPMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchUsername, setSearchUsername] = useState('');
@@ -57,6 +65,8 @@ function StreamDashboardContent() {
   const [isAddingModerator, setIsAddingModerator] = useState(false);
   
   // VIP Club state
+  const [clubName, setClubName] = useState('VIP');
+  const [badgeColor, setBadgeColor] = useState(BADGE_COLORS[0]);
   const [showBadgeEditor, setShowBadgeEditor] = useState(false);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [monthlyRevenue, setMonthlyRevenue] = useState(0);
@@ -75,7 +85,43 @@ function StreamDashboardContent() {
   const [showCDNDetails, setShowCDNDetails] = useState(false);
   const [isFetchingCDN, setIsFetchingCDN] = useState(false);
 
-  const fetchCDNMonitoringData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+
+    setIsLoading(true);
+    try {
+      const [mods, banned] = await Promise.all([
+        moderationService.getModerators(user.id),
+        moderationService.getBannedUsers(user.id),
+      ]);
+      setModerators(mods);
+      setBannedUsers(banned);
+
+      // Fetch VIP club data
+      await fetchVIPClubData();
+
+      // Fetch CDN monitoring data (with defensive check)
+      await fetchCDNMonitoringData();
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, fetchVIPClubData, fetchCDNMonitoringData]);
+
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user, fetchData]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchData();
+    setIsRefreshing(false);
+  };
+
+  const fetchCDNMonitoringData = async () => {
     if (!user) return;
 
     // DEFENSIVE: Prevent duplicate calls
@@ -130,68 +176,54 @@ function StreamDashboardContent() {
     } finally {
       setIsFetchingCDN(false);
     }
-  }, [user, isFetchingCDN]);
+  };
 
-  const fetchVIPClubData = useCallback(async () => {
-    if (!user || !club) return;
+  const fetchVIPClubData = async () => {
+    if (!user) return;
 
     try {
-      // Fetch VIP members from unified system
-      const members = await unifiedVIPClubService.getVIPClubMembers(club.id);
-      setVipMembers(members);
-      
-      // Calculate revenue
-      const activeMembers = members.filter(m => m.status === 'active').length;
-      const monthlyEarnings = activeMembers * (club.monthly_price_sek * 0.7); // 70% to creator
-      setMonthlyRevenue(monthlyEarnings);
-      
-      // Calculate total revenue (simplified)
-      const totalEarnings = members.reduce((sum, m) => {
-        if (m.status === 'active') {
-          return sum + (club.monthly_price_sek * 0.7);
-        }
-        return sum;
-      }, 0);
-      setTotalRevenue(totalEarnings);
+      // Fetch fan club settings
+      const { data: fanClubData } = await supabase
+        .from('fan_clubs')
+        .select('club_name, badge_color')
+        .eq('streamer_id', user.id)
+        .single();
+
+      if (fanClubData) {
+        setClubName(fanClubData.club_name);
+        setBadgeColor(fanClubData.badge_color);
+      }
+
+      // Fetch VIP members from club_subscriptions
+      const { data: membersData } = await supabase
+        .from('club_subscriptions')
+        .select(`
+          *,
+          profiles:subscriber_id(username, display_name, avatar_url)
+        `)
+        .eq('creator_id', user.id)
+        .order('started_at', { ascending: false });
+
+      if (membersData) {
+        setVipMembers(membersData);
+        
+        // Calculate revenue
+        const activeMembers = membersData.filter((m: VIPMember) => m.status === 'active').length;
+        const monthlyEarnings = activeMembers * 2.10; // $2.10 per member (70% of $3)
+        setMonthlyRevenue(monthlyEarnings);
+        
+        // Calculate total revenue (simplified - would need transaction history for accuracy)
+        const totalEarnings = membersData.reduce((sum: number, m: VIPMember) => {
+          if (m.status === 'active') {
+            return sum + 2.10;
+          }
+          return sum;
+        }, 0);
+        setTotalRevenue(totalEarnings);
+      }
     } catch (error) {
       console.error('Error fetching VIP club data:', error);
     }
-  }, [user, club]);
-
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-
-    setIsLoading(true);
-    try {
-      const [mods, banned] = await Promise.all([
-        moderationService.getModerators(user.id),
-        moderationService.getBannedUsers(user.id),
-      ]);
-      setModerators(mods);
-      setBannedUsers(banned);
-
-      // Fetch VIP club data
-      await fetchVIPClubData();
-
-      // Fetch CDN monitoring data (with defensive check)
-      await fetchCDNMonitoringData();
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user, fetchVIPClubData, fetchCDNMonitoringData]);
-
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user, fetchData]);
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await fetchData();
-    setIsRefreshing(false);
   };
 
   const handleSearchUsers = async () => {
@@ -307,24 +339,28 @@ function StreamDashboardContent() {
     );
   };
 
-  const handleRemoveVIPMember = async (clubId: string, userId: string, username: string) => {
+  const handleRemoveVIPMember = async (memberId: string, username: string) => {
     if (!user) return;
 
     Alert.alert(
       'Remove VIP Member',
-      `Are you sure you want to remove ${username} from your VIP club? Their level and progress will be reset.`,
+      `Are you sure you want to remove ${username} from your VIP club?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            const result = await unifiedVIPClubService.removeVIPMember(clubId, userId);
-            if (result.success) {
+            const { error } = await supabase
+              .from('club_subscriptions')
+              .update({ status: 'canceled' })
+              .eq('id', memberId);
+
+            if (error) {
+              Alert.alert('Error', 'Failed to remove member');
+            } else {
               Alert.alert('Success', `${username} has been removed from your VIP club`);
               await fetchData();
-            } else {
-              Alert.alert('Error', result.error || 'Failed to remove member');
             }
           },
         },
@@ -333,13 +369,14 @@ function StreamDashboardContent() {
   };
 
   const handleSendAnnouncement = async () => {
-    if (!user || !club) return;
+    if (!user) return;
 
     if (!announcementTitle.trim() || !announcementMessage.trim()) {
       Alert.alert('Error', 'Please enter both title and message');
       return;
     }
 
+    // DEFENSIVE: Prevent duplicate sends
     if (isSendingAnnouncement) {
       console.log('⏳ [Dashboard] Already sending announcement');
       return;
@@ -348,20 +385,28 @@ function StreamDashboardContent() {
     setIsSendingAnnouncement(true);
 
     try {
-      const result = await unifiedVIPClubService.sendVIPClubAnnouncement(
-        club.id,
-        user.id,
-        announcementTitle,
-        announcementMessage
-      );
+      // Get all active VIP members
+      const activeMembers = vipMembers.filter(m => m.status === 'active');
 
-      if (result.success) {
-        Alert.alert('Success', `Announcement sent to ${result.sentCount} VIP members`);
-        setAnnouncementTitle('');
-        setAnnouncementMessage('');
-      } else {
-        Alert.alert('Error', result.error || 'Failed to send announcement');
-      }
+      // Create notifications for each member
+      const notifications = activeMembers.map(member => ({
+        type: 'admin_announcement',
+        sender_id: user.id,
+        receiver_id: member.subscriber_id,
+        message: `${announcementTitle}: ${announcementMessage}`,
+        category: 'admin',
+        read: false,
+      }));
+
+      const { error } = await supabase
+        .from('notifications')
+        .insert(notifications);
+
+      if (error) throw error;
+
+      Alert.alert('Success', `Announcement sent to ${activeMembers.length} VIP members`);
+      setAnnouncementTitle('');
+      setAnnouncementMessage('');
     } catch (error) {
       console.error('Error sending announcement:', error);
       Alert.alert('Error', 'Failed to send announcement');
@@ -411,8 +456,6 @@ function StreamDashboardContent() {
   }
 
   const activeVIPMembers = vipMembers.filter(m => m.status === 'active');
-  const clubName = club?.club_name || 'VIP';
-  const badgeColor = club?.badge_color || BADGE_COLORS[0];
 
   return (
     <View style={commonStyles.container}>
@@ -578,7 +621,7 @@ function StreamDashboardContent() {
                     {' '}Top Media Accessed
                   </Text>
                   {cdnStats.topMedia.slice(0, 5).map((media, index) => (
-                    <View key={`media-${index}-${media.url}`} style={styles.topMediaItem}>
+                    <View key={`media-${index}`} style={styles.topMediaItem}>
                       <View style={styles.topMediaRank}>
                         <Text style={styles.topMediaRankText}>#{index + 1}</Text>
                       </View>
@@ -616,24 +659,24 @@ function StreamDashboardContent() {
                   <Text style={styles.cacheHitPerUserSubtitle}>
                     Top users by cache efficiency
                   </Text>
-                  {cacheHitPerUser.slice(0, 10).map((cacheUser, index) => (
-                    <View key={`cache-user-${index}-${cacheUser.userId}`} style={styles.cacheHitPerUserItem}>
+                  {cacheHitPerUser.slice(0, 10).map((user, index) => (
+                    <View key={`cache-user-${index}`} style={styles.cacheHitPerUserItem}>
                       <View style={styles.cacheHitPerUserRank}>
                         <Text style={styles.cacheHitPerUserRankText}>{index + 1}</Text>
                       </View>
                       <View style={styles.cacheHitPerUserInfo}>
-                        <Text style={styles.cacheHitPerUserName}>{cacheUser.username}</Text>
+                        <Text style={styles.cacheHitPerUserName}>{user.username}</Text>
                         <View style={styles.cacheHitPerUserBar}>
                           <View
                             style={[
                               styles.cacheHitPerUserBarFill,
-                              { width: `${cacheUser.cacheHitPercentage}%` },
+                              { width: `${user.cacheHitPercentage}%` },
                             ]}
                           />
                         </View>
                       </View>
                       <Text style={styles.cacheHitPerUserPercentage}>
-                        {cacheUser.cacheHitPercentage.toFixed(1)}%
+                        {user.cacheHitPercentage.toFixed(1)}%
                       </Text>
                     </View>
                   ))}
@@ -701,175 +744,145 @@ function StreamDashboardContent() {
         </View>
 
         {/* VIP Club Overview */}
-        {club && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <IconSymbol
-                  ios_icon_name="crown.fill"
-                  android_material_icon_name="workspace_premium"
-                  size={20}
-                  color="#FFD700"
-                />
-                <Text style={styles.sectionTitle}>VIP Club Overview</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.editButton}
-                onPress={() => setShowBadgeEditor(true)}
-              >
-                <IconSymbol
-                  ios_icon_name="pencil"
-                  android_material_icon_name="edit"
-                  size={14}
-                  color={colors.text}
-                />
-                <Text style={styles.editButtonText}>Edit Badge</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.clubOverviewCard}>
-              <View style={styles.clubInfoRow}>
-                <View style={styles.clubInfoItem}>
-                  <Text style={styles.clubInfoLabel}>Club Name</Text>
-                  <Text style={styles.clubInfoValue}>{club.club_name}</Text>
-                </View>
-                <View style={styles.clubInfoItem}>
-                  <Text style={styles.clubInfoLabel}>Badge Name</Text>
-                  <View style={[styles.badgePreview, { backgroundColor: club.badge_color }]}>
-                    <IconSymbol
-                      ios_icon_name="crown.fill"
-                      android_material_icon_name="workspace_premium"
-                      size={14}
-                      color="#FFFFFF"
-                    />
-                    <Text style={styles.badgePreviewText}>{club.badge_name}</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.clubInfoRow}>
-                <View style={styles.clubInfoItem}>
-                  <Text style={styles.clubInfoLabel}>Total Members</Text>
-                  <Text style={styles.clubInfoValue}>{club.total_members}</Text>
-                </View>
-                <View style={styles.clubInfoItem}>
-                  <Text style={styles.clubInfoLabel}>Monthly Revenue (70%)</Text>
-                  <Text style={styles.clubInfoValue}>{monthlyRevenue.toFixed(2)} SEK</Text>
-                </View>
-              </View>
-
-              <View style={styles.clubInfoRow}>
-                <View style={styles.clubInfoItem}>
-                  <Text style={styles.clubInfoLabel}>Monthly Price</Text>
-                  <Text style={styles.clubInfoValue}>{club.monthly_price_sek} SEK</Text>
-                </View>
-                <View style={styles.clubInfoItem}>
-                  <Text style={styles.clubInfoLabel}>Active Members</Text>
-                  <Text style={styles.clubInfoValue}>{activeVIPMembers.length}</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* VIP Members List */}
-        {club && (
-          <View style={styles.section}>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
               <IconSymbol
-                ios_icon_name="person.3.fill"
-                android_material_icon_name="group"
+                ios_icon_name="crown.fill"
+                android_material_icon_name="workspace_premium"
                 size={20}
+                color="#FFD700"
+              />
+              <Text style={styles.sectionTitle}>VIP Club Overview</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => setShowBadgeEditor(true)}
+            >
+              <IconSymbol
+                ios_icon_name="pencil"
+                android_material_icon_name="edit"
+                size={14}
                 color={colors.text}
               />
-              <Text style={styles.sectionTitle}>VIP Members ({activeVIPMembers.length})</Text>
+              <Text style={styles.editButtonText}>Edit Badge</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.clubOverviewCard}>
+            <View style={styles.clubInfoRow}>
+              <View style={styles.clubInfoItem}>
+                <Text style={styles.clubInfoLabel}>Club Name</Text>
+                <View style={[styles.badgePreview, { backgroundColor: badgeColor }]}>
+                  <IconSymbol
+                    ios_icon_name="heart.fill"
+                    android_material_icon_name="favorite"
+                    size={14}
+                    color={colors.text}
+                  />
+                  <Text style={styles.badgePreviewText}>{clubName}</Text>
+                </View>
+              </View>
+              <View style={styles.clubInfoItem}>
+                <Text style={styles.clubInfoLabel}>Monthly Price</Text>
+                <Text style={styles.clubInfoValue}>$3.00</Text>
+              </View>
             </View>
 
-            {activeVIPMembers.length === 0 ? (
-              <View style={styles.emptyState}>
-                <IconSymbol
-                  ios_icon_name="person.2.slash"
-                  android_material_icon_name="people_outline"
-                  size={48}
-                  color={colors.textSecondary}
-                />
-                <Text style={styles.emptyText}>No VIP members yet</Text>
-                <Text style={styles.emptySubtext}>
-                  Members will appear here when they subscribe
-                </Text>
+            <View style={styles.clubInfoRow}>
+              <View style={styles.clubInfoItem}>
+                <Text style={styles.clubInfoLabel}>Total Members</Text>
+                <Text style={styles.clubInfoValue}>{activeVIPMembers.length}</Text>
               </View>
-            ) : (
-              <View style={styles.list}>
-                {activeVIPMembers.map((member, index) => (
-                  <View key={`vip-${member.id || member.user_id}-${index}`} style={styles.memberItem}>
-                    {member.profiles?.avatar_url ? (
-                      <Image source={{ uri: member.profiles.avatar_url }} style={styles.avatar} />
-                    ) : (
-                      <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                        <IconSymbol
-                          ios_icon_name="person.fill"
-                          android_material_icon_name="person"
-                          size={20}
-                          color={colors.textSecondary}
-                        />
-                      </View>
-                    )}
-                    <View style={styles.memberInfo}>
-                      <View style={styles.memberHeader}>
-                        <Text style={styles.memberName}>
-                          {member.profiles?.display_name}
-                        </Text>
-                        <View style={[styles.badge, { backgroundColor: club.badge_color }]}>
-                          <Text style={styles.badgeText}>
-                            {club.badge_name}
-                            <Text style={styles.levelSuperscript}>
-                              {member.vip_level.toString().split('').map(d => {
-                                const superscripts: { [key: string]: string } = {
-                                  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
-                                  '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
-                                };
-                                return superscripts[d] || d;
-                              }).join('')}
-                            </Text>
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={styles.memberUsername}>
-                        @{member.profiles?.username}
-                      </Text>
-                      <View style={styles.memberLevelInfo}>
-                        <Text style={styles.memberLevel}>Level {member.vip_level}</Text>
-                        <Text style={styles.memberGifted}>
-                          {member.total_gifted_sek.toFixed(0)} SEK gifted
-                        </Text>
-                      </View>
-                      <Text style={styles.memberDate}>
-                        Joined: {new Date(member.joined_at).toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() =>
-                        handleRemoveVIPMember(
-                          club.id,
-                          member.user_id,
-                          member.profiles?.username || 'User'
-                        )
-                      }
-                    >
-                      <IconSymbol
-                        ios_icon_name="trash.fill"
-                        android_material_icon_name="delete"
-                        size={20}
-                        color={colors.gradientEnd}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+              <View style={styles.clubInfoItem}>
+                <Text style={styles.clubInfoLabel}>Your Share (70%)</Text>
+                <Text style={styles.clubInfoValue}>${monthlyRevenue.toFixed(2)}</Text>
               </View>
-            )}
+            </View>
           </View>
-        )}
+        </View>
+
+        {/* VIP Members List */}
+        <View style={styles.section}>
+          <View style={styles.sectionTitleRow}>
+            <IconSymbol
+              ios_icon_name="person.3.fill"
+              android_material_icon_name="group"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={styles.sectionTitle}>VIP Members ({activeVIPMembers.length})</Text>
+          </View>
+
+          {activeVIPMembers.length === 0 ? (
+            <View style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="person.2.slash"
+                android_material_icon_name="people_outline"
+                size={48}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.emptyText}>No VIP members yet</Text>
+              <Text style={styles.emptySubtext}>
+                Members will appear here when they subscribe
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.list}>
+              {activeVIPMembers.map((member, index) => (
+                <View key={`vip-${member.id}-${index}`} style={styles.memberItem}>
+                  {member.profiles?.avatar_url ? (
+                    <Image source={{ uri: member.profiles.avatar_url }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                      <IconSymbol
+                        ios_icon_name="person.fill"
+                        android_material_icon_name="person"
+                        size={20}
+                        color={colors.textSecondary}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.memberInfo}>
+                    <View style={styles.memberHeader}>
+                      <Text style={styles.memberName}>
+                        {member.profiles?.display_name}
+                      </Text>
+                      <View style={[styles.badge, { backgroundColor: badgeColor }]}>
+                        <Text style={styles.badgeText}>{clubName}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.memberUsername}>
+                      @{member.profiles?.username}
+                    </Text>
+                    <Text style={styles.memberDate}>
+                      Joined: {new Date(member.started_at).toLocaleDateString()}
+                    </Text>
+                    <Text style={styles.memberDate}>
+                      Renews: {new Date(member.renewed_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() =>
+                      handleRemoveVIPMember(
+                        member.id,
+                        member.profiles?.username || 'User'
+                      )
+                    }
+                  >
+                    <IconSymbol
+                      ios_icon_name="trash.fill"
+                      android_material_icon_name="delete"
+                      size={20}
+                      color={colors.gradientEnd}
+                    />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
 
         {/* Member Earnings Breakdown */}
         <View style={styles.section}>
@@ -1087,7 +1100,7 @@ function StreamDashboardContent() {
           ) : (
             <View style={styles.list}>
               {moderators.map((mod, index) => (
-                <View key={`mod-${mod.id || mod.user_id}-${index}`} style={styles.listItem}>
+                <View key={`mod-${mod.id}-${index}`} style={styles.listItem}>
                   {mod.profiles?.avatar_url ? (
                     <Image source={{ uri: mod.profiles.avatar_url }} style={styles.avatar} />
                   ) : (
@@ -1151,7 +1164,7 @@ function StreamDashboardContent() {
           ) : (
             <View style={styles.list}>
               {bannedUsers.map((banned, index) => (
-                <View key={`banned-${banned.id || banned.user_id}-${index}`} style={styles.listItem}>
+                <View key={`banned-${banned.id}-${index}`} style={styles.listItem}>
                   {banned.profiles?.avatar_url ? (
                     <Image source={{ uri: banned.profiles.avatar_url }} style={styles.avatar} />
                   ) : (
@@ -1187,14 +1200,13 @@ function StreamDashboardContent() {
       </ScrollView>
 
       {/* Badge Editor Modal */}
-      {user && club && (
-        <UnifiedBadgeEditorModal
+      {user && (
+        <BadgeEditorModal
           visible={showBadgeEditor}
           onClose={() => setShowBadgeEditor(false)}
-          creatorId={user.id}
-          currentClubName={club.club_name}
-          currentBadgeName={club.badge_name}
-          currentBadgeColor={club.badge_color}
+          userId={user.id}
+          currentBadgeName={clubName}
+          currentBadgeColor={badgeColor}
           onUpdate={fetchData}
         />
       )}
@@ -1501,25 +1513,6 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: colors.textSecondary,
     marginTop: 2,
-  },
-  memberLevelInfo: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  memberLevel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.brandPrimary,
-  },
-  memberGifted: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  levelSuperscript: {
-    fontSize: 8,
-    fontWeight: '800',
   },
   banReason: {
     fontSize: 12,

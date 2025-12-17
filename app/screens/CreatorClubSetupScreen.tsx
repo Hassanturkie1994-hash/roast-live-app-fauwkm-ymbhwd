@@ -57,8 +57,7 @@ export default function CreatorClubSetupScreen() {
     if (user) {
       loadClubData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, loadClubData]);
 
 
 

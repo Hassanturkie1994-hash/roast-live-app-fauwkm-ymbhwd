@@ -45,8 +45,7 @@ export default function ModeratorReviewQueueScreen() {
 
   useEffect(() => {
     loadReviewQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadReviewQueue]);
 
   const onRefresh = async () => {
     setRefreshing(true);
