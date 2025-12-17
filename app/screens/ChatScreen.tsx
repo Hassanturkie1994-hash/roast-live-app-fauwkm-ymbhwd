@@ -87,7 +87,7 @@ export default function ChatScreen() {
     } else if (activeConversationId) {
       fetchMessages();
     }
-  }, [user, activeConversationId, otherUserId]);
+  }, [user, activeConversationId, otherUserId, fetchMessages, initializeConversation]);
 
   useEffect(() => {
     if (!activeConversationId) return;

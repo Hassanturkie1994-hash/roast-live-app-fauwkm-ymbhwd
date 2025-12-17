@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -29,13 +29,7 @@ export default function RetentionAnalyticsScreen() {
   const [averageRetention, setAverageRetention] = useState(0);
   const [totalDropMoments, setTotalDropMoments] = useState(0);
 
-  useEffect(() => {
-    if (user) {
-      fetchRetentionData();
-    }
-  }, [user]);
-
-  const fetchRetentionData = async () => {
+  const fetchRetentionData = useCallback(async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -49,7 +43,13 @@ export default function RetentionAnalyticsScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchRetentionData();
+    }
+  }, [user, fetchRetentionData]);
 
   const formatDuration = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);

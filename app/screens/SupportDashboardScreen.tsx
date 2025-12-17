@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -26,31 +26,7 @@ export default function SupportDashboardScreen() {
     openTickets: 0,
   });
 
-  useEffect(() => {
-    checkAccess();
-  }, [user]);
-
-  const checkAccess = async () => {
-    if (!user) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    const result = await adminService.checkAdminRole(user.id);
-    
-    console.log('Support dashboard access check:', result);
-    
-    if (!result.isAdmin || result.role !== 'SUPPORT') {
-      Alert.alert('Access Denied', 'You do not have support team privileges.');
-      router.back();
-      return;
-    }
-
-    await fetchStats();
-    setLoading(false);
-  };
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       // Fetch pending appeals
       const { count: appealsCount } = await supabase
@@ -75,7 +51,31 @@ export default function SupportDashboardScreen() {
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
-  };
+  }, []);
+
+  const checkAccess = useCallback(async () => {
+    if (!user) {
+      router.replace('/auth/login');
+      return;
+    }
+
+    const result = await adminService.checkAdminRole(user.id);
+    
+    console.log('Support dashboard access check:', result);
+    
+    if (!result.isAdmin || result.role !== 'SUPPORT') {
+      Alert.alert('Access Denied', 'You do not have support team privileges.');
+      router.back();
+      return;
+    }
+
+    await fetchStats();
+    setLoading(false);
+  }, [user, fetchStats]);
+
+  useEffect(() => {
+    checkAccess();
+  }, [checkAccess]);
 
   if (loading) {
     return (

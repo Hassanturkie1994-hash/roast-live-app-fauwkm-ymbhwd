@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -46,29 +46,7 @@ export default function RoleManagementScreen() {
   const [newUserRole, setNewUserRole] = useState<AdminRole | null>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
-  useEffect(() => {
-    checkAccess();
-  }, [user]);
-
-  const checkAccess = async () => {
-    if (!user) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    const result = await adminService.checkAdminRole(user.id);
-    
-    if (!result.success || result.role !== 'HEAD_ADMIN') {
-      Alert.alert('Access Denied', 'You do not have head admin privileges.');
-      router.back();
-      return;
-    }
-
-    await fetchUsers();
-    setLoading(false);
-  };
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       // Fetch all users with their roles
       const { data: profilesData, error: profilesError } = await supabase
@@ -103,7 +81,29 @@ export default function RoleManagementScreen() {
       console.error('Error fetching users:', error);
       Alert.alert('Error', 'Failed to fetch users');
     }
-  };
+  }, []);
+
+  const checkAccess = useCallback(async () => {
+    if (!user) {
+      router.replace('/auth/login');
+      return;
+    }
+
+    const result = await adminService.checkAdminRole(user.id);
+    
+    if (!result.success || result.role !== 'HEAD_ADMIN') {
+      Alert.alert('Access Denied', 'You do not have head admin privileges.');
+      router.back();
+      return;
+    }
+
+    await fetchUsers();
+    setLoading(false);
+  }, [user, fetchUsers]);
+
+  useEffect(() => {
+    checkAccess();
+  }, [checkAccess]);
 
   const handleAssignRole = async () => {
     if (!selectedUser || !selectedRole || !user) {
