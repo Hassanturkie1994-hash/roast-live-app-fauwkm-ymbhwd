@@ -71,8 +71,7 @@ export default function FanClubManagementScreen() {
     if (user) {
       fetchData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, fetchData]);
 
   const handleCreateFanClub = async () => {
     if (!user) return;

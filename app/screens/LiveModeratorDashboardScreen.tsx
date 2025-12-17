@@ -45,8 +45,7 @@ export default function LiveModeratorDashboardScreen() {
 
   useEffect(() => {
     checkAccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [checkAccess]);
 
   const fetchStats = async () => {
     try {

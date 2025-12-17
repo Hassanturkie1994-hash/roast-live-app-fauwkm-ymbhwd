@@ -517,7 +517,6 @@ export default function BroadcastScreen() {
     } catch (error) {
       console.error('Error loading active guests:', error);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStream?.id, isPracticeMode]);
 
   const subscribeToGuests = useCallback((streamId: string) => {
