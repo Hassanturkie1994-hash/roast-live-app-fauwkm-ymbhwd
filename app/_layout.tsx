@@ -3,7 +3,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { StreamingProvider } from '@/contexts/StreamingContext';
-import { LiveStreamStateProvider } from '@/contexts/LiveStreamStateMachine';
+import { LiveStreamStateMachineProvider } from '@/contexts/LiveStreamStateMachine';
 import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
 import { VIPClubProvider } from '@/contexts/VIPClubContext';
 import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
@@ -68,6 +68,10 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
 
 /**
  * RootLayout - Main app layout with provider hierarchy
+ * 
+ * CRITICAL FIX: Corrected LiveStreamStateProvider import name
+ * - Was: LiveStreamStateProvider (incorrect)
+ * - Now: LiveStreamStateMachineProvider (correct)
  */
 export default function RootLayout() {
   return (
@@ -76,7 +80,7 @@ export default function RootLayout() {
         <AuthProvider>
           <NavigationGuard>
             <StreamingProvider>
-              <LiveStreamStateProvider>
+              <LiveStreamStateMachineProvider>
                 <CameraEffectsProvider>
                   <VIPClubProvider>
                     <ModeratorsProvider>
@@ -114,7 +118,7 @@ export default function RootLayout() {
                     </ModeratorsProvider>
                   </VIPClubProvider>
                 </CameraEffectsProvider>
-              </LiveStreamStateProvider>
+              </LiveStreamStateMachineProvider>
             </StreamingProvider>
           </NavigationGuard>
         </AuthProvider>

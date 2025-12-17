@@ -31,11 +31,17 @@ interface LiveStreamStateMachineContextType {
 
 const LiveStreamStateMachineContext = createContext<LiveStreamStateMachineContextType | undefined>(undefined);
 
+/**
+ * LiveStreamStateMachineProvider
+ * 
+ * CRITICAL: This component MUST be exported as a named export
+ * and imported with curly braces: import { LiveStreamStateMachineProvider } from '...'
+ */
 export function LiveStreamStateMachineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<StreamState>('IDLE');
   const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setErrorState = useCallback((errorMessage: string) => {
     console.error('❌ [STATE_MACHINE] Error:', errorMessage);
@@ -166,6 +172,11 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
     }
   }, []);
 
+  // Add console log to verify provider is rendering
+  React.useEffect(() => {
+    console.log('✅ [LiveStreamStateMachineProvider] Mounted and ready');
+  }, []);
+
   return (
     <LiveStreamStateMachineContext.Provider
       value={{
@@ -182,6 +193,11 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
   );
 }
 
+// Verify export is not undefined
+if (typeof LiveStreamStateMachineProvider === 'undefined') {
+  console.error('❌ CRITICAL: LiveStreamStateMachineProvider is undefined at export time!');
+}
+
 export function useLiveStreamStateMachine() {
   const context = useContext(LiveStreamStateMachineContext);
   if (!context) {
@@ -189,3 +205,7 @@ export function useLiveStreamStateMachine() {
   }
   return context;
 }
+
+// Legacy export alias for backward compatibility (DEPRECATED)
+// This allows old code using LiveStreamStateProvider to still work
+export const LiveStreamStateProvider = LiveStreamStateMachineProvider;
