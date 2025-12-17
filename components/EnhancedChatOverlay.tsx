@@ -73,7 +73,7 @@ export default function EnhancedChatOverlay({
     return () => {
       isMountedRef.current = false;
     };
-  }, [streamId, user, checkModeratorStatus]);
+  }, [streamId, user]);
 
   const fetchRecentMessages = useCallback(async () => {
     if (!streamId || !isMountedRef.current) return;

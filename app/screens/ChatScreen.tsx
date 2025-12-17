@@ -13,48 +13,66 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useTheme } from '@/contexts/ThemeContext';
+import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { messagingService, Message } from '@/app/services/messagingService';
+import { privateMessagingService, MessageWithSender } from '@/app/services/privateMessagingService';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function ChatScreen() {
-  const { conversationId, otherUserId, otherUsername, otherAvatar } = useLocalSearchParams<{
+  const { conversationId, otherUserId, otherUserName } = useLocalSearchParams<{
     conversationId?: string;
     otherUserId?: string;
-    otherUsername?: string;
-    otherAvatar?: string;
+    otherUserName?: string;
   }>();
   
   const { user } = useAuth();
-  const { colors } = useTheme();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>(conversationId);
+  const [otherUserAvatar, setOtherUserAvatar] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const fetchMessages = useCallback(async () => {
     if (!activeConversationId) return;
 
-    const result = await messagingService.getMessages(activeConversationId);
-    if (result.success && result.messages) {
-      setMessages(result.messages);
+    try {
+      const msgs = await privateMessagingService.getConversationMessages(activeConversationId);
+      setMessages(msgs);
       
       if (user) {
-        await messagingService.markMessagesAsRead(activeConversationId, user.id);
+        await privateMessagingService.markMessagesAsRead(activeConversationId, user.id);
       }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [activeConversationId, user]);
 
   const initializeConversation = useCallback(async () => {
     if (!user || !otherUserId || activeConversationId) return;
 
-    const result = await messagingService.getOrCreateConversation(user.id, otherUserId);
-    if (result.success && result.conversation) {
-      setActiveConversationId(result.conversation.id);
+    try {
+      const conversation = await privateMessagingService.getOrCreateConversation(user.id, otherUserId);
+      if (conversation) {
+        setActiveConversationId(conversation.id);
+      }
+
+      // Fetch other user's avatar
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', otherUserId)
+        .single();
+
+      if (profile) {
+        setOtherUserAvatar(profile.avatar_url);
+      }
+    } catch (error) {
+      console.error('Error initializing conversation:', error);
     }
   }, [user, otherUserId, activeConversationId]);
 
@@ -69,16 +87,17 @@ export default function ChatScreen() {
     } else if (activeConversationId) {
       fetchMessages();
     }
-  }, [user, activeConversationId, otherUserId, fetchMessages, initializeConversation]);
+  }, [user, activeConversationId, otherUserId]);
 
   useEffect(() => {
     if (!activeConversationId) return;
 
-    const unsubscribe = messagingService.subscribeToConversation(activeConversationId, (newMessage) => {
-      setMessages((prev) => [...prev, newMessage]);
+    const channel = privateMessagingService.subscribeToConversation(activeConversationId, (newMessage) => {
+      // Fetch the full message with sender details
+      fetchMessages();
       
       if (user && newMessage.sender_id !== user.id) {
-        messagingService.markMessagesAsRead(activeConversationId, user.id);
+        privateMessagingService.markMessagesAsRead(activeConversationId, user.id);
       }
       
       setTimeout(() => {
@@ -86,8 +105,10 @@ export default function ChatScreen() {
       }, 100);
     });
 
-    return unsubscribe;
-  }, [activeConversationId, user]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeConversationId, user, fetchMessages]);
 
   const handleSend = async () => {
     if (!inputText.trim() || !user || !activeConversationId || sending) return;
@@ -96,27 +117,32 @@ export default function ChatScreen() {
     setInputText('');
     setSending(true);
 
-    const result = await messagingService.sendMessage(activeConversationId, user.id, messageContent);
-    
-    if (result.success && result.message) {
-      setMessages((prev) => [...prev, result.message!]);
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+    try {
+      const message = await privateMessagingService.sendMessage(activeConversationId, user.id, messageContent);
+      
+      if (message) {
+        // Refresh messages to get the full message with sender details
+        await fetchMessages();
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      setSending(false);
     }
-    
-    setSending(false);
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
+  const renderMessage = ({ item }: { item: MessageWithSender }) => {
     const isMyMessage = item.sender_id === user?.id;
     const isRead = item.read_at !== null;
 
     return (
       <View style={[styles.messageContainer, isMyMessage ? styles.myMessageContainer : styles.otherMessageContainer]}>
-        {!isMyMessage && otherAvatar && (
+        {!isMyMessage && item.sender.avatar_url && (
           <Image
-            source={{ uri: otherAvatar }}
+            source={{ uri: item.sender.avatar_url }}
             style={styles.messageAvatar}
           />
         )}
@@ -131,7 +157,7 @@ export default function ChatScreen() {
             {item.content}
           </Text>
           <View style={styles.messageFooter}>
-            <Text style={[styles.messageTime, { color: isMyMessage ? 'rgba(255,255,255,0.7)' : colors.textSecondary }]}>
+            <Text style={[styles.messageTime, { color: isMyMessage ? 'rgba(255,255,255,0.7)' : colors.placeholder }]}>
               {formatTime(item.created_at)}
             </Text>
             {isMyMessage && (
@@ -152,7 +178,7 @@ export default function ChatScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
       </View>
     );
@@ -160,12 +186,12 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <IconSymbol
             ios_icon_name="chevron.left"
@@ -176,14 +202,14 @@ export default function ChatScreen() {
         </TouchableOpacity>
         
         <View style={styles.headerCenter}>
-          {otherAvatar && (
+          {otherUserAvatar && (
             <Image
-              source={{ uri: otherAvatar }}
+              source={{ uri: otherUserAvatar }}
               style={styles.headerAvatar}
             />
           )}
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
-            {otherUsername || 'Chat'}
+          <Text style={styles.headerTitle}>
+            {otherUserName || 'Chat'}
           </Text>
         </View>
 
@@ -205,9 +231,9 @@ export default function ChatScreen() {
               ios_icon_name="bubble.left.and.bubble.right"
               android_material_icon_name="chat"
               size={64}
-              color={colors.textSecondary}
+              color={colors.placeholder}
             />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            <Text style={styles.emptyText}>
               No messages yet. Start the conversation!
             </Text>
           </View>
@@ -215,9 +241,9 @@ export default function ChatScreen() {
       />
 
       {/* Input */}
-      <View style={[styles.inputContainer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+      <View style={styles.inputContainer}>
         <TextInput
-          style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+          style={styles.input}
           placeholder="Type a message..."
           placeholderTextColor={colors.placeholder}
           value={inputText}
@@ -226,7 +252,7 @@ export default function ChatScreen() {
           maxLength={1000}
         />
         <TouchableOpacity
-          style={[styles.sendButton, { backgroundColor: inputText.trim() ? colors.brandPrimary : colors.backgroundAlt }]}
+          style={[styles.sendButton, { backgroundColor: inputText.trim() ? colors.brandPrimary : colors.border }]}
           onPress={handleSend}
           disabled={!inputText.trim() || sending}
         >
@@ -249,6 +275,7 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   centerContent: {
     justifyContent: 'center',
@@ -261,7 +288,9 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 12,
     paddingHorizontal: 16,
+    backgroundColor: colors.card,
     borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   backButton: {
     width: 40,
@@ -284,6 +313,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
+    color: colors.text,
   },
   headerRight: {
     width: 40,
@@ -304,6 +334,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginTop: 16,
+    color: colors.placeholder,
   },
   messageContainer: {
     flexDirection: 'row',
@@ -363,17 +394,22 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: colors.card,
     borderTopWidth: 1,
+    borderTopColor: colors.border,
     gap: 12,
   },
   input: {
     flex: 1,
     borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
     maxHeight: 100,
+    backgroundColor: colors.background,
+    color: colors.text,
   },
   sendButton: {
     width: 40,
