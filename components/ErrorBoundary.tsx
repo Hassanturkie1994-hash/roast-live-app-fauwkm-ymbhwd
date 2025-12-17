@@ -7,6 +7,7 @@ import { IconSymbol } from './IconSymbol';
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  FallbackComponent?: React.ComponentType<{ error: Error; resetError: () => void }>;
   onError?: (error: Error, errorInfo: ErrorInfo) => void;
 }
 
@@ -14,28 +15,36 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  errorCount: number;
 }
 
 /**
  * ErrorBoundary Component
  * 
- * FIX ISSUE 4: Enhanced error logging with component stack and detailed context
+ * FIX ISSUE 3: Prevent infinite error loops
+ * FIX ISSUE 4: Enhanced error logging with component stack
  * 
  * Catches runtime errors in child components and displays a fallback UI
  * instead of crashing the entire app.
  * 
+ * NEW: Accepts FallbackComponent prop for custom error UI
+ * NEW: Prevents infinite loops by tracking error count
+ * 
  * Usage:
- * <ErrorBoundary>
+ * <ErrorBoundary FallbackComponent={CustomFallback}>
  *   <YourComponent />
  * </ErrorBoundary>
  */
 export default class ErrorBoundary extends Component<Props, State> {
+  private resetTimeout: ReturnType<typeof setTimeout> | null = null;
+
   constructor(props: Props) {
     super(props);
     this.state = {
       hasError: false,
       error: null,
       errorInfo: null,
+      errorCount: 0,
     };
   }
 
@@ -48,9 +57,24 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // FIX ISSUE 3: Prevent infinite loops by tracking error count
+    const newErrorCount = this.state.errorCount + 1;
+    
+    if (newErrorCount > 5) {
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('🚨 [ErrorBoundary] INFINITE ERROR LOOP DETECTED');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.error('Error has occurred more than 5 times. Stopping error boundary reset.');
+      console.error('This usually indicates a provider or hook is missing.');
+      console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Don't update state to prevent further re-renders
+      return;
+    }
+
     // FIX ISSUE 4: Enhanced error logging with full context
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('❌ [ErrorBoundary] CRITICAL ERROR CAUGHT');
+    console.error(`❌ [ErrorBoundary] CRITICAL ERROR CAUGHT (Count: ${newErrorCount})`);
     console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.error('Error:', error);
     console.error('Error Message:', error.message);
@@ -66,12 +90,16 @@ export default class ErrorBoundary extends Component<Props, State> {
         height: typeof window !== 'undefined' ? window.innerHeight : 'N/A',
       });
       console.error('- Timestamp:', new Date().toISOString());
+      console.error('- Error count:', newErrorCount);
     } catch (e) {
       console.error('Failed to capture provider state:', e);
     }
 
     // Store errorInfo in state for display
-    this.setState({ errorInfo });
+    this.setState({ 
+      errorInfo,
+      errorCount: newErrorCount,
+    });
 
     // Call optional error handler
     if (this.props.onError) {
@@ -89,22 +117,82 @@ export default class ErrorBoundary extends Component<Props, State> {
         console.error('2. A component import path is incorrect');
         console.error('3. A component returns undefined instead of JSX');
         console.error('4. A circular dependency exists');
+        console.error('5. A provider is missing from the app root');
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      }
+
+      if (error.message.includes('must be used within')) {
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('⚠️  MISSING PROVIDER DETECTED');
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('A hook is being called outside its provider context.');
+        console.error('Check that the provider is mounted in app/_layout.tsx');
         console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       }
     }
   }
 
+  componentWillUnmount() {
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+    }
+  }
+
   handleReset = () => {
     console.log('🔄 [ErrorBoundary] Resetting error state');
-    this.setState({
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    });
+    
+    // FIX ISSUE 3: Add delay before reset to prevent immediate re-error
+    if (this.resetTimeout) {
+      clearTimeout(this.resetTimeout);
+    }
+
+    this.resetTimeout = setTimeout(() => {
+      this.setState({
+        hasError: false,
+        error: null,
+        errorInfo: null,
+        // Keep error count to track infinite loops
+      });
+    }, 300);
   };
 
   render() {
     if (this.state.hasError) {
+      // FIX ISSUE 3: If error count is too high, show permanent error screen
+      if (this.state.errorCount > 5) {
+        return (
+          <View style={styles.container}>
+            <View style={styles.content}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.octagon.fill"
+                android_material_icon_name="error"
+                size={64}
+                color={colors.brandPrimary}
+              />
+              <Text style={styles.title}>Critical Error</Text>
+              <Text style={styles.message}>
+                The app has encountered a critical error and cannot continue.
+                Please restart the app.
+              </Text>
+              <Text style={[styles.message, { fontSize: 12, marginTop: 16 }]}>
+                Error: {this.state.error?.message || 'Unknown error'}
+              </Text>
+            </View>
+          </View>
+        );
+      }
+
+      // Custom FallbackComponent prop
+      if (this.props.FallbackComponent) {
+        const FallbackComponent = this.props.FallbackComponent;
+        return (
+          <FallbackComponent 
+            error={this.state.error || new Error('Unknown error')} 
+            resetError={this.handleReset} 
+          />
+        );
+      }
+
       // Custom fallback UI
       if (this.props.fallback) {
         return this.props.fallback;
@@ -145,6 +233,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                       </Text>
                     </>
                   )}
+                  <Text style={styles.debugTitle}>Error Count: {this.state.errorCount}</Text>
                 </View>
               )}
               

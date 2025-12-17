@@ -1,11 +1,13 @@
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Slot, SplashScreen, useRouter, useSegments } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { LiveStreamStateMachineProvider } from '@/contexts/LiveStreamStateMachine';
 import { StreamingProvider } from '@/contexts/StreamingContext';
+import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
 import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
 import { VIPClubProvider } from '@/contexts/VIPClubContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
@@ -15,6 +17,23 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 
 SplashScreen.preventAutoHideAsync();
+
+// FIX ISSUE 4: Safe window dimensions with defaults
+const getWindowDimensions = () => {
+  try {
+    const dims = Dimensions.get('window');
+    return {
+      width: dims.width || 375,
+      height: dims.height || 667,
+    };
+  } catch (error) {
+    console.error('❌ [LAYOUT] Error getting window dimensions:', error);
+    return {
+      width: 375,
+      height: 667,
+    };
+  }
+};
 
 function NavigationGuard() {
   const { user, loading } = useAuth();
@@ -68,13 +87,30 @@ function RootLayoutContent() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
+  const [providersReady, setProvidersReady] = useState(false);
+
   useEffect(() => {
     if (fontsLoaded) {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
 
-  if (!fontsLoaded) {
+  // FIX ISSUE 6: Delay rendering until providers are ready
+  useEffect(() => {
+    // Ensure window dimensions are available
+    const dims = getWindowDimensions();
+    console.log('📐 [LAYOUT] Window dimensions:', dims);
+    
+    // Small delay to ensure all providers are mounted
+    const timer = setTimeout(() => {
+      setProvidersReady(true);
+      console.log('✅ [LAYOUT] Providers ready, rendering content');
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!fontsLoaded || !providersReady) {
     return null;
   }
 
@@ -88,20 +124,43 @@ function RootLayoutContent() {
   );
 }
 
+/**
+ * RootLayout
+ * 
+ * CRITICAL FIX: Correct provider hierarchy
+ * 
+ * Provider order (top → bottom):
+ * 1. ErrorBoundary (outermost - catches all errors)
+ * 2. ThemeProvider (theme context for all components)
+ * 3. AuthProvider (authentication state)
+ * 4. LiveStreamStateMachineProvider (live stream state machine) ← ADDED
+ * 5. StreamingProvider (streaming context)
+ * 6. CameraEffectsProvider (camera filters/effects) ← ADDED
+ * 7. ModeratorsProvider (moderator management)
+ * 8. VIPClubProvider (VIP club features)
+ * 9. WidgetProvider (widget state)
+ * 10. RootLayoutContent (actual app content)
+ */
 export default function RootLayout() {
+  console.log('🚀 [LAYOUT] RootLayout mounting...');
+
   return (
     <ErrorBoundary FallbackComponent={GlobalErrorFallback}>
       <ThemeProvider>
         <AuthProvider>
-          <StreamingProvider>
-            <ModeratorsProvider>
-              <VIPClubProvider>
-                <WidgetProvider>
-                  <RootLayoutContent />
-                </WidgetProvider>
-              </VIPClubProvider>
-            </ModeratorsProvider>
-          </StreamingProvider>
+          <LiveStreamStateMachineProvider>
+            <StreamingProvider>
+              <CameraEffectsProvider>
+                <ModeratorsProvider>
+                  <VIPClubProvider>
+                    <WidgetProvider>
+                      <RootLayoutContent />
+                    </WidgetProvider>
+                  </VIPClubProvider>
+                </ModeratorsProvider>
+              </CameraEffectsProvider>
+            </StreamingProvider>
+          </LiveStreamStateMachineProvider>
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>

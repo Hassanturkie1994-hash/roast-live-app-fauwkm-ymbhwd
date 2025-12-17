@@ -36,6 +36,8 @@ const LiveStreamStateMachineContext = createContext<LiveStreamStateMachineContex
  * 
  * CRITICAL: This component MUST be exported as a named export
  * and imported with curly braces: import { LiveStreamStateMachineProvider } from '...'
+ * 
+ * MOUNTED IN: app/_layout.tsx (root level)
  */
 export function LiveStreamStateMachineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<StreamState>('IDLE');
@@ -175,6 +177,9 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
   // Add console log to verify provider is rendering
   React.useEffect(() => {
     console.log('✅ [LiveStreamStateMachineProvider] Mounted and ready');
+    return () => {
+      console.log('👋 [LiveStreamStateMachineProvider] Unmounting');
+    };
   }, []);
 
   return (
@@ -193,14 +198,24 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
   );
 }
 
-// Verify export is not undefined
-if (typeof LiveStreamStateMachineProvider === 'undefined') {
-  console.error('❌ CRITICAL: LiveStreamStateMachineProvider is undefined at export time!');
-}
-
+/**
+ * useLiveStreamStateMachine Hook
+ * 
+ * CRITICAL: This hook can only be used within components that are
+ * wrapped by LiveStreamStateMachineProvider (mounted in app/_layout.tsx)
+ * 
+ * Usage:
+ * const { state, startStream, endStream } = useLiveStreamStateMachine();
+ */
 export function useLiveStreamStateMachine() {
   const context = useContext(LiveStreamStateMachineContext);
   if (!context) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ [useLiveStreamStateMachine] CONTEXT ERROR');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('useLiveStreamStateMachine must be used within LiveStreamStateMachineProvider');
+    console.error('Check that LiveStreamStateMachineProvider is mounted in app/_layout.tsx');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     throw new Error('useLiveStreamStateMachine must be used within LiveStreamStateMachineProvider');
   }
   return context;
@@ -209,3 +224,12 @@ export function useLiveStreamStateMachine() {
 // Legacy export alias for backward compatibility (DEPRECATED)
 // This allows old code using LiveStreamStateProvider to still work
 export const LiveStreamStateProvider = LiveStreamStateMachineProvider;
+
+// Verify exports are not undefined
+if (typeof LiveStreamStateMachineProvider === 'undefined') {
+  console.error('❌ CRITICAL: LiveStreamStateMachineProvider is undefined at export time!');
+}
+
+if (typeof useLiveStreamStateMachine === 'undefined') {
+  console.error('❌ CRITICAL: useLiveStreamStateMachine is undefined at export time!');
+}

@@ -3,8 +3,25 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import TikTokTabBar from '@/components/TikTokTabBar';
 import { useTheme } from '@/contexts/ThemeContext';
-import { StreamingProvider, useStreaming } from '@/contexts/StreamingContext';
+import { useStreaming } from '@/contexts/StreamingContext';
 
+/**
+ * TabLayout
+ * 
+ * CRITICAL FIX: Removed duplicate StreamingProvider
+ * 
+ * All providers are now mounted at the root level in app/_layout.tsx
+ * This ensures consistent provider hierarchy and prevents context errors.
+ * 
+ * Provider hierarchy (from app/_layout.tsx):
+ * - AuthProvider
+ * - LiveStreamStateMachineProvider ← NOW AVAILABLE
+ * - StreamingProvider ← NOW AVAILABLE
+ * - CameraEffectsProvider ← NOW AVAILABLE
+ * - ModeratorsProvider
+ * - VIPClubProvider
+ * - WidgetProvider
+ */
 function TabLayoutContent() {
   const { isStreaming } = useStreaming();
   const { colors } = useTheme();
@@ -45,9 +62,6 @@ function TabLayoutContent() {
 }
 
 export default function TabLayout() {
-  return (
-    <StreamingProvider>
-      <TabLayoutContent />
-    </StreamingProvider>
-  );
+  // No need to wrap with StreamingProvider - it's already in root layout
+  return <TabLayoutContent />;
 }
