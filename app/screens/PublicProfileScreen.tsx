@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { followService } from '@/app/services/followService';
+import { privateMessagingService } from '@/app/services/privateMessagingService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -141,9 +142,29 @@ export default function PublicProfileScreen() {
     }
   };
 
-  const handleMessage = () => {
-    if (!userId) return;
-    router.push(`/screens/ChatScreen?userId=${userId}`);
+  const handleMessage = async () => {
+    if (!user || !userId) return;
+
+    try {
+      // Get or create conversation
+      const conversation = await privateMessagingService.getOrCreateConversation(user.id, userId);
+      
+      if (conversation) {
+        router.push({
+          pathname: '/screens/ChatScreen',
+          params: {
+            conversationId: conversation.id,
+            otherUserId: userId,
+            otherUserName: profile?.display_name || profile?.username || 'User',
+          },
+        });
+      } else {
+        Alert.alert('Error', 'Failed to start conversation');
+      }
+    } catch (error) {
+      console.error('Error starting conversation:', error);
+      Alert.alert('Error', 'Failed to start conversation');
+    }
   };
 
   const renderContent = () => {

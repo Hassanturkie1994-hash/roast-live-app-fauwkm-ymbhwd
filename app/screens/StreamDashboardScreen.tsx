@@ -19,7 +19,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { moderationService, Moderator, BannedUser } from '@/app/services/moderationService';
 import { supabase } from '@/app/integrations/supabase/client';
 import BadgeEditorModal from '@/components/BadgeEditorModal';
-import { cdnService } from '@/app/services/cdnService';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 const BADGE_COLORS = [
@@ -46,12 +45,6 @@ interface VIPMember {
   };
 }
 
-interface CacheHitPerUser {
-  userId: string;
-  username: string;
-  cacheHitPercentage: number;
-}
-
 function StreamDashboardContent() {
   const { user } = useAuth();
   const [moderators, setModerators] = useState<Moderator[]>([]);
@@ -74,17 +67,6 @@ function StreamDashboardContent() {
   const [announcementMessage, setAnnouncementMessage] = useState('');
   const [isSendingAnnouncement, setIsSendingAnnouncement] = useState(false);
 
-  // CDN Monitoring state
-  const [cdnStats, setCdnStats] = useState({
-    totalRequests: 0,
-    cacheHitPercentage: 0,
-    avgDeliveryLatency: 0,
-    topMedia: [] as { url: string; accessCount: number; type: string }[],
-  });
-  const [cacheHitPerUser, setCacheHitPerUser] = useState<CacheHitPerUser[]>([]);
-  const [showCDNDetails, setShowCDNDetails] = useState(false);
-  const [isFetchingCDN, setIsFetchingCDN] = useState(false);
-
   const fetchData = useCallback(async () => {
     if (!user) return;
 
@@ -99,9 +81,6 @@ function StreamDashboardContent() {
 
       // Fetch VIP club data
       await fetchVIPClubData();
-
-      // Fetch CDN monitoring data (with defensive check)
-      await fetchCDNMonitoringData();
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -119,63 +98,6 @@ function StreamDashboardContent() {
     setIsRefreshing(true);
     await fetchData();
     setIsRefreshing(false);
-  };
-
-  const fetchCDNMonitoringData = async () => {
-    if (!user) return;
-
-    // DEFENSIVE: Prevent duplicate calls
-    if (isFetchingCDN) {
-      console.log('⏳ [Dashboard] CDN fetch already in progress, skipping');
-      return;
-    }
-
-    try {
-      setIsFetchingCDN(true);
-      console.log('📊 [Dashboard] Fetching CDN monitoring data');
-
-      // DEFENSIVE CHECK: Verify method exists before calling
-      if (typeof cdnService?.getCDNMonitoringData !== 'function') {
-        console.warn('⚠️ [Dashboard] getCDNMonitoringData is not available, skipping CDN stats');
-        setCdnStats({
-          totalRequests: 0,
-          cacheHitPercentage: 0,
-          avgDeliveryLatency: 0,
-          topMedia: [],
-        });
-        return;
-      }
-
-      // Fetch overall CDN stats
-      const data = await cdnService.getCDNMonitoringData(user.id);
-      setCdnStats(data);
-      console.log('✅ [Dashboard] CDN stats fetched successfully');
-
-      // DEFENSIVE CHECK: Verify method exists before calling
-      if (typeof cdnService?.getCacheHitPercentagePerUser !== 'function') {
-        console.warn('⚠️ [Dashboard] getCacheHitPercentagePerUser is not available, skipping cache hit data');
-        setCacheHitPerUser([]);
-        return;
-      }
-
-      // Fetch cache hit percentage per user
-      const cacheHitData = await cdnService.getCacheHitPercentagePerUser();
-      setCacheHitPerUser(cacheHitData);
-      console.log('✅ [Dashboard] Cache hit data fetched successfully');
-    } catch (error) {
-      console.error('❌ [Dashboard] Error fetching CDN monitoring data:', error);
-      console.warn('⚠️ [Dashboard] CDN monitoring data unavailable, using defaults');
-      // Set default values on error
-      setCdnStats({
-        totalRequests: 0,
-        cacheHitPercentage: 0,
-        avgDeliveryLatency: 0,
-        topMedia: [],
-      });
-      setCacheHitPerUser([]);
-    } finally {
-      setIsFetchingCDN(false);
-    }
   };
 
   const fetchVIPClubData = async () => {
@@ -232,7 +154,6 @@ function StreamDashboardContent() {
       return;
     }
 
-    // DEFENSIVE: Prevent duplicate searches
     if (isSearching) {
       console.log('⏳ [Dashboard] Search already in progress');
       return;
@@ -253,7 +174,6 @@ function StreamDashboardContent() {
   const handleAddModerator = async (userId: string, username: string) => {
     if (!user) return;
 
-    // DEFENSIVE: Prevent double-tap
     if (isAddingModerator) {
       console.log('⏳ [Dashboard] Already adding moderator');
       return;
@@ -376,7 +296,6 @@ function StreamDashboardContent() {
       return;
     }
 
-    // DEFENSIVE: Prevent duplicate sends
     if (isSendingAnnouncement) {
       console.log('⏳ [Dashboard] Already sending announcement');
       return;
@@ -417,19 +336,6 @@ function StreamDashboardContent() {
 
   const handleRequestPayout = () => {
     router.push('/screens/WithdrawScreen');
-  };
-
-  const getTierColor = (tier: string) => {
-    switch (tier) {
-      case 'A':
-        return '#FFD700'; // Gold
-      case 'B':
-        return '#C0C0C0'; // Silver
-      case 'C':
-        return '#CD7F32'; // Bronze
-      default:
-        return colors.textSecondary;
-    }
   };
 
   if (isLoading) {
@@ -528,219 +434,6 @@ function StreamDashboardContent() {
               <Text style={styles.quickActionText}>Blocked Users</Text>
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* CDN Monitoring Panel */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <IconSymbol
-                ios_icon_name="network"
-                android_material_icon_name="cloud"
-                size={20}
-                color={colors.gradientEnd}
-              />
-              <Text style={styles.sectionTitle}>CDN Performance</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.expandButton}
-              onPress={() => setShowCDNDetails(!showCDNDetails)}
-            >
-              <Text style={styles.expandButtonText}>
-                {showCDNDetails ? 'Hide' : 'Show'} Details
-              </Text>
-              <IconSymbol
-                ios_icon_name={showCDNDetails ? 'chevron.up' : 'chevron.down'}
-                android_material_icon_name={showCDNDetails ? 'expand_less' : 'expand_more'}
-                size={16}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.sectionSubtitle}>
-            Monitor your media delivery performance
-          </Text>
-
-          <View style={styles.cdnStatsGrid}>
-            {/* CDN Usage */}
-            <View style={styles.cdnStatCard}>
-              <IconSymbol
-                ios_icon_name="arrow.up.arrow.down"
-                android_material_icon_name="swap_vert"
-                size={24}
-                color={colors.gradientEnd}
-              />
-              <Text style={styles.cdnStatLabel}>CDN Usage</Text>
-              <Text style={styles.cdnStatValue}>{cdnStats.totalRequests.toLocaleString()}</Text>
-              <Text style={styles.cdnStatUnit}>requests</Text>
-            </View>
-
-            {/* Cache HIT % */}
-            <View style={styles.cdnStatCard}>
-              <IconSymbol
-                ios_icon_name="bolt.fill"
-                android_material_icon_name="flash_on"
-                size={24}
-                color="#4CAF50"
-              />
-              <Text style={styles.cdnStatLabel}>Cache HIT %</Text>
-              <Text style={[styles.cdnStatValue, { color: '#4CAF50' }]}>
-                {cdnStats.cacheHitPercentage.toFixed(1)}%
-              </Text>
-              <Text style={styles.cdnStatUnit}>efficiency</Text>
-            </View>
-
-            {/* Average Latency */}
-            <View style={styles.cdnStatCard}>
-              <IconSymbol
-                ios_icon_name="timer"
-                android_material_icon_name="schedule"
-                size={24}
-                color="#FF9800"
-              />
-              <Text style={styles.cdnStatLabel}>Avg Latency</Text>
-              <Text style={[styles.cdnStatValue, { color: '#FF9800' }]}>
-                {cdnStats.avgDeliveryLatency.toFixed(0)}
-              </Text>
-              <Text style={styles.cdnStatUnit}>ms</Text>
-            </View>
-          </View>
-
-          {showCDNDetails && (
-            <>
-              {/* Top Media Accessed */}
-              {cdnStats.topMedia.length > 0 && (
-                <View style={styles.topMediaContainer}>
-                  <Text style={styles.topMediaTitle}>
-                    <IconSymbol
-                      ios_icon_name="star.fill"
-                      android_material_icon_name="star"
-                      size={16}
-                      color="#FFD700"
-                    />
-                    {' '}Top Media Accessed
-                  </Text>
-                  {cdnStats.topMedia.slice(0, 5).map((media, index) => (
-                    <View key={`media-${index}`} style={styles.topMediaItem}>
-                      <View style={styles.topMediaRank}>
-                        <Text style={styles.topMediaRankText}>#{index + 1}</Text>
-                      </View>
-                      <View style={styles.topMediaInfo}>
-                        <View style={styles.topMediaTypeRow}>
-                          <Text style={[styles.topMediaType, { color: getTierColor(media.type) }]}>
-                            {media.type.toUpperCase()}
-                          </Text>
-                        </View>
-                        <Text style={styles.topMediaUrl} numberOfLines={1}>
-                          {media.url.split('/').pop()}
-                        </Text>
-                      </View>
-                      <View style={styles.topMediaCountContainer}>
-                        <Text style={styles.topMediaCount}>{media.accessCount}</Text>
-                        <Text style={styles.topMediaCountLabel}>views</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Cache HIT % Per User */}
-              {cacheHitPerUser.length > 0 && (
-                <View style={styles.cacheHitPerUserContainer}>
-                  <Text style={styles.cacheHitPerUserTitle}>
-                    <IconSymbol
-                      ios_icon_name="person.3.fill"
-                      android_material_icon_name="group"
-                      size={16}
-                      color={colors.gradientEnd}
-                    />
-                    {' '}Cache HIT % Per User
-                  </Text>
-                  <Text style={styles.cacheHitPerUserSubtitle}>
-                    Top users by cache efficiency
-                  </Text>
-                  {cacheHitPerUser.slice(0, 10).map((user, index) => (
-                    <View key={`cache-user-${index}`} style={styles.cacheHitPerUserItem}>
-                      <View style={styles.cacheHitPerUserRank}>
-                        <Text style={styles.cacheHitPerUserRankText}>{index + 1}</Text>
-                      </View>
-                      <View style={styles.cacheHitPerUserInfo}>
-                        <Text style={styles.cacheHitPerUserName}>{user.username}</Text>
-                        <View style={styles.cacheHitPerUserBar}>
-                          <View
-                            style={[
-                              styles.cacheHitPerUserBarFill,
-                              { width: `${user.cacheHitPercentage}%` },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                      <Text style={styles.cacheHitPerUserPercentage}>
-                        {user.cacheHitPercentage.toFixed(1)}%
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* CDN Info */}
-              <View style={styles.cdnInfoContainer}>
-                <Text style={styles.cdnInfoTitle}>
-                  <IconSymbol
-                    ios_icon_name="info.circle.fill"
-                    android_material_icon_name="info"
-                    size={16}
-                    color={colors.textSecondary}
-                  />
-                  {' '}About CDN Tiers
-                </Text>
-                <View style={styles.cdnInfoItem}>
-                  <View style={[styles.cdnInfoBadge, { backgroundColor: '#FFD700' }]}>
-                    <Text style={styles.cdnInfoBadgeText}>A</Text>
-                  </View>
-                  <Text style={styles.cdnInfoText}>
-                    High Priority: Profile images, badges, receipts (30d cache)
-                  </Text>
-                </View>
-                <View style={styles.cdnInfoItem}>
-                  <View style={[styles.cdnInfoBadge, { backgroundColor: '#C0C0C0' }]}>
-                    <Text style={styles.cdnInfoBadgeText}>B</Text>
-                  </View>
-                  <Text style={styles.cdnInfoText}>
-                    Medium Priority: Posts, stories, thumbnails (14d cache)
-                  </Text>
-                </View>
-                <View style={styles.cdnInfoItem}>
-                  <View style={[styles.cdnInfoBadge, { backgroundColor: '#CD7F32' }]}>
-                    <Text style={styles.cdnInfoBadgeText}>C</Text>
-                  </View>
-                  <Text style={styles.cdnInfoText}>
-                    Low Priority: Cached media, banners, previews (3d cache)
-                  </Text>
-                </View>
-              </View>
-            </>
-          )}
-
-          <TouchableOpacity
-            style={[styles.refreshButton, isFetchingCDN && styles.refreshButtonDisabled]}
-            onPress={fetchCDNMonitoringData}
-            disabled={isFetchingCDN}
-          >
-            {isFetchingCDN ? (
-              <ActivityIndicator size="small" color={colors.text} />
-            ) : (
-              <>
-                <IconSymbol
-                  ios_icon_name="arrow.clockwise"
-                  android_material_icon_name="refresh"
-                  size={16}
-                  color={colors.text}
-                />
-                <Text style={styles.refreshButtonText}>Refresh CDN Stats</Text>
-              </>
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* VIP Club Overview */}
@@ -1308,22 +1001,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
-  expandButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.backgroundAlt,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  expandButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text,
-  },
   clubOverviewCard: {
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
@@ -1641,231 +1318,6 @@ const styles = StyleSheet.create({
   sendButtonText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text,
-  },
-  cdnStatsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 16,
-  },
-  cdnStatCard: {
-    flex: 1,
-    minWidth: '30%',
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cdnStatLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  cdnStatValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  cdnStatUnit: {
-    fontSize: 10,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-  },
-  topMediaContainer: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  topMediaTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  topMediaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  topMediaRank: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.gradientEnd,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topMediaRankText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  topMediaInfo: {
-    flex: 1,
-  },
-  topMediaTypeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  topMediaType: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  topMediaUrl: {
-    fontSize: 11,
-    fontWeight: '400',
-    color: colors.textSecondary,
-  },
-  topMediaCountContainer: {
-    alignItems: 'flex-end',
-  },
-  topMediaCount: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.gradientEnd,
-  },
-  topMediaCountLabel: {
-    fontSize: 10,
-    fontWeight: '400',
-    color: colors.textSecondary,
-  },
-  cacheHitPerUserContainer: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cacheHitPerUserTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  cacheHitPerUserSubtitle: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    marginBottom: 12,
-  },
-  cacheHitPerUserItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    gap: 12,
-  },
-  cacheHitPerUserRank: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cacheHitPerUserRankText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  cacheHitPerUserInfo: {
-    flex: 1,
-  },
-  cacheHitPerUserName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  cacheHitPerUserBar: {
-    height: 6,
-    backgroundColor: colors.background,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  cacheHitPerUserBarFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 3,
-  },
-  cacheHitPerUserPercentage: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4CAF50',
-    minWidth: 50,
-    textAlign: 'right',
-  },
-  cdnInfoContainer: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cdnInfoTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  cdnInfoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-  cdnInfoBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cdnInfoBadgeText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  cdnInfoText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.textSecondary,
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.backgroundAlt,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  refreshButtonDisabled: {
-    opacity: 0.5,
-  },
-  refreshButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
     color: colors.text,
   },
 });

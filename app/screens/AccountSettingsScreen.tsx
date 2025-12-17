@@ -636,7 +636,7 @@ export default function AccountSettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Profile Preferences Section */}
+        {/* Profile Preferences Section - ENTIRE ROW CLICKABLE */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="profile" size={20} />
@@ -650,7 +650,7 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="comment" size={20} />
-              <View>
+              <View style={styles.settingTextContainer}>
                 <Text style={[styles.settingText, { color: colors.text }]}>Who Can Comment</Text>
                 <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>{commentPermission}</Text>
               </View>
@@ -754,6 +754,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
+  },
+  settingTextContainer: {
     flex: 1,
   },
   settingText: {

@@ -127,6 +127,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const [streams, setStreams] = useState<NormalizedStream[]>([]);
+  const [savedStreams, setSavedStreams] = useState<NormalizedStream[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'explore' | 'friends' | 'foryou'>('foryou');
@@ -141,7 +142,7 @@ export default function HomeScreen() {
   const [contentLabel, setContentLabel] = useState<ContentLabel | null>(null);
   const [showCreatorRulesModal, setShowCreatorRulesModal] = useState(false);
 
-  // Memoize fetch streams function
+  // Fetch live streams
   const fetchStreams = useCallback(async () => {
     try {
       const data = await queryCache.getCached(
@@ -177,6 +178,56 @@ export default function HomeScreen() {
     }
   }, []);
 
+  // Fetch saved streams (ONLY streams explicitly saved by users)
+  const fetchSavedStreams = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('saved_streams')
+        .select(`
+          *,
+          streams!inner (
+            *,
+            users:broadcaster_id (
+              id,
+              display_name,
+              avatar,
+              verified_status
+            )
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching saved streams:', error);
+        return;
+      }
+
+      // Transform saved streams to normalized format
+      const normalized = (data || []).map((saved: any) => {
+        const stream = saved.streams;
+        return {
+          id: stream.id,
+          title: saved.title || stream.title,
+          broadcaster: {
+            id: stream.users?.id || stream.broadcaster_id,
+            username: stream.users?.display_name || 'Unknown',
+            avatar: stream.users?.avatar || null,
+            verified: stream.users?.verified_status || false,
+          },
+          viewerCount: stream.viewer_count || 0,
+          thumbnailUrl: saved.thumbnail_url || null,
+          status: stream.status,
+          startedAt: stream.started_at,
+          contentLabel: stream.content_label,
+        };
+      });
+
+      setSavedStreams(normalized);
+    } catch (error) {
+      console.error('Error in fetchSavedStreams:', error);
+    }
+  }, []);
+
   // Memoize fetch posts function
   const fetchPosts = useCallback(async () => {
     try {
@@ -207,8 +258,8 @@ export default function HomeScreen() {
 
   // Memoize fetch data function
   const fetchData = useCallback(async () => {
-    await Promise.all([fetchStreams(), fetchPosts()]);
-  }, [fetchStreams, fetchPosts]);
+    await Promise.all([fetchStreams(), fetchSavedStreams(), fetchPosts()]);
+  }, [fetchStreams, fetchSavedStreams, fetchPosts]);
 
   useEffect(() => {
     fetchData();
@@ -322,7 +373,7 @@ export default function HomeScreen() {
 
       console.log('🚀 [CONFIRM] Navigating to broadcaster screen...');
       router.push({
-        pathname: '/(tabs)/broadcaster',
+        pathname: '/(tabs)/broadcast',
         params: {
           streamTitle: streamTitle,
           contentLabel: contentLabel,
@@ -339,23 +390,28 @@ export default function HomeScreen() {
     }
   };
 
-  // Filter content based on active tab
+  // Filter content based on active tab and live filter
   const filteredContent = useMemo(() => {
+    // When Live filter is active, show ONLY live streams
     if (showLiveOnly) {
-      return streams;
+      return streams.filter(s => s.status === 'live');
     }
     
-    // Mix streams and posts for feed
+    // Otherwise, show saved streams + posts (NOT all streams)
     const mixed: any[] = [];
-    const maxItems = Math.max(streams.length, posts.length);
     
-    for (let i = 0; i < maxItems; i++) {
-      if (i < streams.length) mixed.push({ type: 'stream', data: streams[i] });
-      if (i < posts.length) mixed.push({ type: 'post', data: posts[i] });
-    }
+    // Add saved streams
+    savedStreams.forEach(stream => {
+      mixed.push({ type: 'stream', data: stream });
+    });
+    
+    // Add posts
+    posts.forEach(post => {
+      mixed.push({ type: 'post', data: post });
+    });
     
     return mixed;
-  }, [streams, posts, showLiveOnly]);
+  }, [streams, savedStreams, posts, showLiveOnly]);
 
   // Memoize render function
   const renderItem = useCallback(({ item }: { item: any }) => {
@@ -434,7 +490,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Tabs */}
+      {/* Tabs with Live Filter Button */}
       <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'explore' && { borderBottomColor: colors.brandPrimary }]}
@@ -463,9 +519,14 @@ export default function HomeScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* Live Filter Button - Now acts as a filter */}
         <TouchableOpacity
-          style={[styles.liveButton, showLiveOnly && { backgroundColor: colors.brandPrimary }]}
+          style={[
+            styles.liveButton,
+            showLiveOnly && { backgroundColor: colors.brandPrimary }
+          ]}
           onPress={() => setShowLiveOnly(!showLiveOnly)}
+          activeOpacity={0.7}
         >
           <View style={[styles.liveDot, !showLiveOnly && { backgroundColor: '#FF0000' }]} />
           <Text style={[styles.liveButtonText, { color: showLiveOnly ? '#FFFFFF' : colors.text }]}>
@@ -634,6 +695,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
     borderRadius: 20,
     gap: 6,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   liveDot: {
     width: 8,

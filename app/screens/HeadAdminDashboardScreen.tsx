@@ -10,6 +10,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -50,18 +51,38 @@ export default function HeadAdminDashboardScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
-  const [showActionModal, setShowActionModal] = useState(false);
-  const [actionType, setActionType] = useState<'ban' | 'timeout' | 'permanent_ban' | 'warning'>('warning');
-  const [actionReason, setActionReason] = useState('');
-  const [actionNote, setActionNote] = useState('');
-  const [timeoutDuration, setTimeoutDuration] = useState(60);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<string>('USER');
   const [searching, setSearching] = useState(false);
+  const [assigningRole, setAssigningRole] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
       const { count: totalUsersCount } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true });
+
+      // Get active users (in last 5 minutes)
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      
+      const { data: activeViewers } = await supabase
+        .from('stream_viewers')
+        .select('user_id')
+        .is('left_at', null)
+        .gte('joined_at', fiveMinutesAgo);
+
+      const { data: activeStreamers } = await supabase
+        .from('streams')
+        .select('broadcaster_id')
+        .eq('status', 'live');
+
+      const activeUserIds = new Set<string>();
+      if (activeViewers) {
+        activeViewers.forEach(v => activeUserIds.add(v.user_id));
+      }
+      if (activeStreamers) {
+        activeStreamers.forEach(s => activeUserIds.add(s.broadcaster_id));
+      }
 
       const { data: reportsData } = await supabase
         .from('user_reports')
@@ -83,7 +104,7 @@ export default function HeadAdminDashboardScreen() {
 
       setStats({
         totalUsers: totalUsersCount || 0,
-        activeUsers: 0,
+        activeUsers: activeUserIds.size,
         bannedUsers: bannedCount || 0,
         timedOutUsers: 0,
         openReports: reportsData?.filter(r => r.type !== 'stream').length || 0,
@@ -152,88 +173,66 @@ export default function HeadAdminDashboardScreen() {
 
   const handleSelectUser = (selectedUserData: UserSearchResult) => {
     setSelectedUser(selectedUserData);
+    setSelectedRole(selectedUserData.role || 'USER');
     setShowUserSearchModal(false);
-    setShowActionModal(true);
+    setShowRoleModal(true);
   };
 
-  const handleApplyAction = async () => {
+  const handleAssignRole = async () => {
     if (!selectedUser || !user) {
       Alert.alert('Error', 'No user selected');
       return;
     }
 
-    if (!actionReason.trim()) {
-      Alert.alert('Error', 'Please provide a reason for this action');
+    if (selectedUser.role === selectedRole) {
+      Alert.alert('No Change', 'User already has this role');
       return;
     }
 
+    setAssigningRole(true);
+
     try {
-      let expiresAt = null;
-      if (actionType === 'timeout') {
-        const now = new Date();
-        now.setMinutes(now.getMinutes() + timeoutDuration);
-        expiresAt = now.toISOString();
-      }
+      // Update role in profiles table
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ role: selectedRole })
+        .eq('id', selectedUser.id);
 
-      const { error: actionError } = await supabase
-        .from('moderation_actions')
-        .insert({
-          target_user_id: selectedUser.id,
-          action_type: actionType,
-          reason: actionReason,
-          note: actionNote || null,
-          duration_minutes: actionType === 'timeout' ? timeoutDuration : null,
-          issued_by_admin_id: user.id,
-          expires_at: expiresAt,
-          is_active: true,
-        });
-
-      if (actionError) {
-        console.error('Error applying action:', actionError);
-        Alert.alert('Error', 'Failed to apply action');
+      if (updateError) {
+        console.error('Error updating role:', updateError);
+        Alert.alert('Error', 'Failed to assign role');
         return;
       }
 
-      const notificationMessage = getNotificationMessage(actionType, actionReason, timeoutDuration);
-      const { error: notifError } = await supabase
+      // Send notification to user
+      const roleNames: Record<string, string> = {
+        'HEAD_ADMIN': 'Head Admin',
+        'ADMIN': 'Admin',
+        'SUPPORT': 'Support Team',
+        'LIVE_MODERATOR': 'Live Moderator',
+        'USER': 'User',
+      };
+
+      await supabase
         .from('notifications')
         .insert({
           sender_id: user.id,
           receiver_id: selectedUser.id,
-          type: actionType === 'warning' ? 'warning' : 'admin_announcement',
-          message: notificationMessage,
-          category: 'safety',
+          type: 'admin_announcement',
+          message: `Your role has been updated to: ${roleNames[selectedRole]}`,
+          category: 'admin',
           read: false,
         });
 
-      if (notifError) {
-        console.error('Error creating notification:', notifError);
-      }
-
-      Alert.alert('Success', `Action applied to ${selectedUser.username}`);
-      setShowActionModal(false);
+      Alert.alert('Success', `Role assigned to ${selectedUser.username}`);
+      setShowRoleModal(false);
       setSelectedUser(null);
-      setActionReason('');
-      setActionNote('');
-      setTimeoutDuration(60);
+      await fetchStats();
     } catch (error) {
-      console.error('Error in handleApplyAction:', error);
-      Alert.alert('Error', 'Failed to apply action');
-    }
-  };
-
-  const getNotificationMessage = (type: string, reason: string, duration?: number) => {
-    switch (type) {
-      case 'warning':
-        return `⚠️ Warning: ${reason}`;
-      case 'timeout':
-        return `⏱️ Timeout (${duration} minutes): ${reason}`;
-      case 'ban':
-        return `🚫 Temporary Ban: ${reason}`;
-      case 'permanent_ban':
-        return `🚫 Permanent Ban: ${reason}`;
-      default:
-        return reason;
+      console.error('Error in handleAssignRole:', error);
+      Alert.alert('Error', 'Failed to assign role');
+    } finally {
+      setAssigningRole(false);
     }
   };
 
@@ -338,11 +337,16 @@ export default function HeadAdminDashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Platform Overview - CLICKABLE STATS */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>📊 Platform Overview</Text>
           
           <View style={styles.statsGrid}>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push('/screens/AdminUsersListScreen?type=total' as any)}
+              activeOpacity={0.7}
+            >
               <IconSymbol
                 ios_icon_name="person.3.fill"
                 android_material_icon_name="group"
@@ -351,9 +355,13 @@ export default function HeadAdminDashboardScreen() {
               />
               <Text style={[styles.statValue, { color: colors.text }]}>{stats.totalUsers}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Users</Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push('/screens/AdminUsersListScreen?type=active' as any)}
+              activeOpacity={0.7}
+            >
               <IconSymbol
                 ios_icon_name="checkmark.circle.fill"
                 android_material_icon_name="check_circle"
@@ -362,9 +370,14 @@ export default function HeadAdminDashboardScreen() {
               />
               <Text style={[styles.statValue, { color: colors.text }]}>{stats.activeUsers}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active</Text>
-            </View>
+              <View style={styles.liveDot} />
+            </TouchableOpacity>
 
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push('/screens/AdminSuspensionsScreen' as any)}
+              activeOpacity={0.7}
+            >
               <IconSymbol
                 ios_icon_name="hand.raised.fill"
                 android_material_icon_name="block"
@@ -373,9 +386,13 @@ export default function HeadAdminDashboardScreen() {
               />
               <Text style={[styles.statValue, { color: colors.text }]}>{stats.bannedUsers}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Banned</Text>
-            </View>
+            </TouchableOpacity>
 
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push('/screens/AdminStrikesScreen' as any)}
+              activeOpacity={0.7}
+            >
               <IconSymbol
                 ios_icon_name="clock.fill"
                 android_material_icon_name="schedule"
@@ -384,12 +401,13 @@ export default function HeadAdminDashboardScreen() {
               />
               <Text style={[styles.statValue, { color: colors.text }]}>{stats.timedOutUsers}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Timed Out</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </View>
 
+        {/* User Search & Role Assignment */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>🔍 User Search & Actions</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>🔍 User Search & Role Management</Text>
           
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -401,7 +419,7 @@ export default function HeadAdminDashboardScreen() {
               size={20}
               color={colors.brandPrimary}
             />
-            <Text style={[styles.actionButtonText, { color: colors.text }]}>Search Users</Text>
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>Search Users & Assign Roles</Text>
           </TouchableOpacity>
           
           <Text style={[styles.helperText, { color: colors.textSecondary }]}>
@@ -409,6 +427,7 @@ export default function HeadAdminDashboardScreen() {
           </Text>
         </View>
 
+        {/* Reports - CLICKABLE */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>🚨 Reports</Text>
           
@@ -465,6 +484,7 @@ export default function HeadAdminDashboardScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Admin & Support */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>👥 Admin & Support</Text>
           
@@ -493,6 +513,7 @@ export default function HeadAdminDashboardScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Global Actions */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>🌐 Global Actions</Text>
           
@@ -550,6 +571,7 @@ export default function HeadAdminDashboardScreen() {
         </View>
       </ScrollView>
 
+      {/* User Search Modal */}
       <Modal
         visible={showUserSearchModal}
         animationType="slide"
@@ -645,19 +667,20 @@ export default function HeadAdminDashboardScreen() {
         </View>
       </Modal>
 
+      {/* Role Assignment Modal */}
       <Modal
-        visible={showActionModal}
+        visible={showRoleModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowActionModal(false)}
+        onRequestClose={() => setShowRoleModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Apply Action to {selectedUser?.username}
+                Assign Role to {selectedUser?.username}
               </Text>
-              <TouchableOpacity onPress={() => setShowActionModal(false)}>
+              <TouchableOpacity onPress={() => setShowRoleModal(false)}>
                 <IconSymbol
                   ios_icon_name="xmark"
                   android_material_icon_name="close"
@@ -668,79 +691,64 @@ export default function HeadAdminDashboardScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Text style={[styles.label, { color: colors.text }]}>Action Type</Text>
-              <View style={styles.actionTypeContainer}>
-                {(['warning', 'timeout', 'ban', 'permanent_ban'] as const).map((type) => (
+              <Text style={[styles.label, { color: colors.text }]}>Select Role</Text>
+              
+              <View style={styles.roleOptions}>
+                {['USER', 'LIVE_MODERATOR', 'SUPPORT', 'ADMIN', 'HEAD_ADMIN'].map((role) => (
                   <TouchableOpacity
-                    key={type}
+                    key={role}
                     style={[
-                      styles.actionTypeButton,
+                      styles.roleOption,
                       { backgroundColor: colors.backgroundAlt, borderColor: colors.border },
-                      actionType === type && { borderColor: colors.brandPrimary, borderWidth: 2 },
+                      selectedRole === role && { borderColor: colors.brandPrimary, borderWidth: 2 },
                     ]}
-                    onPress={() => setActionType(type)}
+                    onPress={() => setSelectedRole(role)}
                   >
-                    <Text style={[styles.actionTypeText, { color: colors.text }]}>
-                      {type.replace('_', ' ').toUpperCase()}
-                    </Text>
+                    <View style={styles.roleOptionContent}>
+                      <Text style={[styles.roleOptionTitle, { color: colors.text }]}>
+                        {role.replace('_', ' ')}
+                      </Text>
+                      <Text style={[styles.roleOptionDescription, { color: colors.textSecondary }]}>
+                        {getRoleDescription(role)}
+                      </Text>
+                    </View>
+                    {selectedRole === role && (
+                      <IconSymbol
+                        ios_icon_name="checkmark.circle.fill"
+                        android_material_icon_name="check_circle"
+                        size={24}
+                        color={colors.brandPrimary}
+                      />
+                    )}
                   </TouchableOpacity>
                 ))}
               </View>
 
-              {actionType === 'timeout' && (
-                <>
-                  <Text style={[styles.label, { color: colors.text }]}>Duration (minutes)</Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-                    placeholder="60"
-                    placeholderTextColor={colors.textSecondary}
-                    value={timeoutDuration.toString()}
-                    onChangeText={(text) => setTimeoutDuration(parseInt(text) || 60)}
-                    keyboardType="numeric"
-                  />
-                </>
-              )}
-
-              <Text style={[styles.label, { color: colors.text }]}>Reason (Required)</Text>
-              <TextInput
-                style={[styles.textArea, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-                placeholder="Enter reason for this action..."
-                placeholderTextColor={colors.textSecondary}
-                value={actionReason}
-                onChangeText={setActionReason}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-
-              <Text style={[styles.label, { color: colors.text }]}>Note (Optional)</Text>
-              <TextInput
-                style={[styles.textArea, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
-                placeholder="Additional notes..."
-                placeholderTextColor={colors.textSecondary}
-                value={actionNote}
-                onChangeText={setActionNote}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.cancelButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
-                  onPress={() => setShowActionModal(false)}
+                  onPress={() => setShowRoleModal(false)}
                 >
                   <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
                 </TouchableOpacity>
-                <View style={styles.applyButtonContainer}>
-                  <GradientButton title="Apply Action" onPress={handleApplyAction} />
-                </View>
+                <TouchableOpacity
+                  style={[styles.assignButton, { backgroundColor: colors.brandPrimary }]}
+                  onPress={handleAssignRole}
+                  disabled={assigningRole}
+                >
+                  {assigningRole ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.assignButtonText}>Assign Role</Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </ScrollView>
           </View>
         </View>
       </Modal>
 
+      {/* Announcement Modal */}
       <Modal
         visible={showAnnouncementModal}
         animationType="slide"
@@ -809,6 +817,23 @@ export default function HeadAdminDashboardScreen() {
       </Modal>
     </View>
   );
+}
+
+function getRoleDescription(role: string): string {
+  switch (role) {
+    case 'HEAD_ADMIN':
+      return 'Full platform control, can assign all roles';
+    case 'ADMIN':
+      return 'Manage reports, users, and moderation';
+    case 'SUPPORT':
+      return 'Review appeals and support tickets';
+    case 'LIVE_MODERATOR':
+      return 'Monitor and moderate live streams';
+    case 'USER':
+      return 'Standard user with no admin privileges';
+    default:
+      return '';
+  }
 }
 
 const styles = StyleSheet.create({
@@ -881,6 +906,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     gap: 8,
+    position: 'relative',
   },
   statValue: {
     fontSize: 28,
@@ -890,6 +916,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  liveDot: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#00FF00',
   },
   actionCard: {
     flexDirection: 'row',
@@ -1019,8 +1054,16 @@ const styles = StyleSheet.create({
   sendButtonContainer: {
     flex: 1,
   },
-  applyButtonContainer: {
+  assignButton: {
     flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  assignButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -1077,20 +1120,28 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 4,
   },
-  actionTypeContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  roleOptions: {
     gap: 12,
     marginBottom: 16,
   },
-  actionTypeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  roleOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
     borderRadius: 12,
     borderWidth: 1,
   },
-  actionTypeText: {
-    fontSize: 14,
-    fontWeight: '600',
+  roleOptionContent: {
+    flex: 1,
+  },
+  roleOptionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  roleOptionDescription: {
+    fontSize: 13,
+    fontWeight: '400',
   },
 });
