@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -45,8 +45,7 @@ export default function LiveModeratorDashboardScreen() {
 
   useEffect(() => {
     checkAccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [checkAccess]);
 
   const fetchStats = async () => {
     try {
