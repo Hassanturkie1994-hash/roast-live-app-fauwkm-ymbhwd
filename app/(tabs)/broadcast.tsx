@@ -46,6 +46,10 @@ interface GuestSeat {
 export default function BroadcastScreen() {
   useKeepAwake();
   
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📺 [BROADCAST] Component rendering...');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  
   const { streamTitle, contentLabel } = useLocalSearchParams<{
     streamTitle?: string;
     contentLabel?: string;
@@ -53,7 +57,59 @@ export default function BroadcastScreen() {
   
   const { user } = useAuth();
   const { colors } = useTheme();
-  const { state, startStream, endStream, error: stateMachineError } = useLiveStreamStateMachine();
+  
+  // CRITICAL FIX: Wrap state machine hook in try-catch with detailed error handling
+  let stateMachine;
+  let stateMachineError: Error | null = null;
+  
+  try {
+    console.log('🔍 [BROADCAST] Attempting to access state machine...');
+    stateMachine = useLiveStreamStateMachine();
+    console.log('✅ [BROADCAST] State machine accessed successfully');
+  } catch (error: any) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ [BROADCAST] CRITICAL: Failed to access state machine');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    stateMachineError = error;
+    
+    // Return error UI if state machine is not available
+    return (
+      <View style={[styles.container, styles.centerContent, { backgroundColor: '#000000' }]}>
+        <IconSymbol
+          ios_icon_name="exclamationmark.triangle"
+          android_material_icon_name="error"
+          size={64}
+          color="#FF4444"
+        />
+        <Text style={[styles.errorText, { color: '#FFFFFF' }]}>Service Error</Text>
+        <Text style={[styles.errorSubtext, { color: '#CCCCCC' }]}>
+          Live streaming service is not available.
+        </Text>
+        <Text style={[styles.errorDetails, { color: '#999999' }]}>
+          {error.message}
+        </Text>
+        <TouchableOpacity
+          style={[styles.errorButton, { backgroundColor: '#FF4444' }]}
+          onPress={() => {
+            console.log('🔙 [BROADCAST] User pressed Go Back button');
+            router.back();
+          }}
+        >
+          <Text style={styles.errorButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const { state, startStream, endStream, error: stateMachineErrorState } = stateMachine;
+  
+  console.log('📊 [BROADCAST] State machine state:', state);
+  console.log('📊 [BROADCAST] State machine error:', stateMachineErrorState);
   
   // CRITICAL FIX: Import hooks directly from expo-camera
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -67,6 +123,7 @@ export default function BroadcastScreen() {
   const [viewerCount, setViewerCount] = useState(0);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [isEnding, setIsEnding] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   
   // Guest mode states
   const [activeGuests, setActiveGuests] = useState<GuestSeat[]>([]);
@@ -75,6 +132,7 @@ export default function BroadcastScreen() {
   
   const cameraRef = useRef<CameraView>(null);
   const viewerCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const initAttemptedRef = useRef<boolean>(false);
 
   const loadActiveGuests = useCallback(async () => {
     if (!streamId) return;
@@ -95,11 +153,13 @@ export default function BroadcastScreen() {
       
       if (!cameraPermission?.granted) {
         console.log('📷 Requesting camera permission...');
-        await requestCameraPermission();
+        const result = await requestCameraPermission();
+        console.log('📷 Camera permission result:', result);
       }
       if (!micPermission?.granted) {
         console.log('🎤 Requesting mic permission...');
-        await requestMicPermission();
+        const result = await requestMicPermission();
+        console.log('🎤 Mic permission result:', result);
       }
     };
 
@@ -107,33 +167,72 @@ export default function BroadcastScreen() {
   }, [cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
 
   useEffect(() => {
+    // Prevent multiple initialization attempts
+    if (initAttemptedRef.current) {
+      console.log('⏭️ [BROADCAST] Init already attempted, skipping...');
+      return;
+    }
+
     if (!user || !streamTitle) {
       console.error('❌ [BROADCAST] Missing user or stream title');
-      Alert.alert('Error', 'Missing stream information');
-      router.back();
+      console.error('User:', user);
+      console.error('Stream title:', streamTitle);
+      setInitError('Missing stream information');
       return;
     }
 
     const initStream = async () => {
+      initAttemptedRef.current = true;
+      
       try {
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         console.log('🚀 [BROADCAST] Initializing stream...');
-        console.log('📝 [BROADCAST] Title:', streamTitle);
-        console.log('🏷️ [BROADCAST] Content Label:', contentLabel);
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('📝 Title:', streamTitle);
+        console.log('🏷️ Content Label:', contentLabel);
+
+        // CRITICAL FIX: Verify startStream is a function before calling
+        console.log('🔍 [BROADCAST] Verifying startStream function...');
+        console.log('Type of startStream:', typeof startStream);
+        
+        if (!startStream) {
+          console.error('❌ [BROADCAST] startStream is undefined');
+          setInitError('Stream service is not available');
+          return;
+        }
+        
+        if (typeof startStream !== 'function') {
+          console.error('❌ [BROADCAST] startStream is not a function');
+          console.error('Actual type:', typeof startStream);
+          console.error('Value:', startStream);
+          setInitError('Stream service is not properly configured');
+          return;
+        }
+
+        console.log('✅ [BROADCAST] startStream is a valid function');
+        console.log('🎬 [BROADCAST] Calling startStream...');
 
         const result = await startStream(streamTitle, contentLabel || 'family_friendly');
         
+        console.log('📡 [BROADCAST] startStream result:', result);
+
         if (result.success && result.streamId) {
           console.log('✅ [BROADCAST] Stream started successfully:', result.streamId);
           setStreamId(result.streamId);
+          setInitError(null);
         } else {
           console.error('❌ [BROADCAST] Failed to start stream:', result.error);
-          Alert.alert('Error', result.error || 'Failed to start stream');
-          router.back();
+          setInitError(result.error || 'Failed to start stream');
         }
-      } catch (error) {
-        console.error('❌ [BROADCAST] Error in initStream:', error);
-        Alert.alert('Error', 'Failed to initialize stream');
-        router.back();
+      } catch (error: any) {
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('❌ [BROADCAST] CRITICAL: Error in initStream');
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        setInitError(error.message || 'Failed to initialize stream');
       }
     };
 
@@ -186,6 +285,22 @@ export default function BroadcastScreen() {
 
     try {
       console.log('🛑 [BROADCAST] Ending stream...');
+      
+      // CRITICAL FIX: Verify endStream is a function before calling
+      if (!endStream) {
+        console.error('❌ [BROADCAST] endStream is undefined');
+        Alert.alert('Error', 'Stream service is not available');
+        setIsEnding(false);
+        return;
+      }
+      
+      if (typeof endStream !== 'function') {
+        console.error('❌ [BROADCAST] endStream is not a function');
+        Alert.alert('Error', 'Stream service is not properly configured');
+        setIsEnding(false);
+        return;
+      }
+
       const result = await endStream(streamId, saveReplay);
       
       if (result.success) {
@@ -201,9 +316,9 @@ export default function BroadcastScreen() {
         console.error('❌ [BROADCAST] Failed to end stream:', result.error);
         Alert.alert('Error', result.error || 'Failed to end stream');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ [BROADCAST] Error ending stream:', error);
-      Alert.alert('Error', 'Failed to end stream');
+      Alert.alert('Error', error.message || 'Failed to end stream');
     } finally {
       setIsEnding(false);
     }
@@ -213,6 +328,34 @@ export default function BroadcastScreen() {
     setShowSaveReplayModal(false);
     router.replace('/(tabs)/(home)');
   };
+
+  // CRITICAL FIX: Handle initialization errors
+  if (initError) {
+    console.error('❌ [BROADCAST] Initialization error:', initError);
+    return (
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+        <IconSymbol
+          ios_icon_name="exclamationmark.triangle"
+          android_material_icon_name="error"
+          size={64}
+          color={colors.brandPrimary}
+        />
+        <Text style={[styles.errorText, { color: colors.text }]}>Failed to Start Stream</Text>
+        <Text style={[styles.errorSubtext, { color: colors.textSecondary }]}>
+          {initError}
+        </Text>
+        <TouchableOpacity
+          style={[styles.errorButton, { backgroundColor: colors.brandPrimary }]}
+          onPress={() => {
+            console.log('🔙 [BROADCAST] User pressed Go Back button');
+            router.back();
+          }}
+        >
+          <Text style={styles.errorButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   // CRITICAL FIX: Always return JSX - add early return with loading state
   if (!cameraPermission || !micPermission) {
@@ -266,8 +409,8 @@ export default function BroadcastScreen() {
     );
   }
 
-  if (stateMachineError) {
-    console.error('❌ [BROADCAST] State machine error:', stateMachineError);
+  if (stateMachineErrorState) {
+    console.error('❌ [BROADCAST] State machine error:', stateMachineErrorState);
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <IconSymbol
@@ -278,11 +421,14 @@ export default function BroadcastScreen() {
         />
         <Text style={[styles.errorText, { color: colors.text }]}>Stream Error</Text>
         <Text style={[styles.errorSubtext, { color: colors.textSecondary }]}>
-          {stateMachineError}
+          {stateMachineErrorState}
         </Text>
         <TouchableOpacity
           style={[styles.errorButton, { backgroundColor: colors.brandPrimary }]}
-          onPress={() => router.back()}
+          onPress={() => {
+            console.log('🔙 [BROADCAST] User pressed Go Back button');
+            router.back();
+          }}
         >
           <Text style={styles.errorButtonText}>Go Back</Text>
         </TouchableOpacity>
@@ -564,6 +710,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 40,
+  },
+  errorDetails: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 12,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   errorButton: {
     paddingHorizontal: 24,
