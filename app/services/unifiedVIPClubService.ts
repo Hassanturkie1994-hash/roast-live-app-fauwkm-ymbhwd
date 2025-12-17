@@ -455,7 +455,7 @@ class UnifiedVIPClubService {
   /**
    * Get top 50 VIP clubs by member count
    */
-  async getTop50VIPClubs(): Promise<Array<VIPClub & { creator_name: string; creator_username: string }>> {
+  async getTop50VIPClubs(): Promise<(VIPClub & { creator_name: string; creator_username: string })[]> {
     try {
       const { data, error } = await supabase
         .from('vip_clubs')
@@ -527,7 +527,7 @@ class UnifiedVIPClubService {
     totalMembers: number;
     activeMembers: number;
     monthlyRevenue: number;
-    topGifters: Array<{ userId: string; displayName: string; totalGifted: number; level: number }>;
+    topGifters: { userId: string; displayName: string; totalGifted: number; level: number }[];
   }> {
     try {
       const club = await this.getVIPClubById(clubId);
@@ -623,7 +623,7 @@ class UnifiedVIPClubService {
   /**
    * Get user's VIP memberships
    */
-  async getUserVIPMemberships(userId: string): Promise<Array<VIPClubMember & { club: VIPClub }>> {
+  async getUserVIPMemberships(userId: string): Promise<(VIPClubMember & { club: VIPClub })[]> {
     try {
       const { data, error } = await supabase
         .from('vip_club_members')

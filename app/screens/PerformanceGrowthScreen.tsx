@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -25,13 +25,7 @@ export default function PerformanceGrowthScreen() {
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
   const [performanceScore, setPerformanceScore] = useState<CreatorPerformanceScore | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      fetchAnalytics();
-    }
-  }, [user]);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -48,7 +42,11 @@ export default function PerformanceGrowthScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
   const getScoreColor = (score: number): string => {
     if (score >= 80) return '#4CAF50';

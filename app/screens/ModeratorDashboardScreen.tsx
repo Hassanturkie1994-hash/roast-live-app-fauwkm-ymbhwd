@@ -23,6 +23,25 @@ export default function ModeratorDashboardScreen() {
   const [assignedCreator, setAssignedCreator] = useState<any>(null);
   const [moderationHistory, setModerationHistory] = useState<any[]>([]);
 
+  const fetchModerationHistory = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('moderation_history')
+        .select('*')
+        .eq('moderator_user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+
+      setModerationHistory(data || []);
+    } catch (error) {
+      console.error('Error fetching moderation history:', error);
+    }
+  }, [user]);
+
   const checkAccess = useCallback(async () => {
     if (!user) {
       router.replace('/auth/login');
@@ -56,30 +75,11 @@ export default function ModeratorDashboardScreen() {
     setAssignedCreator(moderatorData.profiles);
     await fetchModerationHistory();
     setLoading(false);
-  }, [user]);
+  }, [user, fetchModerationHistory]);
 
   useEffect(() => {
     checkAccess();
   }, [checkAccess]);
-
-  const fetchModerationHistory = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('moderation_history')
-        .select('*')
-        .eq('moderator_user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-
-      setModerationHistory(data || []);
-    } catch (error) {
-      console.error('Error fetching moderation history:', error);
-    }
-  };
 
   const handleRemoveRole = async () => {
     Alert.alert(

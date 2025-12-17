@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -24,13 +24,7 @@ export default function PremiumMembershipScreen() {
   const [subscription, setSubscription] = useState<PremiumSubscription | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchPremiumStatus();
-    }
-  }, [user]);
-
-  const fetchPremiumStatus = async () => {
+  const fetchPremiumStatus = useCallback(async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -47,7 +41,11 @@ export default function PremiumMembershipScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchPremiumStatus();
+  }, [fetchPremiumStatus]);
 
   const handleActivatePremium = async (provider: 'stripe' | 'paypal') => {
     if (!user) return;

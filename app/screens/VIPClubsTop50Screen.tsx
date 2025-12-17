@@ -16,7 +16,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { unifiedVIPClubService, VIPClub } from '@/app/services/unifiedVIPClubService';
 
 export default function VIPClubsTop50Screen() {
-  const [topClubs, setTopClubs] = useState<Array<VIPClub & { creator_name: string; creator_username: string }>>([]);
+  const [topClubs, setTopClubs] = useState<(VIPClub & { creator_name: string; creator_username: string })[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
