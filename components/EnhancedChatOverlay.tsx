@@ -11,6 +11,7 @@ import {
   Platform,
   Animated,
   Alert,
+  Modal,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -19,6 +20,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { Tables } from '@/app/integrations/supabase/types';
 import UserActionModal from './UserActionModal';
 import { moderationService } from '@/app/services/moderationService';
+import { unifiedVIPClubService, VIPBadgeData } from '@/app/services/unifiedVIPClubService';
 
 type ChatMessage = Tables<'chat_messages'> & {
   users: Tables<'users'>;
@@ -49,11 +51,18 @@ export default function EnhancedChatOverlay({
   const [selectedUser, setSelectedUser] = useState<{ id: string; name: string } | null>(null);
   const [isModerator, setIsModerator] = useState(false);
   const [longPressedMessage, setLongPressedMessage] = useState<ChatMessage | null>(null);
+  const [vipBadgeCache, setVipBadgeCache] = useState<Map<string, VIPBadgeData>>(new Map());
   
   const scrollViewRef = useRef<ScrollView>(null);
   const channelRef = useRef<any>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const isMountedRef = useRef(true);
+
+  const checkModeratorStatus = useCallback(async () => {
+    if (!user) return;
+    const isMod = await moderationService.isModerator(streamerId, user.id);
+    setIsModerator(isMod);
+  }, [streamerId, user]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -66,13 +75,7 @@ export default function EnhancedChatOverlay({
     return () => {
       isMountedRef.current = false;
     };
-  }, [streamId, user]);
-
-  const checkModeratorStatus = async () => {
-    if (!user) return;
-    const isMod = await moderationService.isModerator(streamerId, user.id);
-    setIsModerator(isMod);
-  };
+  }, [streamId, user, checkModeratorStatus]);
 
   const fetchRecentMessages = useCallback(async () => {
     if (!streamId || !isMountedRef.current) return;
@@ -284,13 +287,40 @@ export default function EnhancedChatOverlay({
     }
   };
 
+  // Load VIP badge data for a user
+  const loadVIPBadge = useCallback(async (userId: string) => {
+    if (vipBadgeCache.has(userId)) return;
+
+    const badgeData = await unifiedVIPClubService.getVIPBadgeData(streamerId, userId);
+    setVipBadgeCache(prev => new Map(prev).set(userId, badgeData));
+  }, [streamerId, vipBadgeCache]);
+
+  // Load VIP badges for visible messages
+  useEffect(() => {
+    messages.forEach(msg => {
+      if (msg.user_id !== hostId && !vipBadgeCache.has(msg.user_id)) {
+        loadVIPBadge(msg.user_id);
+      }
+    });
+  }, [messages, hostId, vipBadgeCache, loadVIPBadge]);
+
   const renderMessage = (msg: ChatMessage, index: number) => {
     const isHost = msg.user_id === hostId;
     const canInteract = isBroadcaster || isModerator;
+    const vipBadge = vipBadgeCache.get(msg.user_id);
+    
+    // Convert level to superscript
+    const getSuperscript = (num: number): string => {
+      const superscripts: { [key: string]: string } = {
+        '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+        '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+      };
+      return num.toString().split('').map(d => superscripts[d] || d).join('');
+    };
     
     return (
       <Animated.View
-        key={index}
+        key={`msg-${msg.id}-${index}`}
         style={[
           styles.chatMessage,
           index === messages.length - 1 && { opacity: fadeAnim },
@@ -301,14 +331,30 @@ export default function EnhancedChatOverlay({
           onLongPress={() => canInteract && setLongPressedMessage(msg)}
           disabled={!canInteract}
         >
-          <Text style={styles.chatUsername}>
-            <Text style={isHost ? styles.hostUsername : undefined}>
-              {msg.users.display_name}
+          <View style={styles.messageHeader}>
+            <Text style={styles.chatUsername}>
+              <Text style={isHost ? styles.hostUsername : undefined}>
+                {msg.users.display_name}
+              </Text>
+              {isHost && <Text style={styles.hostLabel}> - Host</Text>}
             </Text>
-            {isHost && <Text style={styles.hostLabel}> - Host</Text>}
-            :
+            {!isHost && vipBadge?.isMember && vipBadge.badgeName && (
+              <View style={[styles.vipBadge, { backgroundColor: vipBadge.badgeColor }]}>
+                <Text style={styles.vipBadgeText}>
+                  {vipBadge.badgeName}
+                  {vipBadge.vipLevel && getSuperscript(vipBadge.vipLevel)}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text 
+            style={[
+              styles.chatText,
+              vipBadge?.isMember && vipBadge.badgeColor && { color: vipBadge.badgeColor }
+            ]}
+          >
+            {msg.message}
           </Text>
-          <Text style={styles.chatText}>{msg.message}</Text>
         </TouchableOpacity>
       </Animated.View>
     );
@@ -491,11 +537,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 8,
   },
+  messageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
   chatUsername: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.gradientEnd,
-    marginBottom: 2,
   },
   hostUsername: {
     color: '#FF0000',
@@ -506,10 +557,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 11,
   },
+  vipBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  vipBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
   chatText: {
     fontSize: 14,
     fontWeight: '400',
-    color: colors.text,
+    color: '#FFFFFF',
   },
   hostChatInputContainer: {
     flexDirection: 'row',

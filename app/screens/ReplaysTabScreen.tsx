@@ -24,11 +24,7 @@ export default function ReplaysTabScreen({ creatorId }: ReplaysTabScreenProps) {
   const [replays, setReplays] = useState<StreamReplay[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadReplays();
-  }, [creatorId]);
-
-  const loadReplays = async () => {
+  const loadReplays = useCallback(async () => {
     setLoading(true);
     try {
       const data = await replayService.getCreatorReplays(creatorId);
@@ -39,7 +35,11 @@ export default function ReplaysTabScreen({ creatorId }: ReplaysTabScreenProps) {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [creatorId]);
+
+  useEffect(() => {
+    loadReplays();
+  }, [loadReplays]);
 
   const handleRefresh = () => {
     setRefreshing(true);

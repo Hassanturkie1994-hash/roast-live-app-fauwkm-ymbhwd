@@ -29,11 +29,7 @@ export default function ModeratorReviewQueueScreen() {
   const [timeoutDuration, setTimeoutDuration] = useState('10');
   const [reason, setReason] = useState('');
 
-  useEffect(() => {
-    loadReviewQueue();
-  }, []);
-
-  const loadReviewQueue = async () => {
+  const loadReviewQueue = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
@@ -45,7 +41,12 @@ export default function ModeratorReviewQueueScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadReviewQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);

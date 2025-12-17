@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -34,10 +34,15 @@ export default function CreateStoryScreen() {
   const [postType, setPostType] = useState<'story' | 'post' | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
+  const requestPermissionCallback = useCallback(() => {
+    requestPermission();
+  }, [requestPermission]);
+
   useEffect(() => {
     if (!permission?.granted) {
       requestPermission();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permission]);
 
   const toggleCameraType = () => {
@@ -201,7 +206,7 @@ export default function CreateStoryScreen() {
             color={colors.textSecondary}
           />
           <Text style={styles.permissionText}>Camera permission is required</Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+          <TouchableOpacity style={styles.permissionButton} onPress={requestPermissionCallback}>
             <Text style={styles.permissionButtonText}>Grant Permission</Text>
           </TouchableOpacity>
         </View>

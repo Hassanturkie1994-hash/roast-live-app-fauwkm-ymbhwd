@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -33,16 +33,7 @@ export default function LeaderboardModal({
   const [loading, setLoading] = useState(true);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
-  useEffect(() => {
-    if (visible) {
-      loadLeaderboard();
-      // Auto-refresh every 15 seconds
-      const interval = setInterval(loadLeaderboard, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [visible, streamId, creatorId]);
-
-  const loadLeaderboard = async () => {
+  const loadLeaderboard = useCallback(async () => {
     try {
       setLoading(true);
       const data = await leaderboardService.getStreamLeaderboard(streamId, creatorId, 10);
@@ -52,7 +43,16 @@ export default function LeaderboardModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [streamId, creatorId]);
+
+  useEffect(() => {
+    if (visible) {
+      loadLeaderboard();
+      // Auto-refresh every 15 seconds
+      const interval = setInterval(loadLeaderboard, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [visible, loadLeaderboard]);
 
   const getMedalEmoji = (rank: number) => {
     switch (rank) {

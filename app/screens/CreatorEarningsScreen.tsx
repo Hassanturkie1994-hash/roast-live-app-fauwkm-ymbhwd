@@ -23,13 +23,7 @@ export default function CreatorEarningsScreen() {
   const [taxForm, setTaxForm] = useState<any>(null);
   const [payouts, setPayouts] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (user) {
-      loadData();
-    }
-  }, [user]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
@@ -56,7 +50,14 @@ export default function CreatorEarningsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleRequestPayout = () => {
     if (!taxForm || !taxForm.verified) {

@@ -23,11 +23,7 @@ export default function ModeratorDashboardScreen() {
   const [assignedCreator, setAssignedCreator] = useState<any>(null);
   const [moderationHistory, setModerationHistory] = useState<any[]>([]);
 
-  useEffect(() => {
-    checkAccess();
-  }, [user]);
-
-  const checkAccess = async () => {
+  const checkAccess = useCallback(async () => {
     if (!user) {
       router.replace('/auth/login');
       return;
@@ -60,7 +56,12 @@ export default function ModeratorDashboardScreen() {
     setAssignedCreator(moderatorData.profiles);
     await fetchModerationHistory();
     setLoading(false);
-  };
+  }, [user]);
+
+  useEffect(() => {
+    checkAccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchModerationHistory = async () => {
     if (!user) return;

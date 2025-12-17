@@ -80,14 +80,7 @@ function LiveSettingsPanelContent({
   const [isSearching, setIsSearching] = useState(false);
   const [addingModerator, setAddingModerator] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (visible && user) {
-      loadFollowers();
-      loadExistingModerators();
-    }
-  }, [visible, user]);
-
-  const loadFollowers = async () => {
+  const loadFollowers = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -122,9 +115,9 @@ function LiveSettingsPanelContent({
     } finally {
       setIsLoadingFollowers(false);
     }
-  };
+  }, [user]);
 
-  const loadExistingModerators = async () => {
+  const loadExistingModerators = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -133,7 +126,14 @@ function LiveSettingsPanelContent({
     } catch (error) {
       console.error('❌ [LiveSettings] Error loading moderators:', error);
     }
-  };
+  }, [refreshModerators]);
+
+  useEffect(() => {
+    if (visible && user) {
+      loadFollowers();
+      loadExistingModerators();
+    }
+  }, [visible, user, loadFollowers, loadExistingModerators]);
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);

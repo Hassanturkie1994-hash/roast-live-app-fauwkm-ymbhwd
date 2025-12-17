@@ -40,11 +40,7 @@ export default function NotificationSettingsScreen() {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  useEffect(() => {
-    loadPreferences();
-  }, [user]);
-
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -80,7 +76,11 @@ export default function NotificationSettingsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [user, loadPreferences]);
 
   const savePreferences = async () => {
     if (!user) return;

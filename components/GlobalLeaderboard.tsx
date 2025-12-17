@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,14 +28,7 @@ export default function GlobalLeaderboard({
   const [loading, setLoading] = useState(true);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
-  useEffect(() => {
-    loadLeaderboard();
-    // Auto-refresh every 20 seconds
-    const interval = setInterval(loadLeaderboard, 20000);
-    return () => clearInterval(interval);
-  }, [creatorId, type]);
-
-  const loadLeaderboard = async () => {
+  const loadLeaderboard = useCallback(async () => {
     try {
       setLoading(true);
       const data =
@@ -48,7 +41,14 @@ export default function GlobalLeaderboard({
     } finally {
       setLoading(false);
     }
-  };
+  }, [creatorId, type, limit]);
+
+  useEffect(() => {
+    loadLeaderboard();
+    // Auto-refresh every 20 seconds
+    const interval = setInterval(loadLeaderboard, 20000);
+    return () => clearInterval(interval);
+  }, [loadLeaderboard]);
 
   const getMedalEmoji = (rank: number) => {
     switch (rank) {

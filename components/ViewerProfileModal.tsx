@@ -38,13 +38,7 @@ export default function ViewerProfileModal({
   const [showTimeoutInput, setShowTimeoutInput] = useState(false);
   const [timeoutMinutes, setTimeoutMinutes] = useState('5');
 
-  useEffect(() => {
-    if (visible && userId) {
-      fetchProfile();
-    }
-  }, [visible, userId]);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -61,7 +55,13 @@ export default function ViewerProfileModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    if (visible && userId) {
+      fetchProfile();
+    }
+  }, [visible, userId, fetchProfile]);
 
   const handleTimeout = async () => {
     const minutes = parseInt(timeoutMinutes);

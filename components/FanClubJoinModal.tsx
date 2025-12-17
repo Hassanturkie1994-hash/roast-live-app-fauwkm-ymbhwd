@@ -33,13 +33,7 @@ export default function FanClubJoinModal({
   const [isJoining, setIsJoining] = useState(false);
   const [isMember, setIsMember] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      fetchFanClub();
-    }
-  }, [visible, streamerId]);
-
-  const fetchFanClub = async () => {
+  const fetchFanClub = useCallback(async () => {
     setIsLoading(true);
     try {
       const club = await fanClubService.getFanClub(streamerId);
@@ -54,7 +48,13 @@ export default function FanClubJoinModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [streamerId, currentUserId]);
+
+  useEffect(() => {
+    if (visible) {
+      fetchFanClub();
+    }
+  }, [visible, fetchFanClub]);
 
   const handleJoin = async () => {
     if (!fanClub) return;

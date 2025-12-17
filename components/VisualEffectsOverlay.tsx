@@ -30,6 +30,18 @@ export default function VisualEffectsOverlay({ effect }: VisualEffectsOverlayPro
   const particles = useRef<Particle[]>([]);
   const animationLoopRef = useRef<boolean>(false);
 
+  const startEffect = useCallback(() => {
+    console.log('🎨 [EFFECTS] Starting effect:', effect);
+    
+    // Create particles
+    const particleCount = getParticleCount();
+    particles.current = Array.from({ length: particleCount }, (_, i) => createParticle(i));
+
+    // Start animation loop
+    animationLoopRef.current = true;
+    animateParticles();
+  }, [effect]);
+
   useEffect(() => {
     if (effect && effect !== 'none') {
       startEffect();
@@ -40,19 +52,7 @@ export default function VisualEffectsOverlay({ effect }: VisualEffectsOverlayPro
     return () => {
       stopEffect();
     };
-  }, [effect]);
-
-  const startEffect = () => {
-    console.log('🎨 [EFFECTS] Starting effect:', effect);
-    
-    // Create particles
-    const particleCount = getParticleCount();
-    particles.current = Array.from({ length: particleCount }, (_, i) => createParticle(i));
-
-    // Start animation loop
-    animationLoopRef.current = true;
-    animateParticles();
-  };
+  }, [effect, startEffect]);
 
   const stopEffect = () => {
     console.log('🎨 [EFFECTS] Stopping effect');

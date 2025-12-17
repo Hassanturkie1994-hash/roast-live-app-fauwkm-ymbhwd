@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -41,13 +41,7 @@ export default function FanClubManagementScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [showBadgeEditor, setShowBadgeEditor] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -71,7 +65,13 @@ export default function FanClubManagementScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user, fetchData]);
 
   const handleCreateFanClub = async () => {
     if (!user) return;
@@ -305,9 +305,9 @@ export default function FanClubManagementScreen() {
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Badge Color</Text>
                   <View style={styles.colorGrid}>
-                    {BADGE_COLORS.map((color) => (
+                    {BADGE_COLORS.map((color, index) => (
                       <TouchableOpacity
-                        key={color}
+                        key={`color-${index}`}
                         style={[
                           styles.colorOption,
                           { backgroundColor: color },
@@ -424,8 +424,8 @@ export default function FanClubManagementScreen() {
                 </View>
               ) : (
                 <View style={styles.list}>
-                  {members.map((member) => (
-                    <View key={member.id} style={styles.memberItem}>
+                  {members.map((member, index) => (
+                    <View key={`member-${member.id}-${index}`} style={styles.memberItem}>
                       {member.profiles?.avatar_url ? (
                         <Image
                           source={{ uri: member.profiles.avatar_url }}

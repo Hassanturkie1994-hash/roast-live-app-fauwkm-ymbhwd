@@ -50,13 +50,7 @@ export default function UserActionModal({
   const [isBanned, setIsBanned] = useState(false);
   const [isTimedOut, setIsTimedOut] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      checkUserStatus();
-    }
-  }, [visible]);
-
-  const checkUserStatus = async () => {
+  const checkUserStatus = useCallback(async () => {
     const [bannedStatus, timedOutStatus] = await Promise.all([
       moderationService.isUserBanned(streamerId, userId),
       moderationService.isUserTimedOut(streamerId, userId),
@@ -64,7 +58,13 @@ export default function UserActionModal({
     
     setIsBanned(bannedStatus);
     setIsTimedOut(timedOutStatus);
-  };
+  }, [streamerId, userId]);
+
+  useEffect(() => {
+    if (visible) {
+      checkUserStatus();
+    }
+  }, [visible, checkUserStatus]);
 
   const handleTimeout = async () => {
     if (!reason.trim()) {

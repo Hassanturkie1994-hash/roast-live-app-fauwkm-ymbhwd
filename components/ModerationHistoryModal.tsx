@@ -27,13 +27,7 @@ export default function ModerationHistoryModal({
   const [history, setHistory] = useState<ModerationHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      loadHistory();
-    }
-  }, [visible, streamerId]);
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await moderationService.getModerationHistory(streamerId, 100);
@@ -43,7 +37,13 @@ export default function ModerationHistoryModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [streamerId]);
+
+  useEffect(() => {
+    if (visible) {
+      loadHistory();
+    }
+  }, [visible, loadHistory]);
 
   const getActionIcon = (actionType: string): { ios: string; android: string; color: string } => {
     switch (actionType) {
