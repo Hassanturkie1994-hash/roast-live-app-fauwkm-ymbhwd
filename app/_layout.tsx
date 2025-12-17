@@ -10,7 +10,7 @@ import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
 import { VIPClubProvider } from '@/contexts/VIPClubContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import DeviceBanGuard from '@/components/DeviceBanGuard';
+import { DeviceBanGuard } from '@/components/DeviceBanGuard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 
