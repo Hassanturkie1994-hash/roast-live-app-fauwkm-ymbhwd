@@ -75,7 +75,43 @@ function StreamDashboardContent() {
   const [showCDNDetails, setShowCDNDetails] = useState(false);
   const [isFetchingCDN, setIsFetchingCDN] = useState(false);
 
-  const fetchCDNMonitoringData = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    if (!user) return;
+
+    setIsLoading(true);
+    try {
+      const [mods, banned] = await Promise.all([
+        moderationService.getModerators(user.id),
+        moderationService.getBannedUsers(user.id),
+      ]);
+      setModerators(mods);
+      setBannedUsers(banned);
+
+      // Fetch VIP club data
+      await fetchVIPClubData();
+
+      // Fetch CDN monitoring data (with defensive check)
+      await fetchCDNMonitoringData();
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, fetchVIPClubData, fetchCDNMonitoringData]);
+
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user, fetchData]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchData();
+    setIsRefreshing(false);
+  };
+
+  const fetchCDNMonitoringData = async () => {
     if (!user) return;
 
     // DEFENSIVE: Prevent duplicate calls
@@ -130,7 +166,7 @@ function StreamDashboardContent() {
     } finally {
       setIsFetchingCDN(false);
     }
-  }, [user, isFetchingCDN]);
+  };
 
   const fetchVIPClubData = useCallback(async () => {
     if (!user || !club) return;
@@ -157,42 +193,6 @@ function StreamDashboardContent() {
       console.error('Error fetching VIP club data:', error);
     }
   }, [user, club]);
-
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-
-    setIsLoading(true);
-    try {
-      const [mods, banned] = await Promise.all([
-        moderationService.getModerators(user.id),
-        moderationService.getBannedUsers(user.id),
-      ]);
-      setModerators(mods);
-      setBannedUsers(banned);
-
-      // Fetch VIP club data
-      await fetchVIPClubData();
-
-      // Fetch CDN monitoring data (with defensive check)
-      await fetchCDNMonitoringData();
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user, fetchVIPClubData, fetchCDNMonitoringData]);
-
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user, fetchData]);
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await fetchData();
-    setIsRefreshing(false);
-  };
 
   const handleSearchUsers = async () => {
     if (!searchUsername.trim()) {
@@ -578,7 +578,7 @@ function StreamDashboardContent() {
                     {' '}Top Media Accessed
                   </Text>
                   {cdnStats.topMedia.slice(0, 5).map((media, index) => (
-                    <View key={`media-${index}-${media.url}`} style={styles.topMediaItem}>
+                    <View key={`media-${index}`} style={styles.topMediaItem}>
                       <View style={styles.topMediaRank}>
                         <Text style={styles.topMediaRankText}>#{index + 1}</Text>
                       </View>
@@ -616,24 +616,24 @@ function StreamDashboardContent() {
                   <Text style={styles.cacheHitPerUserSubtitle}>
                     Top users by cache efficiency
                   </Text>
-                  {cacheHitPerUser.slice(0, 10).map((cacheUser, index) => (
-                    <View key={`cache-user-${index}-${cacheUser.userId}`} style={styles.cacheHitPerUserItem}>
+                  {cacheHitPerUser.slice(0, 10).map((user, index) => (
+                    <View key={`cache-user-${index}`} style={styles.cacheHitPerUserItem}>
                       <View style={styles.cacheHitPerUserRank}>
                         <Text style={styles.cacheHitPerUserRankText}>{index + 1}</Text>
                       </View>
                       <View style={styles.cacheHitPerUserInfo}>
-                        <Text style={styles.cacheHitPerUserName}>{cacheUser.username}</Text>
+                        <Text style={styles.cacheHitPerUserName}>{user.username}</Text>
                         <View style={styles.cacheHitPerUserBar}>
                           <View
                             style={[
                               styles.cacheHitPerUserBarFill,
-                              { width: `${cacheUser.cacheHitPercentage}%` },
+                              { width: `${user.cacheHitPercentage}%` },
                             ]}
                           />
                         </View>
                       </View>
                       <Text style={styles.cacheHitPerUserPercentage}>
-                        {cacheUser.cacheHitPercentage.toFixed(1)}%
+                        {user.cacheHitPercentage.toFixed(1)}%
                       </Text>
                     </View>
                   ))}
@@ -801,7 +801,7 @@ function StreamDashboardContent() {
             ) : (
               <View style={styles.list}>
                 {activeVIPMembers.map((member, index) => (
-                  <View key={`vip-${member.id || member.user_id}-${index}`} style={styles.memberItem}>
+                  <View key={`vip-${member.id}-${index}`} style={styles.memberItem}>
                     {member.profiles?.avatar_url ? (
                       <Image source={{ uri: member.profiles.avatar_url }} style={styles.avatar} />
                     ) : (
@@ -1087,7 +1087,7 @@ function StreamDashboardContent() {
           ) : (
             <View style={styles.list}>
               {moderators.map((mod, index) => (
-                <View key={`mod-${mod.id || mod.user_id}-${index}`} style={styles.listItem}>
+                <View key={`mod-${mod.id}-${index}`} style={styles.listItem}>
                   {mod.profiles?.avatar_url ? (
                     <Image source={{ uri: mod.profiles.avatar_url }} style={styles.avatar} />
                   ) : (
@@ -1151,7 +1151,7 @@ function StreamDashboardContent() {
           ) : (
             <View style={styles.list}>
               {bannedUsers.map((banned, index) => (
-                <View key={`banned-${banned.id || banned.user_id}-${index}`} style={styles.listItem}>
+                <View key={`banned-${banned.id}-${index}`} style={styles.listItem}>
                   {banned.profiles?.avatar_url ? (
                     <Image source={{ uri: banned.profiles.avatar_url }} style={styles.avatar} />
                   ) : (

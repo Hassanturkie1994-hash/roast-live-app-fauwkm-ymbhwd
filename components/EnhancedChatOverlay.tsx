@@ -75,7 +75,8 @@ export default function EnhancedChatOverlay({
     return () => {
       isMountedRef.current = false;
     };
-  }, [streamId, user, checkModeratorStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamId, user]);
 
   const fetchRecentMessages = useCallback(async () => {
     if (!streamId || !isMountedRef.current) return;
@@ -320,7 +321,7 @@ export default function EnhancedChatOverlay({
     
     return (
       <Animated.View
-        key={`msg-${msg.id}-${index}`}
+        key={index}
         style={[
           styles.chatMessage,
           index === messages.length - 1 && { opacity: fadeAnim },
