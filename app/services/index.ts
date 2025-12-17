@@ -13,6 +13,7 @@ export { cdnService } from './cdnService';
 export { cloudflareService } from './cloudflareService';
 export { clubSubscriptionService } from './clubSubscriptionService';
 export { commentService } from './commentService';
+export { communityGuidelinesService } from './communityGuidelinesService';
 export { contentSafetyService } from './contentSafetyService';
 export { creatorClubService } from './creatorClubService';
 export { creatorEarningsService } from './creatorEarningsService';
@@ -66,7 +67,6 @@ export { viewerTrackingService } from './viewerTrackingService';
 export { vipMembershipService } from './vipMembershipService';
 export { walletService } from './walletService';
 export { walletTransactionService } from './walletTransactionService';
-export { communityGuidelinesService } from './communityGuidelinesService';
 
 // Export types that are commonly used
 export type { AdminPenalty } from './adminService';
