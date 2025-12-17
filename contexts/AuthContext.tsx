@@ -234,8 +234,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: { message: 'This device is banned from accessing Roast Live' } };
       }
 
-      // Sign up with Supabase
-      // Profile and wallet will be created automatically by database trigger
+      // Sign up with Supabase Auth (single source of truth)
+      // Database trigger will automatically create:
+      // - profiles row (1:1 with auth.users)
+      // - wallets row (balance = 0)
+      // - user_settings row (default preferences)
+      // - notification_preferences row (default settings)
+      // All inserts are idempotent using ON CONFLICT
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -253,9 +258,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (data.user) {
-        // Store device fingerprint
+        // Store device fingerprint for ban tracking
         await deviceBanService.storeDeviceFingerprint(data.user.id);
-        console.log('✅ Sign up successful - profile and wallet will be created automatically');
+        console.log('✅ Sign up successful - user data created automatically by database trigger');
       }
 
       return { error: null };
