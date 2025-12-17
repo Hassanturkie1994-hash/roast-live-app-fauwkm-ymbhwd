@@ -19,28 +19,15 @@ import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
 import { IconSymbol } from '@/components/IconSymbol';
 import ChatOverlay from '@/components/ChatOverlay';
 import GiftSelector from '@/components/GiftSelector';
-import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 import EndStreamModal from '@/components/EndStreamModal';
-import SaveReplayModal from '@/components/SaveReplayModal';
+import { SaveReplayModal } from '@/components/SaveReplayModal';
 import GuestSeatGrid from '@/components/GuestSeatGrid';
 import GuestInvitationModal from '@/components/GuestInvitationModal';
 import HostControlDashboard from '@/components/HostControlDashboard';
-import { streamGuestService } from '@/app/services/streamGuestService';
+import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
 import { supabase } from '@/app/integrations/supabase/client';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-interface GuestSeat {
-  seatIndex: number;
-  userId: string | null;
-  username: string | null;
-  avatarUrl: string | null;
-  isModerator: boolean;
-  micEnabled: boolean;
-  cameraEnabled: boolean;
-  mutedByHost: boolean;
-  cameraDisabledByHost: boolean;
-}
 
 /**
  * BroadcastScreen
@@ -54,6 +41,7 @@ interface GuestSeat {
  * 6. Prevented navigation until permissions are granted
  * 7. Added detailed error logging for debugging
  * 8. Fixed all useEffect dependency arrays
+ * 9. Fixed component prop interfaces to match actual component definitions
  */
 export default function BroadcastScreen() {
   // ============================================================================
@@ -93,14 +81,19 @@ export default function BroadcastScreen() {
   const [streamId, setStreamId] = useState<string | null>(null);
   const [isEnding, setIsEnding] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
-  const [activeGuests, setActiveGuests] = useState<GuestSeat[]>([]);
+  const [activeGuests, setActiveGuests] = useState<StreamGuestSeat[]>([]);
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
+  const [streamDuration, setStreamDuration] = useState(0);
+  const [peakViewers, setPeakViewers] = useState(0);
+  const [totalViewers, setTotalViewers] = useState(0);
   
   // All useRef hooks - MUST be called unconditionally
   const cameraRef = useRef<CameraView>(null);
   const viewerCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const initAttemptedRef = useRef<boolean>(false);
+  const streamStartTimeRef = useRef<number | null>(null);
+  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // All useCallback hooks - MUST be called unconditionally
   const loadActiveGuests = useCallback(async () => {
@@ -114,51 +107,57 @@ export default function BroadcastScreen() {
     }
   }, [streamId]);
 
-  const handleEndStream = useCallback(async (saveReplay: boolean) => {
-    if (!streamId || isEnding) return;
-
-    setIsEnding(true);
+  const handleSaveStream = useCallback(async () => {
+    if (!streamId) return;
 
     try {
-      console.log('🛑 [BROADCAST] Ending stream...');
+      console.log('💾 [BROADCAST] Saving stream...');
       
-      // CRITICAL FIX: Verify endStream is a function before calling
-      if (!endStream) {
-        console.error('❌ [BROADCAST] endStream is undefined');
-        Alert.alert('Error', 'Stream service is not available');
-        setIsEnding(false);
-        return;
-      }
-      
-      if (typeof endStream !== 'function') {
-        console.error('❌ [BROADCAST] endStream is not a function');
-        Alert.alert('Error', 'Stream service is not properly configured');
-        setIsEnding(false);
+      // Save stream to database
+      const { error } = await supabase
+        .from('live_streams')
+        .update({ is_archived: true })
+        .eq('id', streamId);
+
+      if (error) {
+        console.error('❌ [BROADCAST] Error saving stream:', error);
+        Alert.alert('Error', 'Failed to save stream');
         return;
       }
 
-      const result = await endStream(streamId, saveReplay);
-      
-      if (result.success) {
-        console.log('✅ [BROADCAST] Stream ended successfully');
-        setShowEndModal(false);
-        
-        if (saveReplay) {
-          setShowSaveReplayModal(true);
-        } else {
-          router.replace('/(tabs)/(home)');
-        }
-      } else {
-        console.error('❌ [BROADCAST] Failed to end stream:', result.error);
-        Alert.alert('Error', result.error || 'Failed to end stream');
-      }
+      console.log('✅ [BROADCAST] Stream saved successfully');
+      router.replace('/(tabs)/(home)');
     } catch (error: any) {
-      console.error('❌ [BROADCAST] Error ending stream:', error);
-      Alert.alert('Error', error.message || 'Failed to end stream');
-    } finally {
-      setIsEnding(false);
+      console.error('❌ [BROADCAST] Error in handleSaveStream:', error);
+      Alert.alert('Error', error.message || 'Failed to save stream');
     }
-  }, [streamId, isEnding, endStream]);
+  }, [streamId]);
+
+  const handleDeleteStream = useCallback(async () => {
+    if (!streamId) return;
+
+    try {
+      console.log('🗑️ [BROADCAST] Deleting stream...');
+      
+      // Delete stream from database
+      const { error } = await supabase
+        .from('live_streams')
+        .delete()
+        .eq('id', streamId);
+
+      if (error) {
+        console.error('❌ [BROADCAST] Error deleting stream:', error);
+        Alert.alert('Error', 'Failed to delete stream');
+        return;
+      }
+
+      console.log('✅ [BROADCAST] Stream deleted successfully');
+      router.replace('/(tabs)/(home)');
+    } catch (error: any) {
+      console.error('❌ [BROADCAST] Error in handleDeleteStream:', error);
+      Alert.alert('Error', error.message || 'Failed to delete stream');
+    }
+  }, [streamId]);
 
   const handleSaveReplayComplete = useCallback(() => {
     setShowSaveReplayModal(false);
@@ -244,6 +243,7 @@ export default function BroadcastScreen() {
           console.log('✅ [BROADCAST] Stream started successfully:', result.streamId);
           setStreamId(result.streamId);
           setInitError(null);
+          streamStartTimeRef.current = Date.now();
         } else {
           console.error('❌ [BROADCAST] Failed to start stream:', result.error);
           setInitError(result.error || 'Failed to start stream');
@@ -263,7 +263,7 @@ export default function BroadcastScreen() {
     initStream();
   }, [user, streamTitle, contentLabel, startStream]);
 
-  // Effect 3: Update viewer count
+  // Effect 3: Update viewer count and track peak
   useEffect(() => {
     if (!streamId) return;
 
@@ -275,7 +275,21 @@ export default function BroadcastScreen() {
           .eq('stream_id', streamId)
           .is('left_at', null);
 
-        setViewerCount(count || 0);
+        const currentCount = count || 0;
+        setViewerCount(currentCount);
+        
+        // Track peak viewers
+        if (currentCount > peakViewers) {
+          setPeakViewers(currentCount);
+        }
+        
+        // Track total unique viewers
+        const { count: totalCount } = await supabase
+          .from('stream_viewers')
+          .select('*', { count: 'exact', head: true })
+          .eq('stream_id', streamId);
+        
+        setTotalViewers(totalCount || 0);
       } catch (error) {
         console.error('Error fetching viewer count:', error);
       }
@@ -289,9 +303,30 @@ export default function BroadcastScreen() {
         clearInterval(viewerCountIntervalRef.current);
       }
     };
+  }, [streamId, peakViewers]);
+
+  // Effect 4: Track stream duration
+  useEffect(() => {
+    if (!streamId || !streamStartTimeRef.current) return;
+
+    const updateDuration = () => {
+      if (streamStartTimeRef.current) {
+        const elapsed = Math.floor((Date.now() - streamStartTimeRef.current) / 1000);
+        setStreamDuration(elapsed);
+      }
+    };
+
+    updateDuration();
+    durationIntervalRef.current = setInterval(updateDuration, 1000);
+
+    return () => {
+      if (durationIntervalRef.current) {
+        clearInterval(durationIntervalRef.current);
+      }
+    };
   }, [streamId]);
 
-  // Effect 4: Load active guests
+  // Effect 5: Load active guests
   useEffect(() => {
     if (!streamId) return;
 
@@ -433,11 +468,16 @@ export default function BroadcastScreen() {
         mode="video"
       >
         {/* Guest Seats Grid */}
-        {activeGuests.length > 0 && (
+        {activeGuests.length > 0 && user && streamId && (
           <GuestSeatGrid
+            hostName={user.user_metadata?.display_name || 'Host'}
+            hostAvatarUrl={user.user_metadata?.avatar_url}
             guests={activeGuests}
-            streamId={streamId || ''}
+            streamId={streamId}
+            hostId={user.id}
             isHost={true}
+            onRefresh={loadActiveGuests}
+            onEmptySeatPress={() => setShowGuestInvitation(true)}
           />
         )}
 
@@ -488,10 +528,12 @@ export default function BroadcastScreen() {
         </View>
 
         {/* Chat Overlay */}
-        {showChat && streamId && (
+        {showChat && streamId && user && (
           <ChatOverlay
             streamId={streamId}
-            onClose={() => setShowChat(false)}
+            isBroadcaster={true}
+            hostId={user.id}
+            hostName={user.user_metadata?.display_name || 'Host'}
           />
         )}
 
@@ -535,20 +577,13 @@ export default function BroadcastScreen() {
         </View>
 
         {/* Gift Selector */}
-        {showGifts && streamId && user && (
+        {showGifts && user && (
           <GiftSelector
-            streamId={streamId}
-            senderId={user.id}
-            receiverId={user.id}
+            visible={showGifts}
             onClose={() => setShowGifts(false)}
-          />
-        )}
-
-        {/* Settings Panel */}
-        {showSettings && streamId && (
-          <LiveSettingsPanel
-            streamId={streamId}
-            onClose={() => setShowSettings(false)}
+            receiverId={user.id}
+            receiverName={user.user_metadata?.display_name || 'Host'}
+            livestreamId={streamId || undefined}
           />
         )}
 
@@ -576,18 +611,25 @@ export default function BroadcastScreen() {
       </CameraView>
 
       {/* End Stream Modal */}
-      <EndStreamModal
-        visible={showEndModal}
-        onConfirm={handleEndStream}
-        onCancel={() => setShowEndModal(false)}
-        isLoading={isEnding}
-      />
+      {streamId && (
+        <EndStreamModal
+          visible={showEndModal}
+          onClose={() => setShowEndModal(false)}
+          onSaveStream={handleSaveStream}
+          onDeleteStream={handleDeleteStream}
+          streamTitle={streamTitle || 'Untitled Stream'}
+          duration={streamDuration}
+          peakViewers={peakViewers}
+          totalViewers={totalViewers}
+        />
+      )}
 
       {/* Save Replay Modal */}
       <SaveReplayModal
         visible={showSaveReplayModal}
-        streamId={streamId || ''}
-        onComplete={handleSaveReplayComplete}
+        onSave={handleSaveStream}
+        onDelete={handleDeleteStream}
+        onClose={handleSaveReplayComplete}
       />
     </View>
   );
