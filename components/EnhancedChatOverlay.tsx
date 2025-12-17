@@ -218,6 +218,11 @@ export default function EnhancedChatOverlay({
 
       console.log('✅ Message saved to database');
 
+      // Add message to local state immediately for broadcaster
+      if (isBroadcaster && newMessage && isMountedRef.current) {
+        setMessages((prev) => [...prev, newMessage]);
+      }
+
       if (channelRef.current && newMessage && isMountedRef.current) {
         await channelRef.current.send({
           type: 'broadcast',

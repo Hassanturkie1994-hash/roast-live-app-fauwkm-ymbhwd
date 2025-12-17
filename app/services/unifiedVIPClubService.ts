@@ -472,7 +472,7 @@ class UnifiedVIPClubService {
         return [];
       }
 
-      return (data || []).map((club: any) => ({
+      const clubs: { id: string; club_name: string; badge_name: string; badge_color: string; total_members: number; creator_name: string; creator_username: string }[] = (data || []).map((club: any) => ({
         id: club.id,
         club_name: club.club_name,
         badge_name: club.badge_name,
@@ -481,6 +481,7 @@ class UnifiedVIPClubService {
         creator_name: club.profiles?.display_name || club.profiles?.username || 'Unknown',
         creator_username: club.profiles?.username || 'unknown',
       }));
+      return clubs;
     } catch (error) {
       console.error('Error in getTop50VIPClubs:', error);
       return [];
@@ -543,7 +544,7 @@ class UnifiedVIPClubService {
       const activeMembers = members.filter(m => m.status === 'active').length;
       const monthlyRevenue = (activeMembers * club.monthly_price_sek * 0.7);
 
-      const topGifters = members
+      const topGifters: { userId: string; displayName: string; totalGifted: number; level: number }[] = members
         .sort((a, b) => b.total_gifted_sek - a.total_gifted_sek)
         .slice(0, 10)
         .map(m => ({
