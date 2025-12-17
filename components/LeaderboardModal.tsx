@@ -33,7 +33,16 @@ export default function LeaderboardModal({
   const [loading, setLoading] = useState(true);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
-  const loadLeaderboard = useCallback(async () => {
+  useEffect(() => {
+    if (visible) {
+      loadLeaderboard();
+      // Auto-refresh every 15 seconds
+      const interval = setInterval(loadLeaderboard, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [visible, streamId, creatorId]);
+
+  const loadLeaderboard = async () => {
     try {
       setLoading(true);
       const data = await leaderboardService.getStreamLeaderboard(streamId, creatorId, 10);
@@ -43,16 +52,7 @@ export default function LeaderboardModal({
     } finally {
       setLoading(false);
     }
-  }, [streamId, creatorId]);
-
-  useEffect(() => {
-    if (visible) {
-      loadLeaderboard();
-      // Auto-refresh every 15 seconds
-      const interval = setInterval(loadLeaderboard, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [visible, loadLeaderboard]);
+  };
 
   const getMedalEmoji = (rank: number) => {
     switch (rank) {

@@ -29,7 +29,13 @@ export default function RetentionAnalyticsScreen() {
   const [averageRetention, setAverageRetention] = useState(0);
   const [totalDropMoments, setTotalDropMoments] = useState(0);
 
-  const fetchRetentionData = useCallback(async () => {
+  useEffect(() => {
+    if (user) {
+      fetchRetentionData();
+    }
+  }, [user]);
+
+  const fetchRetentionData = async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -43,13 +49,7 @@ export default function RetentionAnalyticsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (user) {
-      fetchRetentionData();
-    }
-  }, [user, fetchRetentionData]);
+  };
 
   const formatDuration = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);

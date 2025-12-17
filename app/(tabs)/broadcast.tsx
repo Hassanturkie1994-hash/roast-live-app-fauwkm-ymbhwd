@@ -506,6 +506,19 @@ export default function BroadcastScreen() {
   }, [isPracticeMode]);
 
   /* ───────────────── GUEST SUBSCRIPTION ───────────────── */
+  const subscribeToGuests = useCallback((streamId: string) => {
+    if (!isMountedRef.current || isPracticeMode) return;
+
+    console.log('🔌 [BROADCAST] Subscribing to guest events');
+
+    const channel = streamGuestService.subscribeToGuestEvents(streamId, (payload) => {
+      console.log('👥 [BROADCAST] Guest event received:', payload);
+      loadActiveGuests();
+    });
+
+    guestChannelRef.current = channel;
+  }, [isPracticeMode]);
+
   const loadActiveGuests = useCallback(async () => {
     if (!currentStream?.id || isPracticeMode) return;
 
@@ -518,19 +531,6 @@ export default function BroadcastScreen() {
       console.error('Error loading active guests:', error);
     }
   }, [currentStream?.id, isPracticeMode]);
-
-  const subscribeToGuests = useCallback((streamId: string) => {
-    if (!isMountedRef.current || isPracticeMode) return;
-
-    console.log('🔌 [BROADCAST] Subscribing to guest events');
-
-    const channel = streamGuestService.subscribeToGuestEvents(streamId, (payload) => {
-      console.log('👥 [BROADCAST] Guest event received:', payload);
-      loadActiveGuests();
-    });
-
-    guestChannelRef.current = channel;
-  }, [isPracticeMode, loadActiveGuests]);
 
   useEffect(() => {
     if (isLive && currentStream?.id && !isPracticeMode && isMountedRef.current) {

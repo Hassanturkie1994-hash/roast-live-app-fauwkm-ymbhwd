@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,13 @@ export default function BlockedUsersScreen() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchBlockedUsers = useCallback(async () => {
+  useEffect(() => {
+    if (user) {
+      fetchBlockedUsers();
+    }
+  }, [user]);
+
+  const fetchBlockedUsers = async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -33,13 +39,7 @@ export default function BlockedUsersScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (user) {
-      fetchBlockedUsers();
-    }
-  }, [user, fetchBlockedUsers]);
+  };
 
   const handleUnblock = async (userId: string, username: string) => {
     if (!user) return;

@@ -23,7 +23,11 @@ export default function ModeratorDashboardScreen() {
   const [assignedCreator, setAssignedCreator] = useState<any>(null);
   const [moderationHistory, setModerationHistory] = useState<any[]>([]);
 
-  const checkAccess = useCallback(async () => {
+  useEffect(() => {
+    checkAccess();
+  }, [user]);
+
+  const checkAccess = async () => {
     if (!user) {
       router.replace('/auth/login');
       return;
@@ -56,11 +60,7 @@ export default function ModeratorDashboardScreen() {
     setAssignedCreator(moderatorData.profiles);
     await fetchModerationHistory();
     setLoading(false);
-  }, [user]);
-
-  useEffect(() => {
-    checkAccess();
-  }, [checkAccess]);
+  };
 
   const fetchModerationHistory = async () => {
     if (!user) return;

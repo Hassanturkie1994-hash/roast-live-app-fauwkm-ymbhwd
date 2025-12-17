@@ -68,7 +68,7 @@ export default function GiftAnimationOverlay({
       isMountedRef.current = false;
       clearTimeout(debugTimer);
     };
-  }, [giftName, senderUsername, tier]);
+  }, []);
 
   // Play sound effect based on gift emoji
   const playSoundEffect = async () => {
@@ -270,7 +270,7 @@ export default function GiftAnimationOverlay({
         soundRef.current.unloadAsync().catch(console.error);
       }
     };
-  }, [tier, duration, onAnimationComplete, fadeAnim, scaleAnim, slideAnim, emojiScaleAnim, glowAnim, shakeAnim, particles, playSoundEffect]);
+  }, [tier, duration]);
 
   const renderParticles = () => {
     if (tier === 'A') return null;

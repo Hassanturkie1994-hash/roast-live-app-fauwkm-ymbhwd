@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -34,15 +34,11 @@ export default function CreateStoryScreen() {
   const [postType, setPostType] = useState<'story' | 'post' | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
-  const requestPermissionCallback = useCallback(() => {
-    requestPermission();
-  }, [requestPermission]);
-
   useEffect(() => {
     if (!permission?.granted) {
-      requestPermissionCallback();
+      requestPermission();
     }
-  }, [permission, requestPermissionCallback]);
+  }, [permission]);
 
   const toggleCameraType = () => {
     setCameraType((current) => (current === 'back' ? 'front' : 'back'));
@@ -205,7 +201,7 @@ export default function CreateStoryScreen() {
             color={colors.textSecondary}
           />
           <Text style={styles.permissionText}>Camera permission is required</Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermissionCallback}>
+          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
             <Text style={styles.permissionButtonText}>Grant Permission</Text>
           </TouchableOpacity>
         </View>

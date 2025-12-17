@@ -11,7 +11,6 @@ import {
   Platform,
   Animated,
   Alert,
-  Modal,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -56,12 +55,6 @@ export default function EnhancedChatOverlay({
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const isMountedRef = useRef(true);
 
-  const checkModeratorStatus = useCallback(async () => {
-    if (!user) return;
-    const isMod = await moderationService.isModerator(streamerId, user.id);
-    setIsModerator(isMod);
-  }, [streamerId, user]);
-
   useEffect(() => {
     isMountedRef.current = true;
     console.log('🎨 EnhancedChatOverlay mounted for stream:', streamId);
@@ -73,7 +66,13 @@ export default function EnhancedChatOverlay({
     return () => {
       isMountedRef.current = false;
     };
-  }, [streamId, user, checkModeratorStatus]);
+  }, [streamId, user]);
+
+  const checkModeratorStatus = async () => {
+    if (!user) return;
+    const isMod = await moderationService.isModerator(streamerId, user.id);
+    setIsModerator(isMod);
+  };
 
   const fetchRecentMessages = useCallback(async () => {
     if (!streamId || !isMountedRef.current) return;
