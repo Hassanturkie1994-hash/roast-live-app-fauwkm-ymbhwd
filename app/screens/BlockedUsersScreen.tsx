@@ -39,7 +39,8 @@ export default function BlockedUsersScreen() {
     if (user) {
       fetchBlockedUsers();
     }
-  }, [user, fetchBlockedUsers]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleUnblock = async (userId: string, username: string) => {
     if (!user) return;

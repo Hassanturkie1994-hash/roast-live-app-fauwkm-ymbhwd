@@ -56,7 +56,8 @@ export default function CreatorEarningsScreen() {
     if (user) {
       loadData();
     }
-  }, [user, loadData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleRequestPayout = () => {
     if (!taxForm || !taxForm.verified) {

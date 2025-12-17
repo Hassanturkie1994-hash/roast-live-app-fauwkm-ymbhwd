@@ -16,6 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService, NotificationCategory } from '@/app/services/notificationService';
+import { unifiedVIPClubService } from '@/app/services/unifiedVIPClubService';
 
 interface Notification {
   id: string;
@@ -73,6 +74,7 @@ export default function InboxScreen() {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [vipMemberships, setVipMemberships] = useState<any[]>([]);
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
@@ -96,6 +98,10 @@ export default function InboxScreen() {
         }
       }
       setUnreadCounts(counts);
+
+      // Load VIP memberships
+      const memberships = await unifiedVIPClubService.getUserVIPMemberships(user.id);
+      setVipMemberships(memberships);
     } catch (error) {
       console.error('Error in fetchNotifications:', error);
     } finally {
@@ -296,13 +302,68 @@ export default function InboxScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        {/* VIP Club Chats Section */}
+        {vipMemberships.length > 0 && (
+          <View style={styles.vipSection}>
+            <View style={styles.vipSectionHeader}>
+              <IconSymbol
+                ios_icon_name="crown.fill"
+                android_material_icon_name="workspace_premium"
+                size={20}
+                color="#FFD700"
+              />
+              <Text style={[styles.vipSectionTitle, { color: colors.text }]}>
+                VIP Club Chats
+              </Text>
+            </View>
+            {vipMemberships.map((membership, index) => (
+              <TouchableOpacity
+                key={`vip-${membership.club_id}-${index}`}
+                style={[styles.vipChatCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
+                onPress={() => router.push({
+                  pathname: '/screens/VIPClubChatScreen',
+                  params: {
+                    clubId: membership.club_id,
+                    clubName: membership.club.club_name,
+                    creatorId: membership.club.creator_id,
+                  },
+                } as any)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.vipBadgeIcon, { backgroundColor: membership.club.badge_color }]}>
+                  <IconSymbol
+                    ios_icon_name="crown.fill"
+                    android_material_icon_name="workspace_premium"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </View>
+                <View style={styles.vipChatInfo}>
+                  <Text style={[styles.vipChatName, { color: colors.text }]}>
+                    {membership.club.club_name}
+                  </Text>
+                  <Text style={[styles.vipChatSubtext, { color: colors.textSecondary }]}>
+                    VIP Club Group Chat • Level {membership.vip_level}
+                  </Text>
+                </View>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron_right"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {loading ? (
           <View style={styles.centerContent}>
             <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
               Loading notifications...
             </Text>
           </View>
-        ) : notifications.length === 0 ? (
+        ) : notifications.length === 0 && vipMemberships.length === 0 ? (
           <View style={styles.emptyState}>
             <IconSymbol
               ios_icon_name="bell.slash"
@@ -605,5 +666,49 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  vipSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  vipSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  vipSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  vipChatCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+    borderWidth: 1,
+  },
+  vipBadgeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vipChatInfo: {
+    flex: 1,
+  },
+  vipChatName: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  vipChatSubtext: {
+    fontSize: 12,
+    fontWeight: '400',
   },
 });

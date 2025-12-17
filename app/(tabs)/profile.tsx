@@ -346,6 +346,23 @@ export default function ProfileScreen() {
             />
           </TouchableOpacity>
 
+          {/* VIP Clubs Top 50 Link */}
+          <TouchableOpacity 
+            style={[styles.savedStreamsCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+            onPress={() => router.push('/screens/VIPClubsTop50Screen' as any)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.savedStreamsLeft}>
+              <UnifiedRoastIcon name="crown" size={24} color="#FFD700" />
+              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>VIP Clubs – Top 50</Text>
+            </View>
+            <UnifiedRoastIcon
+              name="chevron-right"
+              size={16}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
           <View style={styles.buttonRow}>
             <View style={styles.buttonFlex}>
               <GradientButton title="Redigera profil" onPress={handleEditProfile} size="medium" />

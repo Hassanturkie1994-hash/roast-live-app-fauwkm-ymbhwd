@@ -23,7 +23,7 @@ import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import ImprovedEffectsPanel from '@/components/ImprovedEffectsPanel';
 import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
-import VIPClubPanel from '@/components/VIPClubPanel';
+import UnifiedVIPClubPanel from '@/components/UnifiedVIPClubPanel';
 import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverlay';
 import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOverlay';
@@ -572,7 +572,7 @@ export default function PreLiveSetupScreen() {
         />
 
         {/* VIP CLUB PANEL */}
-        <VIPClubPanel
+        <UnifiedVIPClubPanel
           visible={showVIPClubPanel}
           onClose={() => setShowVIPClubPanel(false)}
           selectedClub={selectedVIPClub}

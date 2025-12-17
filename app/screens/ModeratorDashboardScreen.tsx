@@ -60,7 +60,8 @@ export default function ModeratorDashboardScreen() {
 
   useEffect(() => {
     checkAccess();
-  }, [checkAccess]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchModerationHistory = async () => {
     if (!user) return;

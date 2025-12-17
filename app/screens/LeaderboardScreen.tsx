@@ -52,7 +52,8 @@ export default function LeaderboardScreen() {
 
   useEffect(() => {
     fetchLeaderboard();
-  }, [fetchLeaderboard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);

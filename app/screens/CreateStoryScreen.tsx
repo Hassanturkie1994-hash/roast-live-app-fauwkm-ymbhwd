@@ -40,9 +40,10 @@ export default function CreateStoryScreen() {
 
   useEffect(() => {
     if (!permission?.granted) {
-      requestPermissionCallback();
+      requestPermission();
     }
-  }, [permission, requestPermissionCallback]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permission]);
 
   const toggleCameraType = () => {
     setCameraType((current) => (current === 'back' ? 'front' : 'back'));
