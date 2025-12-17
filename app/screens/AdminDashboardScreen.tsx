@@ -28,7 +28,8 @@ export default function AdminDashboardScreen() {
     activeStrikes: 0,
     pendingAppeals: 0,
     vipSubscribers: 0,
-    dailyVolume: 0,
+    totalUsers: 0,
+    activeUsers: 0,
   });
 
   const fetchDashboardStats = useCallback(async () => {
@@ -61,18 +62,46 @@ export default function AdminDashboardScreen() {
 
       // Fetch VIP subscribers
       const { count: vipCount } = await supabase
-        .from('vip_memberships')
+        .from('vip_club_members')
         .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
+        .eq('status', 'active');
+
+      // Fetch total users
+      const { count: totalUsersCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch active users (in last 5 minutes)
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      
+      const { data: activeViewers } = await supabase
+        .from('stream_viewers')
+        .select('user_id')
+        .is('left_at', null)
+        .gte('joined_at', fiveMinutesAgo);
+
+      const { data: activeStreamers } = await supabase
+        .from('streams')
+        .select('broadcaster_id')
+        .eq('status', 'live');
+
+      const activeUserIds = new Set<string>();
+      if (activeViewers) {
+        activeViewers.forEach(v => activeUserIds.add(v.user_id));
+      }
+      if (activeStreamers) {
+        activeStreamers.forEach(s => activeUserIds.add(s.broadcaster_id));
+      }
 
       setStats({
         openReports,
         liveStreams,
         usersUnderPenalty: penaltyCount || 0,
-        activeStrikes: 0, // Will be fetched separately
+        activeStrikes: 0,
         pendingAppeals: appealsCount || 0,
         vipSubscribers: vipCount || 0,
-        dailyVolume: 0,
+        totalUsers: totalUsersCount || 0,
+        activeUsers: activeUserIds.size,
       });
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
@@ -109,7 +138,14 @@ export default function AdminDashboardScreen() {
 
   useEffect(() => {
     checkAdminAccess();
-  }, [checkAdminAccess]);
+
+    // Refresh stats every 30 seconds
+    const interval = setInterval(() => {
+      fetchDashboardStats();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [checkAdminAccess, fetchDashboardStats]);
 
   const getRoleColor = (role: AdminRole) => {
     switch (role) {
@@ -170,8 +206,39 @@ export default function AdminDashboardScreen() {
           </View>
         </View>
 
-        {/* Stats Grid */}
+        {/* Real-time Stats Grid - NOW CLICKABLE */}
         <View style={styles.statsGrid}>
+          <TouchableOpacity
+            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/screens/AdminUsersListScreen?type=active' as any)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="person.2.fill"
+              android_material_icon_name="people"
+              size={32}
+              color="#00FF00"
+            />
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.activeUsers}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Active Users</Text>
+            <View style={styles.liveDotIndicator} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/screens/AdminUsersListScreen?type=total' as any)}
+            activeOpacity={0.7}
+          >
+            <IconSymbol
+              ios_icon_name="person.3.fill"
+              android_material_icon_name="groups"
+              size={32}
+              color="#4ECDC4"
+            />
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.totalUsers}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Users</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => router.push('/screens/AdminReportsScreen' as any)}
@@ -247,7 +314,11 @@ export default function AdminDashboardScreen() {
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Pending Appeals</Text>
           </TouchableOpacity>
 
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/screens/AdminUsersListScreen?type=vip' as any)}
+            activeOpacity={0.7}
+          >
             <IconSymbol
               ios_icon_name="star.fill"
               android_material_icon_name="star"
@@ -256,7 +327,7 @@ export default function AdminDashboardScreen() {
             />
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.vipSubscribers}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>VIP Subscribers</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Quick Actions */}
@@ -528,6 +599,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     gap: 8,
+    position: 'relative',
   },
   wideCard: {
     width: '100%',
@@ -540,6 +612,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  liveDotIndicator: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#00FF00',
   },
   section: {
     paddingHorizontal: 20,

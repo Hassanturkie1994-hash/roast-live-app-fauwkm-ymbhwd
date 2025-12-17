@@ -10,12 +10,16 @@ import {
   RefreshControl,
   Modal,
   Pressable,
+  FlatList,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService, NotificationCategory } from '@/app/services/notificationService';
+import { privateMessagingService, ConversationWithUser } from '@/app/services/privateMessagingService';
+import { unifiedVIPClubService, VIPClubMember } from '@/app/services/unifiedVIPClubService';
+import { supabase } from '@/app/integrations/supabase/client';
 
 interface Notification {
   id: string;
@@ -33,6 +37,17 @@ interface Notification {
   ref_post_id?: string;
   ref_story_id?: string;
   ref_stream_id?: string;
+}
+
+interface VIPClubConversation {
+  id: string;
+  club_id: string;
+  club_name: string;
+  creator_id: string;
+  badge_color: string;
+  unread_count: number;
+  last_message: string | null;
+  last_message_at: string | null;
 }
 
 const CATEGORY_CONFIG = {
@@ -66,8 +81,11 @@ const CATEGORY_CONFIG = {
 export default function InboxScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
+  const [activeSection, setActiveSection] = useState<'notifications' | 'messages' | 'vip'>('notifications');
   const [selectedCategory, setSelectedCategory] = useState<NotificationCategory | 'all'>('all');
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [conversations, setConversations] = useState<ConversationWithUser[]>([]);
+  const [vipClubConversations, setVipClubConversations] = useState<VIPClubConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -104,17 +122,70 @@ export default function InboxScreen() {
     }
   }, [user, selectedCategory]);
 
+  const fetchConversations = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const convs = await privateMessagingService.getUserConversations(user.id);
+      setConversations(convs);
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+    }
+  }, [user]);
+
+  const fetchVIPClubConversations = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const memberships = await unifiedVIPClubService.getUserVIPMemberships(user.id);
+      
+      const vipConvs: VIPClubConversation[] = await Promise.all(
+        memberships.map(async (membership) => {
+          const messages = await unifiedVIPClubService.getVIPClubChatMessages(membership.club_id, 1);
+          const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
+          return {
+            id: membership.club_id,
+            club_id: membership.club_id,
+            club_name: membership.club.club_name,
+            creator_id: membership.club.creator_id,
+            badge_color: membership.club.badge_color,
+            unread_count: 0, // TODO: Implement unread tracking
+            last_message: lastMessage?.message || null,
+            last_message_at: lastMessage?.created_at || null,
+          };
+        })
+      );
+
+      setVipClubConversations(vipConvs);
+    } catch (error) {
+      console.error('Error fetching VIP club conversations:', error);
+    }
+  }, [user]);
+
   useEffect(() => {
     let mounted = true;
 
     if (!user) {
       router.replace('/auth/login');
     } else if (mounted) {
-      fetchNotifications();
+      if (activeSection === 'notifications') {
+        fetchNotifications();
+      } else if (activeSection === 'messages') {
+        fetchConversations();
+      } else if (activeSection === 'vip') {
+        fetchVIPClubConversations();
+      }
       
       const interval = setInterval(() => {
         if (mounted) {
-          fetchNotifications();
+          if (activeSection === 'notifications') {
+            fetchNotifications();
+          } else if (activeSection === 'messages') {
+            fetchConversations();
+          } else if (activeSection === 'vip') {
+            fetchVIPClubConversations();
+          }
         }
       }, 10000);
       
@@ -127,12 +198,18 @@ export default function InboxScreen() {
     return () => {
       mounted = false;
     };
-  }, [user, fetchNotifications]);
+  }, [user, activeSection, fetchNotifications, fetchConversations, fetchVIPClubConversations]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchNotifications();
-  }, [fetchNotifications]);
+    if (activeSection === 'notifications') {
+      fetchNotifications();
+    } else if (activeSection === 'messages') {
+      fetchConversations();
+    } else if (activeSection === 'vip') {
+      fetchVIPClubConversations();
+    }
+  }, [activeSection, fetchNotifications, fetchConversations, fetchVIPClubConversations]);
 
   const handleMarkAllAsRead = useCallback(async () => {
     if (!user) return;
@@ -145,7 +222,6 @@ export default function InboxScreen() {
   const handleNotificationPress = useCallback(async (notification: Notification) => {
     await notificationService.markAsRead(notification.id);
 
-    // If it's an admin announcement or system update, show in modal
     if (notification.type === 'admin_announcement' || notification.type === 'system_update') {
       setSelectedNotification(notification);
       setModalVisible(true);
@@ -153,7 +229,6 @@ export default function InboxScreen() {
       return;
     }
 
-    // Otherwise navigate to the relevant screen
     if (notification.ref_post_id) {
       router.push(`/screens/PostDetailScreen?postId=${notification.ref_post_id}`);
     } else if (notification.ref_story_id) {
@@ -166,6 +241,28 @@ export default function InboxScreen() {
 
     fetchNotifications();
   }, [fetchNotifications]);
+
+  const handleConversationPress = useCallback((conversation: ConversationWithUser) => {
+    router.push({
+      pathname: '/screens/ChatScreen',
+      params: {
+        conversationId: conversation.id,
+        otherUserId: conversation.other_user.id,
+        otherUserName: conversation.other_user.display_name || conversation.other_user.username,
+      },
+    });
+  }, []);
+
+  const handleVIPClubPress = useCallback((vipConv: VIPClubConversation) => {
+    router.push({
+      pathname: '/screens/VIPClubChatScreen',
+      params: {
+        clubId: vipConv.club_id,
+        clubName: vipConv.club_name,
+        creatorId: vipConv.creator_id,
+      },
+    });
+  }, []);
 
   const formatTime = useCallback((timestamp: string) => {
     const date = new Date(timestamp);
@@ -206,166 +303,424 @@ export default function InboxScreen() {
   }, []);
 
   const totalUnread = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+  const totalConversationUnread = conversations.reduce((sum, conv) => sum + conv.unread_count, 0);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <View style={styles.headerTop}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Inbox & Notifications</Text>
-          {totalUnread > 0 && (
-            <TouchableOpacity
-              style={[styles.markAllButton, { backgroundColor: colors.brandPrimary || '#A40028' }]}
-              onPress={handleMarkAllAsRead}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.markAllText}>Mark All Read</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.categoryScroll}
-          contentContainerStyle={styles.categoryScrollContent}
-        >
-          <TouchableOpacity
-            key="category-all"
-            style={[
-              styles.categoryChip,
-              {
-                backgroundColor: selectedCategory === 'all' ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
-              },
-            ]}
-            onPress={() => setSelectedCategory('all')}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.categoryChipText,
-                { color: selectedCategory === 'all' ? '#FFFFFF' : colors.text },
-              ]}
-            >
-              All
-            </Text>
-          </TouchableOpacity>
-
-          {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
-            <TouchableOpacity
-              key={`category-${key}`}
-              style={[
-                styles.categoryChip,
-                {
-                  backgroundColor:
-                    selectedCategory === key ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
-                },
-              ]}
-              onPress={() => setSelectedCategory(key as NotificationCategory)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.categoryChipText,
-                  { color: selectedCategory === key ? '#FFFFFF' : colors.text },
-                ]}
-              >
-                {config.title}
-              </Text>
-              {unreadCounts[key] > 0 && (
-                <View style={styles.categoryBadge}>
-                  <Text style={styles.categoryBadgeText}>
-                    {unreadCounts[key] > 99 ? '99+' : unreadCounts[key]}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Inbox</Text>
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
-            tintColor={colors.brandPrimary || '#A40028'}
-            colors={[colors.brandPrimary || '#A40028']}
+      {/* Section Tabs */}
+      <View style={[styles.sectionTabs, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={[
+            styles.sectionTab,
+            activeSection === 'notifications' && { borderBottomColor: colors.brandPrimary },
+          ]}
+          onPress={() => setActiveSection('notifications')}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="bell.fill"
+            android_material_icon_name="notifications"
+            size={20}
+            color={activeSection === 'notifications' ? colors.brandPrimary : colors.textSecondary}
           />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {loading ? (
-          <View style={styles.centerContent}>
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-              Loading notifications...
-            </Text>
-          </View>
-        ) : notifications.length === 0 ? (
-          <View style={styles.emptyState}>
-            <IconSymbol
-              ios_icon_name="bell.slash"
-              android_material_icon_name="notifications-off"
-              size={64}
-              color={colors.textSecondary}
-            />
-            <Text style={[styles.emptyText, { color: colors.text }]}>No notifications yet</Text>
-            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-              You&apos;ll see notifications here when you get likes, comments, and more
-            </Text>
-          </View>
-        ) : (
-          notifications.map((notification) => {
-            const icon = getNotificationIcon(notification.type);
-            return (
+          <Text
+            style={[
+              styles.sectionTabText,
+              { color: activeSection === 'notifications' ? colors.brandPrimary : colors.textSecondary },
+            ]}
+          >
+            Notifications
+          </Text>
+          {totalUnread > 0 && (
+            <View style={[styles.sectionBadge, { backgroundColor: colors.brandPrimary }]}>
+              <Text style={styles.sectionBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.sectionTab,
+            activeSection === 'messages' && { borderBottomColor: colors.brandPrimary },
+          ]}
+          onPress={() => setActiveSection('messages')}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="bubble.left.and.bubble.right.fill"
+            android_material_icon_name="chat"
+            size={20}
+            color={activeSection === 'messages' ? colors.brandPrimary : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.sectionTabText,
+              { color: activeSection === 'messages' ? colors.brandPrimary : colors.textSecondary },
+            ]}
+          >
+            Messages
+          </Text>
+          {totalConversationUnread > 0 && (
+            <View style={[styles.sectionBadge, { backgroundColor: colors.brandPrimary }]}>
+              <Text style={styles.sectionBadgeText}>
+                {totalConversationUnread > 99 ? '99+' : totalConversationUnread}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.sectionTab,
+            activeSection === 'vip' && { borderBottomColor: colors.brandPrimary },
+          ]}
+          onPress={() => setActiveSection('vip')}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="crown.fill"
+            android_material_icon_name="workspace_premium"
+            size={20}
+            color={activeSection === 'vip' ? '#FFD700' : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.sectionTabText,
+              { color: activeSection === 'vip' ? colors.brandPrimary : colors.textSecondary },
+            ]}
+          >
+            VIP Clubs
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Notifications Section */}
+      {activeSection === 'notifications' && (
+        <>
+          <View style={[styles.subHeader, { borderBottomColor: colors.border }]}>
+            {totalUnread > 0 && (
               <TouchableOpacity
-                key={`notification-${notification.id}`}
-                style={[
-                  styles.notificationCard,
-                  {
-                    backgroundColor: notification.read ? colors.background : colors.backgroundAlt,
-                    borderBottomColor: colors.border,
-                  },
-                ]}
-                onPress={() => handleNotificationPress(notification)}
+                style={[styles.markAllButton, { backgroundColor: colors.brandPrimary || '#A40028' }]}
+                onPress={handleMarkAllAsRead}
                 activeOpacity={0.7}
               >
-                {notification.sender?.avatar_url ? (
-                  <Image
-                    source={{ uri: notification.sender.avatar_url }}
-                    style={[styles.avatar, { backgroundColor: colors.card }]}
-                  />
+                <Text style={styles.markAllText}>Mark All Read</Text>
+              </TouchableOpacity>
+            )}
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categoryScroll}
+              contentContainerStyle={styles.categoryScrollContent}
+            >
+              <TouchableOpacity
+                key="category-all"
+                style={[
+                  styles.categoryChip,
+                  {
+                    backgroundColor: selectedCategory === 'all' ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
+                  },
+                ]}
+                onPress={() => setSelectedCategory('all')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    { color: selectedCategory === 'all' ? '#FFFFFF' : colors.text },
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+
+              {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+                <TouchableOpacity
+                  key={`category-${key}`}
+                  style={[
+                    styles.categoryChip,
+                    {
+                      backgroundColor:
+                        selectedCategory === key ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
+                    },
+                  ]}
+                  onPress={() => setSelectedCategory(key as NotificationCategory)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.categoryChipText,
+                      { color: selectedCategory === key ? '#FFFFFF' : colors.text },
+                    ]}
+                  >
+                    {config.title}
+                  </Text>
+                  {unreadCounts[key] > 0 && (
+                    <View style={styles.categoryBadge}>
+                      <Text style={styles.categoryBadgeText}>
+                        {unreadCounts[key] > 99 ? '99+' : unreadCounts[key]}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.contentContainer}
+            refreshControl={
+              <RefreshControl 
+                refreshing={refreshing} 
+                onRefresh={onRefresh} 
+                tintColor={colors.brandPrimary || '#A40028'}
+                colors={[colors.brandPrimary || '#A40028']}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+          >
+            {loading ? (
+              <View style={styles.centerContent}>
+                <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                  Loading notifications...
+                </Text>
+              </View>
+            ) : notifications.length === 0 ? (
+              <View style={styles.emptyState}>
+                <IconSymbol
+                  ios_icon_name="bell.slash"
+                  android_material_icon_name="notifications-off"
+                  size={64}
+                  color={colors.textSecondary}
+                />
+                <Text style={[styles.emptyText, { color: colors.text }]}>No notifications yet</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+                  You&apos;ll see notifications here when you get likes, comments, and more
+                </Text>
+              </View>
+            ) : (
+              notifications.map((notification) => {
+                const icon = getNotificationIcon(notification.type);
+                return (
+                  <TouchableOpacity
+                    key={`notification-${notification.id}`}
+                    style={[
+                      styles.notificationCard,
+                      {
+                        backgroundColor: notification.read ? colors.background : colors.backgroundAlt,
+                        borderBottomColor: colors.border,
+                      },
+                    ]}
+                    onPress={() => handleNotificationPress(notification)}
+                    activeOpacity={0.7}
+                  >
+                    {notification.sender?.avatar_url ? (
+                      <Image
+                        source={{ uri: notification.sender.avatar_url }}
+                        style={[styles.avatar, { backgroundColor: colors.card }]}
+                      />
+                    ) : (
+                      <View style={[styles.iconContainer, { backgroundColor: colors.card }]}>
+                        <IconSymbol
+                          ios_icon_name={icon.ios}
+                          android_material_icon_name={icon.android}
+                          size={24}
+                          color={colors.brandPrimary || '#A40028'}
+                        />
+                      </View>
+                    )}
+
+                    <View style={styles.notificationContent}>
+                      <View style={styles.notificationHeader}>
+                        <Text style={[styles.notificationText, { color: colors.text }]} numberOfLines={2}>
+                          {notification.sender?.display_name || notification.sender?.username || 'System'}{' '}
+                          {notification.message}
+                        </Text>
+                        {!notification.read && (
+                          <View style={[styles.unreadDot, { backgroundColor: colors.brandPrimary || '#A40028' }]} />
+                        )}
+                      </View>
+                      <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
+                        {formatTime(notification.created_at)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+        </>
+      )}
+
+      {/* Messages Section */}
+      {activeSection === 'messages' && (
+        <FlatList
+          data={conversations}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.conversationCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
+              onPress={() => handleConversationPress(item)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.avatarContainer}>
+                {item.other_user.avatar_url ? (
+                  <Image source={{ uri: item.other_user.avatar_url }} style={styles.avatar} />
                 ) : (
-                  <View style={[styles.iconContainer, { backgroundColor: colors.card }]}>
+                  <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: colors.backgroundAlt }]}>
                     <IconSymbol
-                      ios_icon_name={icon.ios}
-                      android_material_icon_name={icon.android}
+                      ios_icon_name="person.fill"
+                      android_material_icon_name="person"
                       size={24}
-                      color={colors.brandPrimary || '#A40028'}
+                      color={colors.textSecondary}
                     />
                   </View>
                 )}
-
-                <View style={styles.notificationContent}>
-                  <View style={styles.notificationHeader}>
-                    <Text style={[styles.notificationText, { color: colors.text }]} numberOfLines={2}>
-                      {notification.sender?.display_name || notification.sender?.username || 'System'}{' '}
-                      {notification.message}
-                    </Text>
-                    {!notification.read && (
-                      <View style={[styles.unreadDot, { backgroundColor: colors.brandPrimary || '#A40028' }]} />
-                    )}
+                {item.unread_count > 0 && (
+                  <View style={[styles.unreadBadge, { backgroundColor: colors.brandPrimary }]}>
+                    <Text style={styles.unreadBadgeText}>{item.unread_count}</Text>
                   </View>
-                  <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
-                    {formatTime(notification.created_at)}
+                )}
+              </View>
+
+              <View style={styles.conversationContent}>
+                <View style={styles.conversationHeader}>
+                  <Text style={[styles.conversationName, { color: colors.text }]} numberOfLines={1}>
+                    {item.other_user.display_name || item.other_user.username}
                   </Text>
+                  {item.last_message && (
+                    <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
+                      {formatTime(item.last_message.created_at)}
+                    </Text>
+                  )}
                 </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
+                {item.last_message ? (
+                  <Text
+                    style={[
+                      styles.lastMessage,
+                      { color: item.unread_count > 0 ? colors.text : colors.textSecondary },
+                      item.unread_count > 0 && styles.unreadMessage,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.last_message.content}
+                  </Text>
+                ) : (
+                  <Text style={[styles.noMessages, { color: colors.textSecondary }]}>No messages yet</Text>
+                )}
+              </View>
+
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron_right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.brandPrimary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="bubble.left.and.bubble.right"
+                android_material_icon_name="chat"
+                size={64}
+                color={colors.textSecondary}
+              />
+              <Text style={[styles.emptyText, { color: colors.text }]}>No conversations yet</Text>
+              <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+                Start a conversation by visiting a user&apos;s profile
+              </Text>
+            </View>
+          }
+        />
+      )}
+
+      {/* VIP Clubs Section */}
+      {activeSection === 'vip' && (
+        <FlatList
+          data={vipClubConversations}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.vipClubCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
+              onPress={() => handleVIPClubPress(item)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.vipClubIcon, { backgroundColor: item.badge_color }]}>
+                <IconSymbol
+                  ios_icon_name="crown.fill"
+                  android_material_icon_name="workspace_premium"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </View>
+
+              <View style={styles.vipClubContent}>
+                <View style={styles.vipClubHeader}>
+                  <Text style={[styles.vipClubName, { color: colors.text }]} numberOfLines={1}>
+                    {item.club_name}
+                  </Text>
+                  {item.last_message_at && (
+                    <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
+                      {formatTime(item.last_message_at)}
+                    </Text>
+                  )}
+                </View>
+                {item.last_message ? (
+                  <Text style={[styles.lastMessage, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {item.last_message}
+                  </Text>
+                ) : (
+                  <Text style={[styles.noMessages, { color: colors.textSecondary }]}>No messages yet</Text>
+                )}
+              </View>
+
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron_right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.brandPrimary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <IconSymbol
+                ios_icon_name="crown"
+                android_material_icon_name="workspace_premium"
+                size={64}
+                color={colors.textSecondary}
+              />
+              <Text style={[styles.emptyText, { color: colors.text }]}>No VIP Club memberships</Text>
+              <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+                Join a creator&apos;s VIP Club to access exclusive group chat
+              </Text>
+            </View>
+          }
+        />
+      )}
 
       {/* Announcement Modal */}
       <Modal
@@ -427,20 +782,55 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
   },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
   headerTitle: {
     fontSize: 28,
     fontWeight: '800',
   },
+  sectionTabs: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+  },
+  sectionTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    position: 'relative',
+  },
+  sectionTabText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sectionBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  sectionBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  subHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
   markAllButton: {
+    alignSelf: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
+    marginBottom: 12,
   },
   markAllText: {
     fontSize: 12,
@@ -485,6 +875,9 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: 100,
   },
+  listContent: {
+    paddingBottom: 100,
+  },
   centerContent: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -519,12 +912,55 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 12,
   },
+  conversationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  vipClubCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
   avatar: {
     width: 48,
     height: 48,
     borderRadius: 24,
   },
+  avatarContainer: {
+    position: 'relative',
+  },
+  avatarPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vipClubIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -535,16 +971,44 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 4,
   },
+  conversationContent: {
+    flex: 1,
+    gap: 4,
+  },
+  vipClubContent: {
+    flex: 1,
+    gap: 4,
+  },
   notificationHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
+  },
+  conversationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  vipClubHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   notificationText: {
     fontSize: 14,
     fontWeight: '400',
     flex: 1,
     lineHeight: 20,
+  },
+  conversationName: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+  },
+  vipClubName: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
   },
   unreadDot: {
     width: 8,
@@ -555,6 +1019,18 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 12,
     fontWeight: '400',
+  },
+  lastMessage: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  unreadMessage: {
+    fontWeight: '600',
+  },
+  noMessages: {
+    fontSize: 14,
+    fontWeight: '400',
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,

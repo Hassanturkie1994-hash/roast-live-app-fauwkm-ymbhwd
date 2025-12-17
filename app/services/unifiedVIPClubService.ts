@@ -455,7 +455,7 @@ class UnifiedVIPClubService {
   /**
    * Get top 50 VIP clubs by member count
    */
-  async getTop50VIPClubs(): Promise<(VIPClub & { creator_name: string; creator_username: string })[]> {
+  async getTop50VIPClubs(): Promise<{ id: string; club_name: string; badge_name: string; badge_color: string; total_members: number; creator_name: string; creator_username: string }[]> {
     try {
       const { data, error } = await supabase
         .from('vip_clubs')
@@ -473,7 +473,11 @@ class UnifiedVIPClubService {
       }
 
       return (data || []).map((club: any) => ({
-        ...club,
+        id: club.id,
+        club_name: club.club_name,
+        badge_name: club.badge_name,
+        badge_color: club.badge_color,
+        total_members: club.total_members,
         creator_name: club.profiles?.display_name || club.profiles?.username || 'Unknown',
         creator_username: club.profiles?.username || 'unknown',
       }));
@@ -514,7 +518,7 @@ class UnifiedVIPClubService {
     if (currentLevel >= 20) return 0;
 
     const nextLevel = currentLevel + 1;
-    const sekPerLevel = 25000 / 19; // 19 levels from 2 to 20
+    const sekPerLevel = 25000 / 19;
     const sekNeeded = (nextLevel - 1) * sekPerLevel;
 
     return Math.max(0, Math.ceil(sekNeeded - currentTotal));
@@ -537,7 +541,7 @@ class UnifiedVIPClubService {
 
       const members = await this.getVIPClubMembers(clubId);
       const activeMembers = members.filter(m => m.status === 'active').length;
-      const monthlyRevenue = (activeMembers * club.monthly_price_sek * 0.7); // 70% to creator
+      const monthlyRevenue = (activeMembers * club.monthly_price_sek * 0.7);
 
       const topGifters = members
         .sort((a, b) => b.total_gifted_sek - a.total_gifted_sek)

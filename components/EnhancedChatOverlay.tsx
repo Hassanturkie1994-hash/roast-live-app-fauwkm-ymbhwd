@@ -59,7 +59,9 @@ export default function EnhancedChatOverlay({
   const checkModeratorStatus = useCallback(async () => {
     if (!user) return;
     const isMod = await moderationService.isModerator(streamerId, user.id);
-    setIsModerator(isMod);
+    if (isMountedRef.current) {
+      setIsModerator(isMod);
+    }
   }, [user, streamerId]);
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function EnhancedChatOverlay({
     return () => {
       isMountedRef.current = false;
     };
-  }, [streamId, user]);
+  }, [streamId, user, checkModeratorStatus]);
 
   const fetchRecentMessages = useCallback(async () => {
     if (!streamId || !isMountedRef.current) return;

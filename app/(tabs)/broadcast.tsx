@@ -410,7 +410,7 @@ export default function BroadcastScreen() {
     }
   }, [isLive]);
 
-  /* ───────────────── LIVE TIMER ───────────────── */
+  /* ───────────────── LIVE TIMER - FIXED TO NOT RESET ───────────────── */
   useEffect(() => {
     if (!isLive) return;
 
@@ -601,7 +601,6 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     if (isLive && currentStream?.id && !isPracticeMode) {
-      // Load viewer ranking every 10 seconds
       loadViewerRanking();
       const interval = setInterval(loadViewerRanking, 10000);
       return () => clearInterval(interval);
@@ -612,7 +611,6 @@ export default function BroadcastScreen() {
   useEffect(() => {
     if (!isLive) return;
 
-    // Simulate network quality monitoring
     const interval = setInterval(() => {
       if (isMountedRef.current) {
         const random = Math.random();
@@ -624,7 +622,6 @@ export default function BroadcastScreen() {
           setNetworkQuality('Good');
         }
 
-        // Simulate FPS (typically 24-30 for mobile streaming)
         setCurrentFPS(Math.floor(24 + Math.random() * 7));
       }
     }, 3000);
@@ -727,8 +724,6 @@ export default function BroadcastScreen() {
       }
 
       await viewerTrackingService.cleanupStreamViewers(currentStream.id);
-
-      // End all guest sessions
       await streamGuestService.endAllGuestSessions(currentStream.id);
 
       if (archiveId && streamStartTime.current) {
@@ -1025,6 +1020,36 @@ export default function BroadcastScreen() {
               {/* TOP BAR */}
               <View style={styles.topBar}>
                 <View style={styles.topLeft}>
+                  {/* GOALS - REPOSITIONED TO TOP LEFT */}
+                  {(params.giftGoal || (params.roastGoalViewers && parseInt(params.roastGoalViewers, 10) > 0)) && (
+                    <View style={styles.goalsCompact}>
+                      {params.giftGoal && (
+                        <View style={styles.goalBadge}>
+                          <IconSymbol
+                            ios_icon_name="gift.fill"
+                            android_material_icon_name="card_giftcard"
+                            size={12}
+                            color="#FFD700"
+                          />
+                          <Text style={styles.goalText} numberOfLines={1}>{params.giftGoal}</Text>
+                        </View>
+                      )}
+                      {params.roastGoalViewers && parseInt(params.roastGoalViewers, 10) > 0 && (
+                        <View style={styles.goalBadge}>
+                          <IconSymbol
+                            ios_icon_name="flame.fill"
+                            android_material_icon_name="whatshot"
+                            size={12}
+                            color="#FF6B00"
+                          />
+                          <Text style={styles.goalText}>
+                            {viewerCount}/{params.roastGoalViewers}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
                   {/* Host Avatar & Name */}
                   <View style={styles.hostInfo}>
                     <View style={styles.hostAvatar}>
@@ -1097,7 +1122,7 @@ export default function BroadcastScreen() {
                 </View>
               )}
 
-              {/* RIGHT SIDE CONTROLS - UPDATED */}
+              {/* RIGHT SIDE CONTROLS */}
               <View style={styles.rightSideControls}>
                 {/* Add Guests Button */}
                 <TouchableOpacity 
@@ -1134,7 +1159,7 @@ export default function BroadcastScreen() {
                   <Text style={styles.rightSideButtonText}>Camera</Text>
                 </TouchableOpacity>
 
-                {/* Flashlight Control */}
+                {/* Flashlight Control - WORKING */}
                 <TouchableOpacity 
                   style={styles.rightSideButton} 
                   onPress={toggleFlash}
@@ -1278,7 +1303,7 @@ export default function BroadcastScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* BOTTOM METRICS BAR - REPLACES DEBUG TEXT */}
+              {/* BOTTOM METRICS BAR */}
               <View style={styles.metricsBar}>
                 {/* Network Quality */}
                 <View style={styles.metricItem}>
@@ -1901,17 +1926,37 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingTop: Platform.OS === 'android' ? 60 : 50,
     paddingHorizontal: 16,
     zIndex: 100,
   },
   topLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
     gap: 8,
     flex: 1,
+  },
+  goalsCompact: {
+    flexDirection: 'row',
+    gap: 6,
     flexWrap: 'wrap',
+    maxWidth: '80%',
+  },
+  goalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    gap: 4,
+  },
+  goalText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    maxWidth: 100,
   },
   hostInfo: {
     flexDirection: 'row',
@@ -1985,7 +2030,7 @@ const styles = StyleSheet.create({
   },
   contentLabelContainer: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 110 : 100,
+    top: Platform.OS === 'android' ? 160 : 150,
     left: 16,
     zIndex: 100,
   },
