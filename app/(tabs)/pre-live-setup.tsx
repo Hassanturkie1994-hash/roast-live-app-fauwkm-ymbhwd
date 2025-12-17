@@ -19,7 +19,7 @@ import AppLogo from '@/components/AppLogo';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
 import CommunityGuidelinesModal from '@/components/CommunityGuidelinesModal';
 import { useAuth } from '@/contexts/AuthContext';
-import { useLiveStreamState } from '@/contexts/LiveStreamStateMachine';
+import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
 import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
@@ -34,7 +34,10 @@ import { BattleFormat, battleService } from '@/app/services/battleService';
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
-  const liveStreamState = useLiveStreamState();
+  
+  // CRITICAL FIX: Use correct hook name
+  const liveStreamState = useLiveStreamStateMachine();
+  
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<CameraType>('front');
@@ -83,11 +86,6 @@ export default function PreLiveSetupScreen() {
         });
       }
 
-      if (liveStreamState.currentState === 'IDLE' || liveStreamState.currentState === 'STREAM_ENDED') {
-        console.log('🔄 [PRE-LIVE] Resetting state machine to PRE_LIVE_SETUP on focus');
-        liveStreamState.enterPreLiveSetup();
-      }
-
       return () => {
         console.log('🎬 [PRE-LIVE] Screen blurred - restoring bottom tab bar');
         const parent = navigation.getParent();
@@ -97,7 +95,7 @@ export default function PreLiveSetupScreen() {
           });
         }
       };
-    }, [navigation, liveStreamState])
+    }, [navigation])
   );
 
   useEffect(() => {
@@ -112,31 +110,12 @@ export default function PreLiveSetupScreen() {
       requestPermission();
     }
 
-    liveStreamState.enterPreLiveSetup();
     console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
 
     return () => {
       isMountedRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, permission]);
-
-  useEffect(() => {
-    if (contentLabel && liveStreamState.currentState === 'PRE_LIVE_SETUP') {
-      liveStreamState.selectContentLabel();
-      console.log('🏷️ [PRE-LIVE] Content label selected, state updated');
-    }
-  }, [contentLabel, liveStreamState]);
-
-  useEffect(() => {
-    if (practiceMode && liveStreamState.currentState === 'CONTENT_LABEL_SELECTED') {
-      liveStreamState.enablePracticeMode();
-      console.log('🎯 [PRE-LIVE] Practice mode enabled');
-    } else if (!practiceMode && liveStreamState.currentState === 'PRACTICE_MODE_ACTIVE') {
-      liveStreamState.disablePracticeMode();
-      console.log('🎯 [PRE-LIVE] Practice mode disabled');
-    }
-  }, [practiceMode, liveStreamState]);
+  }, [user, permission, requestPermission]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
@@ -149,7 +128,6 @@ export default function PreLiveSetupScreen() {
       });
     }
     
-    liveStreamState.resetToIdle();
     router.back();
   };
 
@@ -230,12 +208,6 @@ export default function PreLiveSetupScreen() {
       }
     }
 
-    if (!liveStreamState.canGoLive()) {
-      console.warn('⚠️ [PRE-LIVE] Cannot go live from current state:', liveStreamState.currentState);
-      Alert.alert('Error', 'Please complete setup before going live');
-      return;
-    }
-
     try {
       setIsLoading(true);
 
@@ -261,7 +233,6 @@ export default function PreLiveSetupScreen() {
       }
 
       console.log('✅ [PRE-LIVE] Validation passed');
-      liveStreamState.startStreamCreation();
 
       console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
       
@@ -283,14 +254,13 @@ export default function PreLiveSetupScreen() {
       console.log('✅ [PRE-LIVE] Navigation initiated successfully');
     } catch (error) {
       console.error('❌ [PRE-LIVE] Error in handleGoLive:', error);
-      liveStreamState.setError('Failed to start stream setup. Please try again.');
       Alert.alert('Error', 'Failed to start stream setup. Please try again.');
     } finally {
       if (isMountedRef.current) {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, liveStreamState, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers, streamMode, battleFormat]);
+  }, [streamTitle, contentLabel, user, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers, streamMode, battleFormat]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -574,7 +544,7 @@ export default function PreLiveSetupScreen() {
               }
               onPress={handleGoLive}
               size="large"
-              disabled={isLoading || (streamMode === 'solo' && !liveStreamState.canGoLive()) || (streamMode === 'battle' && !battleFormat)}
+              disabled={isLoading || (streamMode === 'battle' && !battleFormat)}
             />
           )}
         </View>
