@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Platform,
   Dimensions,
-  ScrollView,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -57,24 +56,26 @@ interface GuestSeat {
  * 8. Fixed all useEffect dependency arrays
  */
 export default function BroadcastScreen() {
+  // ============================================================================
+  // SECTION 1: ALL HOOKS (MUST BE CALLED UNCONDITIONALLY)
+  // ============================================================================
+  
+  // Keep awake hook
   useKeepAwake();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('📺 [BROADCAST] Component rendering...');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
+  // Router params
   const { streamTitle, contentLabel } = useLocalSearchParams<{
     streamTitle?: string;
     contentLabel?: string;
   }>();
   
+  // Context hooks
   const { user } = useAuth();
   const { colors } = useTheme();
-  
-  // CRITICAL FIX: ALL HOOKS MUST BE CALLED UNCONDITIONALLY AT THE TOP
-  // This is the #1 rule of React Hooks - they must be called in the same order every render
-  
-  // State machine hook - MUST be called unconditionally
   const stateMachine = useLiveStreamStateMachine();
   const { state, startStream, endStream, error: stateMachineErrorState } = stateMachine;
   
@@ -92,8 +93,6 @@ export default function BroadcastScreen() {
   const [streamId, setStreamId] = useState<string | null>(null);
   const [isEnding, setIsEnding] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
-  
-  // Guest mode states
   const [activeGuests, setActiveGuests] = useState<GuestSeat[]>([]);
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
@@ -115,7 +114,60 @@ export default function BroadcastScreen() {
     }
   }, [streamId]);
 
+  const handleEndStream = useCallback(async (saveReplay: boolean) => {
+    if (!streamId || isEnding) return;
+
+    setIsEnding(true);
+
+    try {
+      console.log('🛑 [BROADCAST] Ending stream...');
+      
+      // CRITICAL FIX: Verify endStream is a function before calling
+      if (!endStream) {
+        console.error('❌ [BROADCAST] endStream is undefined');
+        Alert.alert('Error', 'Stream service is not available');
+        setIsEnding(false);
+        return;
+      }
+      
+      if (typeof endStream !== 'function') {
+        console.error('❌ [BROADCAST] endStream is not a function');
+        Alert.alert('Error', 'Stream service is not properly configured');
+        setIsEnding(false);
+        return;
+      }
+
+      const result = await endStream(streamId, saveReplay);
+      
+      if (result.success) {
+        console.log('✅ [BROADCAST] Stream ended successfully');
+        setShowEndModal(false);
+        
+        if (saveReplay) {
+          setShowSaveReplayModal(true);
+        } else {
+          router.replace('/(tabs)/(home)');
+        }
+      } else {
+        console.error('❌ [BROADCAST] Failed to end stream:', result.error);
+        Alert.alert('Error', result.error || 'Failed to end stream');
+      }
+    } catch (error: any) {
+      console.error('❌ [BROADCAST] Error ending stream:', error);
+      Alert.alert('Error', error.message || 'Failed to end stream');
+    } finally {
+      setIsEnding(false);
+    }
+  }, [streamId, isEnding, endStream]);
+
+  const handleSaveReplayComplete = useCallback(() => {
+    setShowSaveReplayModal(false);
+    router.replace('/(tabs)/(home)');
+  }, []);
+
   // All useEffect hooks - MUST be called unconditionally
+  
+  // Effect 1: Check permissions
   useEffect(() => {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
@@ -137,6 +189,7 @@ export default function BroadcastScreen() {
     checkPermissions();
   }, [cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
 
+  // Effect 2: Initialize stream
   useEffect(() => {
     // Prevent multiple initialization attempts
     if (initAttemptedRef.current) {
@@ -210,6 +263,7 @@ export default function BroadcastScreen() {
     initStream();
   }, [user, streamTitle, contentLabel, startStream]);
 
+  // Effect 3: Update viewer count
   useEffect(() => {
     if (!streamId) return;
 
@@ -237,6 +291,7 @@ export default function BroadcastScreen() {
     };
   }, [streamId]);
 
+  // Effect 4: Load active guests
   useEffect(() => {
     if (!streamId) return;
 
@@ -249,60 +304,9 @@ export default function BroadcastScreen() {
     return () => clearInterval(interval);
   }, [streamId, loadActiveGuests]);
 
-  // END OF ALL HOOKS - Now we can do conditional rendering
-
-  const handleEndStream = async (saveReplay: boolean) => {
-    if (!streamId || isEnding) return;
-
-    setIsEnding(true);
-
-    try {
-      console.log('🛑 [BROADCAST] Ending stream...');
-      
-      // CRITICAL FIX: Verify endStream is a function before calling
-      if (!endStream) {
-        console.error('❌ [BROADCAST] endStream is undefined');
-        Alert.alert('Error', 'Stream service is not available');
-        setIsEnding(false);
-        return;
-      }
-      
-      if (typeof endStream !== 'function') {
-        console.error('❌ [BROADCAST] endStream is not a function');
-        Alert.alert('Error', 'Stream service is not properly configured');
-        setIsEnding(false);
-        return;
-      }
-
-      const result = await endStream(streamId, saveReplay);
-      
-      if (result.success) {
-        console.log('✅ [BROADCAST] Stream ended successfully');
-        setShowEndModal(false);
-        
-        if (saveReplay) {
-          setShowSaveReplayModal(true);
-        } else {
-          router.replace('/(tabs)/(home)');
-        }
-      } else {
-        console.error('❌ [BROADCAST] Failed to end stream:', result.error);
-        Alert.alert('Error', result.error || 'Failed to end stream');
-      }
-    } catch (error: any) {
-      console.error('❌ [BROADCAST] Error ending stream:', error);
-      Alert.alert('Error', error.message || 'Failed to end stream');
-    } finally {
-      setIsEnding(false);
-    }
-  };
-
-  const handleSaveReplayComplete = () => {
-    setShowSaveReplayModal(false);
-    router.replace('/(tabs)/(home)');
-  };
-
-  // CONDITIONAL RENDERING - All hooks have been called above
+  // ============================================================================
+  // SECTION 2: CONDITIONAL RENDERING (AFTER ALL HOOKS)
+  // ============================================================================
   
   // Handle initialization errors
   if (initError) {
@@ -416,7 +420,10 @@ export default function BroadcastScreen() {
 
   console.log('✅ [BROADCAST] Rendering camera view');
   
-  // Main render - camera view with all controls
+  // ============================================================================
+  // SECTION 3: MAIN RENDER (CAMERA VIEW WITH ALL CONTROLS)
+  // ============================================================================
+  
   return (
     <View style={styles.container}>
       <CameraView
@@ -690,14 +697,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 40,
-  },
-  errorDetails: {
-    fontSize: 12,
-    fontWeight: '400',
-    marginTop: 12,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   errorButton: {
     paddingHorizontal: 24,
