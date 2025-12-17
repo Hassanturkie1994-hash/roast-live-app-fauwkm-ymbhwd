@@ -63,6 +63,7 @@ export { termsPrivacyService } from './termsPrivacyService';
 export { twoFactorAuthService } from './twoFactorAuthService';
 export { unifiedVIPClubService } from './unifiedVIPClubService';
 export { userBlockingService } from './userBlockingService';
+export { userReportingService } from './userReportingService';
 export { viewerTrackingService } from './viewerTrackingService';
 export { vipMembershipService } from './vipMembershipService';
 export { walletService } from './walletService';

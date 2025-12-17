@@ -9,31 +9,27 @@ import {
   Alert,
 } from 'react-native';
 import { router } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { termsPrivacyService } from '@/app/services/termsPrivacyService';
+import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
+import { useAuth } from '@/contexts/AuthContext';
+import { termsPrivacyService } from '@/app/services/termsPrivacyService';
 
 export default function TermsOfServiceScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
-  const [agreed, setAgreed] = useState(false);
   const [hasAccepted, setHasAccepted] = useState(false);
-  const [acceptedDate, setAcceptedDate] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const loadAcceptanceStatus = useCallback(async () => {
     if (!user) return;
-    
-    setLoading(true);
-    const acceptance = await termsPrivacyService.getTermsAcceptance(user.id);
-    if (acceptance) {
-      setHasAccepted(true);
-      setAcceptedDate(acceptance.accepted_at);
-      setAgreed(true);
+
+    try {
+      const accepted = await termsPrivacyService.hasAcceptedTerms(user.id);
+      setHasAccepted(accepted);
+    } catch (error) {
+      console.error('Error loading acceptance status:', error);
     }
-    setLoading(false);
   }, [user]);
 
   useEffect(() => {
@@ -42,17 +38,22 @@ export default function TermsOfServiceScreen() {
 
   const handleAccept = async () => {
     if (!user) return;
-    if (!agreed) {
-      Alert.alert('Agreement Required', 'Please check the box to agree to the Terms of Service.');
-      return;
-    }
 
-    const result = await termsPrivacyService.acceptTermsOfService(user.id);
-    if (result.success) {
-      Alert.alert('Success', 'You have accepted the Terms of Service.');
-      await loadAcceptanceStatus();
-    } else {
-      Alert.alert('Error', result.error || 'Failed to save acceptance.');
+    setLoading(true);
+    try {
+      const result = await termsPrivacyService.recordTermsAcceptance(user.id);
+      
+      if (result.success) {
+        setHasAccepted(true);
+        Alert.alert('Success', 'Terms of Service accepted');
+      } else {
+        Alert.alert('Error', result.error || 'Failed to record acceptance');
+      }
+    } catch (error) {
+      console.error('Error accepting terms:', error);
+      Alert.alert('Error', 'Failed to accept terms');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,7 +68,7 @@ export default function TermsOfServiceScreen() {
             color={colors.text}
           />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Terms & Usage Policy</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Terms of Service</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -76,119 +77,91 @@ export default function TermsOfServiceScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {hasAccepted && acceptedDate && (
-          <View style={[styles.acceptedBanner, { backgroundColor: colors.brandPrimary + '20', borderColor: colors.brandPrimary }]}>
-            <IconSymbol
-              ios_icon_name="checkmark.circle.fill"
-              android_material_icon_name="check_circle"
-              size={20}
-              color={colors.brandPrimary}
-            />
-            <Text style={[styles.acceptedText, { color: colors.brandPrimary }]}>
-              Accepted on {new Date(acceptedDate).toLocaleDateString()}
+        <View style={styles.content}>
+          <Text style={[styles.title, { color: colors.text }]}>Roast Live Terms of Service</Text>
+          <Text style={[styles.version, { color: colors.textSecondary }]}>Version 1.0 • Last updated: January 2025</Text>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>1. Acceptance of Terms</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              By accessing or using Roast Live, you agree to be bound by these Terms of Service and all applicable laws and regulations.
             </Text>
           </View>
-        )}
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>1. Platform Usage Rules</Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Users are responsible for all published content.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Content must follow safety guidelines.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Users must be 16+ to stream or participate.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Earnings belong to the owner of the account receiving gifts.
-          </Text>
-        </View>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>2. User Accounts</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              You are responsible for maintaining the confidentiality of your account and password. You agree to accept responsibility for all activities that occur under your account.
+            </Text>
+          </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>2. Behavior Rules</Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - No harassment, abuse, or discrimination.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - No revealing private or confidential data.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Roast content is entertainment only, not harassment.
-          </Text>
-        </View>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>3. Content Guidelines</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              Users must comply with our Community Guidelines. Prohibited content includes but is not limited to: harassment, hate speech, adult content, dangerous behavior, spam, and copyright violations.
+            </Text>
+          </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>3. Purchases and Gifting Terms</Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Digital assets (gifts) cannot be refunded unless fraudulent.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Credit balance cannot be transferred to other users unless platform allows.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Platform takes commission on all purchases and payouts.
-          </Text>
-        </View>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>4. Streaming Rules</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              Streamers must follow all platform rules and content labels. Violations may result in warnings, timeouts, or permanent bans.
+            </Text>
+          </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>4. Account Responsibility</Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - User must secure login credentials.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Platform reserves right to suspend users violating policy.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Users agree content may be removed if breaking rules.
-          </Text>
-        </View>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>5. Virtual Gifts & Payments</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              All virtual gift purchases are final. Creators receive 70% of gift revenue. Platform fees are non-refundable.
+            </Text>
+          </View>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>5. Appeals Flow Summary</Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Users can appeal strikes and violations through Settings → Appeals & Violations.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Appeals are reviewed by administrators.
-          </Text>
-          <Text style={[styles.bulletPoint, { color: colors.text }]}>
-            - Users will be notified of appeal decisions via inbox.
-          </Text>
-        </View>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>6. Termination</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              We reserve the right to terminate or suspend accounts that violate these terms or engage in harmful behavior.
+            </Text>
+          </View>
 
-        {!hasAccepted && (
-          <>
-            <TouchableOpacity
-              style={styles.checkboxContainer}
-              onPress={() => setAgreed(!agreed)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, { borderColor: colors.border, backgroundColor: agreed ? colors.brandPrimary : 'transparent' }]}>
-                {agreed && (
-                  <IconSymbol
-                    ios_icon_name="checkmark"
-                    android_material_icon_name="check"
-                    size={16}
-                    color="#FFFFFF"
-                  />
-                )}
-              </View>
-              <Text style={[styles.checkboxLabel, { color: colors.text }]}>
-                I Agree to Terms of Service
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>7. Limitation of Liability</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              Roast Live is provided &quot;as is&quot; without warranties. We are not liable for any damages arising from use of the service.
+            </Text>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>8. Changes to Terms</Text>
+            <Text style={[styles.paragraph, { color: colors.text }]}>
+              We may update these terms at any time. Continued use of the service constitutes acceptance of updated terms.
+            </Text>
+          </View>
+
+          {hasAccepted && (
+            <View style={[styles.acceptedBanner, { backgroundColor: `${colors.brandPrimary}15`, borderColor: colors.brandPrimary }]}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check_circle"
+                size={24}
+                color={colors.brandPrimary}
+              />
+              <Text style={[styles.acceptedText, { color: colors.brandPrimary }]}>
+                You have accepted the Terms of Service
               </Text>
-            </TouchableOpacity>
+            </View>
+          )}
 
-            <View style={styles.buttonContainer}>
+          {!hasAccepted && (
+            <View style={styles.acceptButtonContainer}>
               <GradientButton
-                title="Accept Terms"
+                title={loading ? 'Accepting...' : 'Accept Terms of Service'}
                 onPress={handleAccept}
-                disabled={!agreed || loading}
+                size="large"
+                disabled={loading}
               />
             </View>
-          </>
-        )}
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -224,58 +197,49 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 24,
     paddingBottom: 120,
   },
-  acceptedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
+  content: {
+    padding: 20,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  version: {
+    fontSize: 12,
+    fontWeight: '400',
     marginBottom: 24,
   },
-  acceptedText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   section: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 12,
   },
-  bulletPoint: {
-    fontSize: 15,
+  paragraph: {
+    fontSize: 14,
     fontWeight: '400',
-    lineHeight: 24,
-    marginBottom: 8,
+    lineHeight: 22,
   },
-  checkboxContainer: {
+  acceptedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
     gap: 12,
     marginTop: 24,
-    marginBottom: 24,
   },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxLabel: {
+  acceptedText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     flex: 1,
   },
-  buttonContainer: {
-    marginTop: 8,
+  acceptButtonContainer: {
+    marginTop: 24,
   },
 });

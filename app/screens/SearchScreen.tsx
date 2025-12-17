@@ -52,7 +52,6 @@ export default function SearchScreen() {
       if (result.success) {
         setUsers(result.data as SearchUserResult[]);
 
-        // Check following status for each user
         if (user) {
           const followingStatuses: Record<string, boolean> = {};
           for (const searchUser of result.data) {
@@ -79,24 +78,20 @@ export default function SearchScreen() {
     }
   }, [user]);
 
-  // Debounced search effect
   useEffect(() => {
-    // Clear previous timer
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
 
     if (searchQuery.length > 0) {
-      // Set new timer for debounced search
       debounceTimerRef.current = setTimeout(() => {
         performSearch(searchQuery);
-      }, 300); // 300ms debounce
+      }, 300);
     } else {
       setUsers([]);
       setError(null);
     }
 
-    // Cleanup
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -111,6 +106,7 @@ export default function SearchScreen() {
     }
 
     try {
+      console.log('Navigating to profile:', userId);
       router.push({
         pathname: '/screens/PublicProfileScreen',
         params: { userId },
@@ -127,11 +123,15 @@ export default function SearchScreen() {
 
     try {
       if (isCurrentlyFollowing) {
-        await followService.unfollowUser(user.id, userId);
-        setFollowingMap(prev => ({ ...prev, [userId]: false }));
+        const result = await followService.unfollowUser(user.id, userId);
+        if (result.success) {
+          setFollowingMap(prev => ({ ...prev, [userId]: false }));
+        }
       } else {
-        await followService.followUser(user.id, userId);
-        setFollowingMap(prev => ({ ...prev, [userId]: true }));
+        const result = await followService.followUser(user.id, userId);
+        if (result.success) {
+          setFollowingMap(prev => ({ ...prev, [userId]: true }));
+        }
       }
     } catch (error) {
       console.error('Error toggling follow:', error);
@@ -179,7 +179,7 @@ export default function SearchScreen() {
                     styles.followButton,
                     isFollowing
                       ? { backgroundColor: colors.backgroundAlt, borderColor: colors.border }
-                      : { backgroundColor: colors.primary },
+                      : { backgroundColor: colors.brandPrimary },
                   ]}
                   onPress={(e) => {
                     e.stopPropagation();
@@ -252,7 +252,7 @@ export default function SearchScreen() {
       >
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={colors.brandPrimary} />
             <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Searching...</Text>
           </View>
         ) : error ? (

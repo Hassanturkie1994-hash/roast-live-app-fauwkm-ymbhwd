@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { colors } from '@/styles/commonStyles';
+import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { privateMessagingService, MessageWithSender } from '@/app/services/privateMessagingService';
@@ -27,6 +27,7 @@ export default function ChatScreen() {
   }>();
   
   const { user } = useAuth();
+  const { colors } = useTheme();
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,7 @@ export default function ChatScreen() {
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>(conversationId);
   const [otherUserAvatar, setOtherUserAvatar] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+  const channelRef = useRef<any>(null);
 
   const fetchMessages = useCallback(async () => {
     if (!activeConversationId) return;
@@ -87,28 +89,59 @@ export default function ChatScreen() {
     } else if (activeConversationId) {
       fetchMessages();
     }
-  }, [user, activeConversationId, otherUserId, fetchMessages, initializeConversation]);
+  }, [user, activeConversationId, otherUserId]);
 
+  // REALTIME: Subscribe to new messages
   useEffect(() => {
-    if (!activeConversationId) return;
+    if (!activeConversationId || !user) return;
 
-    const channel = privateMessagingService.subscribeToConversation(activeConversationId, (newMessage) => {
-      // Fetch the full message with sender details
-      fetchMessages();
-      
-      if (user && newMessage.sender_id !== user.id) {
-        privateMessagingService.markMessagesAsRead(activeConversationId, user.id);
-      }
-      
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    });
+    // Check if already subscribed
+    if (channelRef.current?.state === 'subscribed') {
+      console.log('Already subscribed to conversation');
+      return;
+    }
+
+    console.log('🔌 Setting up realtime subscription for conversation:', activeConversationId);
+
+    const channel = supabase
+      .channel(`conversation:${activeConversationId}:messages`, {
+        config: { private: true }
+      })
+      .on('broadcast', { event: 'message_created' }, (payload) => {
+        console.log('💬 New message received:', payload);
+        const newMessage = payload.payload as any;
+        
+        // Fetch the full message with sender details
+        fetchMessages();
+        
+        // Mark as read if not from current user
+        if (newMessage.sender_id !== user.id) {
+          privateMessagingService.markMessagesAsRead(activeConversationId, user.id);
+        }
+        
+        // Scroll to bottom
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      })
+      .subscribe(async (status) => {
+        console.log('📡 Realtime subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          await supabase.realtime.setAuth();
+          console.log('✅ Realtime messaging active');
+        }
+      });
+
+    channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
+      console.log('🔌 Cleaning up realtime subscription');
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
-  }, [activeConversationId, user, fetchMessages]);
+  }, [activeConversationId, user]);
 
   const handleSend = async () => {
     if (!inputText.trim() || !user || !activeConversationId || sending) return;
@@ -121,14 +154,15 @@ export default function ChatScreen() {
       const message = await privateMessagingService.sendMessage(activeConversationId, user.id, messageContent);
       
       if (message) {
-        // Refresh messages to get the full message with sender details
-        await fetchMessages();
+        // Message will be received via realtime subscription
+        // But we can also add it optimistically
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
       }
     } catch (error) {
       console.error('Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message');
     } finally {
       setSending(false);
     }
@@ -178,7 +212,7 @@ export default function ChatScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.centerContent]}>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
       </View>
     );
@@ -186,12 +220,11 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <IconSymbol
             ios_icon_name="chevron.left"
@@ -208,7 +241,7 @@ export default function ChatScreen() {
               style={styles.headerAvatar}
             />
           )}
-          <Text style={styles.headerTitle}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
             {otherUserName || 'Chat'}
           </Text>
         </View>
@@ -216,7 +249,6 @@ export default function ChatScreen() {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Messages */}
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -233,17 +265,16 @@ export default function ChatScreen() {
               size={64}
               color={colors.placeholder}
             />
-            <Text style={styles.emptyText}>
+            <Text style={[styles.emptyText, { color: colors.text }]}>
               No messages yet. Start the conversation!
             </Text>
           </View>
         }
       />
 
-      {/* Input */}
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
           placeholder="Type a message..."
           placeholderTextColor={colors.placeholder}
           value={inputText}
@@ -275,7 +306,6 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   centerContent: {
     justifyContent: 'center',
@@ -288,9 +318,7 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 12,
     paddingHorizontal: 16,
-    backgroundColor: colors.card,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   backButton: {
     width: 40,
@@ -313,7 +341,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
   },
   headerRight: {
     width: 40,
@@ -334,7 +361,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginTop: 16,
-    color: colors.placeholder,
   },
   messageContainer: {
     flexDirection: 'row',
@@ -394,22 +420,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: colors.card,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
     gap: 12,
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
     maxHeight: 100,
-    backgroundColor: colors.background,
-    color: colors.text,
   },
   sendButton: {
     width: 40,

@@ -1,90 +1,49 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { unifiedVIPClubService, VIPClub } from '@/app/services/unifiedVIPClubService';
 import { useAuth } from './AuthContext';
-import { creatorClubService, CreatorClub } from '@/app/services/creatorClubService';
 
 interface VIPClubContextType {
-  clubs: CreatorClub[];
-  isLoading: boolean;
-  error: string | null;
-  selectedClubId: string | null;
-  setSelectedClubId: (clubId: string | null) => void;
-  refreshClubs: () => Promise<void>;
-  getClubById: (clubId: string) => CreatorClub | undefined;
+  myClub: VIPClub | null;
+  loading: boolean;
+  refreshClub: () => Promise<void>;
 }
 
 const VIPClubContext = createContext<VIPClubContextType | undefined>(undefined);
 
-export function VIPClubProvider({ children }: { children: ReactNode }) {
+export function VIPClubProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [clubs, setClubs] = useState<CreatorClub[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedClubId, setSelectedClubId] = useState<string | null>(null);
+  const [myClub, setMyClub] = useState<VIPClub | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Load clubs when user changes
-  useEffect(() => {
-    if (user) {
-      loadClubs();
-    } else {
-      setClubs([]);
-      setSelectedClubId(null);
+  const loadClubs = useCallback(async () => {
+    if (!user) {
+      setMyClub(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const club = await unifiedVIPClubService.getVIPClubByCreator(user.id);
+      setMyClub(club);
+    } catch (error) {
+      console.error('Error loading VIP club:', error);
+    } finally {
+      setLoading(false);
     }
   }, [user]);
 
-  const loadClubs = async () => {
-    if (!user) return;
+  useEffect(() => {
+    loadClubs();
+  }, [loadClubs]);
 
-    try {
-      setIsLoading(true);
-      setError(null);
-      console.log('📥 [VIPClubContext] Loading clubs for user:', user.id);
-
-      const result = await creatorClubService.getCreatorClubs(user.id);
-
-      if (result.success && result.data) {
-        setClubs(result.data);
-        console.log('✅ [VIPClubContext] Loaded', result.data.length, 'clubs');
-        
-        // Auto-select first active club if none selected
-        if (!selectedClubId && result.data.length > 0) {
-          setSelectedClubId(result.data[0].id);
-          console.log('🎯 [VIPClubContext] Auto-selected first club:', result.data[0].id);
-        }
-      } else {
-        console.warn('⚠️ [VIPClubContext] No clubs found or error:', result.error);
-        setError(result.error || 'Failed to load clubs');
-        setClubs([]);
-      }
-    } catch (err) {
-      console.error('❌ [VIPClubContext] Error loading clubs:', err);
-      setError('Failed to load clubs');
-      setClubs([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const refreshClubs = async () => {
+  const refreshClub = useCallback(async () => {
+    setLoading(true);
     await loadClubs();
-  };
-
-  const getClubById = (clubId: string): CreatorClub | undefined => {
-    return clubs.find(club => club.id === clubId);
-  };
+  }, [loadClubs]);
 
   return (
-    <VIPClubContext.Provider
-      value={{
-        clubs,
-        isLoading,
-        error,
-        selectedClubId,
-        setSelectedClubId,
-        refreshClubs,
-        getClubById,
-      }}
-    >
+    <VIPClubContext.Provider value={{ myClub, loading, refreshClub }}>
       {children}
     </VIPClubContext.Provider>
   );
@@ -92,8 +51,8 @@ export function VIPClubProvider({ children }: { children: ReactNode }) {
 
 export function useVIPClub() {
   const context = useContext(VIPClubContext);
-  if (context === undefined) {
-    throw new Error('useVIPClub must be used within a VIPClubProvider');
+  if (!context) {
+    throw new Error('useVIPClub must be used within VIPClubProvider');
   }
   return context;
 }

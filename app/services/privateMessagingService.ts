@@ -25,9 +25,19 @@ export interface MessageWithSender extends Message {
   };
 }
 
+export interface MessageRequest {
+  id: string;
+  conversation_id: string;
+  requester_id: string;
+  recipient_id: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+}
+
 class PrivateMessagingService {
   /**
    * Get or create a conversation between two users
+   * Handles message requests for non-followers
    */
   async getOrCreateConversation(userId1: string, userId2: string): Promise<Conversation | null> {
     try {
@@ -36,7 +46,7 @@ class PrivateMessagingService {
         .from('conversations')
         .select('*')
         .or(`and(user1_id.eq.${userId1},user2_id.eq.${userId2}),and(user1_id.eq.${userId2},user2_id.eq.${userId1})`)
-        .single();
+        .maybeSingle();
 
       if (existing) {
         return existing;
@@ -103,7 +113,7 @@ class PrivateMessagingService {
             .eq('conversation_id', conv.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           // Count unread messages
           const { count: unreadCount } = await supabase
@@ -210,24 +220,23 @@ class PrivateMessagingService {
   }
 
   /**
-   * Subscribe to new messages in a conversation
+   * Subscribe to new messages in a conversation using broadcast (REALTIME)
    */
   subscribeToConversation(conversationId: string, callback: (message: Message) => void) {
     const channel = supabase
-      .channel(`conversation:${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          callback(payload.new as Message);
+      .channel(`conversation:${conversationId}:messages`, {
+        config: { private: true }
+      })
+      .on('broadcast', { event: 'message_created' }, (payload) => {
+        console.log('💬 New message received via broadcast:', payload);
+        callback(payload.payload as Message);
+      })
+      .subscribe(async (status) => {
+        console.log('📡 Conversation subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          await supabase.realtime.setAuth();
         }
-      )
-      .subscribe();
+      });
 
     return channel;
   }
@@ -237,20 +246,19 @@ class PrivateMessagingService {
    */
   subscribeToUserConversations(userId: string, callback: () => void) {
     const channel = supabase
-      .channel(`user_conversations:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'conversations',
-          filter: `or(user1_id.eq.${userId},user2_id.eq.${userId})`,
-        },
-        () => {
-          callback();
+      .channel(`user:${userId}:conversations`, {
+        config: { private: true }
+      })
+      .on('broadcast', { event: 'conversation_updated' }, () => {
+        console.log('💬 Conversation updated via broadcast');
+        callback();
+      })
+      .subscribe(async (status) => {
+        console.log('📡 User conversations subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          await supabase.realtime.setAuth();
         }
-      )
-      .subscribe();
+      });
 
     return channel;
   }
@@ -281,6 +289,40 @@ class PrivateMessagingService {
     } catch (error) {
       console.error('Error in deleteConversation:', error);
       return false;
+    }
+  }
+
+  /**
+   * Get users that the current user follows (for starting new conversations)
+   */
+  async getFollowedUsers(userId: string): Promise<{ id: string; username: string; display_name: string; avatar_url: string | null }[]> {
+    try {
+      const { data: following, error } = await supabase
+        .from('followers')
+        .select('following_id')
+        .eq('follower_id', userId);
+
+      if (error || !following || following.length === 0) {
+        return [];
+      }
+
+      const followingIds = following.map(f => f.following_id);
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', followingIds)
+        .order('username', { ascending: true });
+
+      if (profilesError) {
+        console.error('Error fetching followed users:', profilesError);
+        return [];
+      }
+
+      return profiles || [];
+    } catch (error) {
+      console.error('Error in getFollowedUsers:', error);
+      return [];
     }
   }
 }

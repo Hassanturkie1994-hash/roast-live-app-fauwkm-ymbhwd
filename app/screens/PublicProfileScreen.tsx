@@ -15,11 +15,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import GlobalLeaderboard from '@/components/GlobalLeaderboard';
+import ReportUserModal from '@/components/ReportUserModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { followService } from '@/app/services/followService';
 import { privateMessagingService } from '@/app/services/privateMessagingService';
+import { unifiedVIPClubService, VIPClub } from '@/app/services/unifiedVIPClubService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -65,12 +67,14 @@ export default function PublicProfileScreen() {
   const [savedStreams, setSavedStreams] = useState<SavedStream[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [vipClub, setVipClub] = useState<VIPClub | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   const fetchProfileData = useCallback(async () => {
     if (!userId) return;
 
     try {
-      const [profileData, postsData, streamsData, followData] = await Promise.all([
+      const [profileData, postsData, streamsData, followData, vipClubData] = await Promise.all([
         supabase
           .from('profiles')
           .select('*')
@@ -94,8 +98,9 @@ export default function PublicProfileScreen() {
               .select('id')
               .eq('follower_id', user.id)
               .eq('following_id', userId)
-              .single()
+              .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
+        unifiedVIPClubService.getVIPClubByCreator(userId),
       ]);
 
       if (profileData.data) {
@@ -109,6 +114,11 @@ export default function PublicProfileScreen() {
       }
       if (followData.data) {
         setIsFollowing(true);
+      } else {
+        setIsFollowing(false);
+      }
+      if (vipClubData) {
+        setVipClub(vipClubData);
       }
     } catch (error) {
       console.error('Error fetching profile data:', error);
@@ -127,13 +137,24 @@ export default function PublicProfileScreen() {
     setFollowLoading(true);
     try {
       if (isFollowing) {
-        await followService.unfollowUser(user.id, userId);
-        setIsFollowing(false);
+        const result = await followService.unfollowUser(user.id, userId);
+        if (result.success) {
+          setIsFollowing(false);
+          // Update follower count locally
+          if (profile) {
+            setProfile({ ...profile, followers_count: Math.max(0, profile.followers_count - 1) });
+          }
+        }
       } else {
-        await followService.followUser(user.id, userId);
-        setIsFollowing(true);
+        const result = await followService.followUser(user.id, userId);
+        if (result.success) {
+          setIsFollowing(true);
+          // Update follower count locally
+          if (profile) {
+            setProfile({ ...profile, followers_count: profile.followers_count + 1 });
+          }
+        }
       }
-      fetchProfileData();
     } catch (error) {
       console.error('Error toggling follow:', error);
       Alert.alert('Error', 'Failed to update follow status');
@@ -146,7 +167,6 @@ export default function PublicProfileScreen() {
     if (!user || !userId) return;
 
     try {
-      // Get or create conversation
       const conversation = await privateMessagingService.getOrCreateConversation(user.id, userId);
       
       if (conversation) {
@@ -165,6 +185,24 @@ export default function PublicProfileScreen() {
       console.error('Error starting conversation:', error);
       Alert.alert('Error', 'Failed to start conversation');
     }
+  };
+
+  const handleReportUser = () => {
+    if (!user || !userId) return;
+    setShowReportModal(true);
+  };
+
+  const handleVIPClubPress = () => {
+    if (!vipClub) return;
+    
+    router.push({
+      pathname: '/screens/VIPClubChatScreen',
+      params: {
+        clubId: vipClub.id,
+        clubName: vipClub.club_name,
+        creatorId: vipClub.creator_id,
+      },
+    });
   };
 
   const renderContent = () => {
@@ -187,7 +225,7 @@ export default function PublicProfileScreen() {
         <View style={styles.postsGrid}>
           {posts.map((post, index) => (
             <TouchableOpacity
-              key={index}
+              key={`post-${post.id}-${index}`}
               style={[styles.postCard, { backgroundColor: colors.card }]}
               activeOpacity={0.8}
             >
@@ -239,7 +277,7 @@ export default function PublicProfileScreen() {
         <View style={styles.streamsList}>
           {savedStreams.map((stream, index) => (
             <TouchableOpacity
-              key={index}
+              key={`stream-${stream.id}-${index}`}
               style={[styles.streamCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               activeOpacity={0.8}
             >
@@ -293,7 +331,6 @@ export default function PublicProfileScreen() {
       );
     }
 
-    // Stories tab
     return (
       <View style={styles.emptyState}>
         <IconSymbol
@@ -327,7 +364,17 @@ export default function PublicProfileScreen() {
           />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>@{profile.username}</Text>
-        <View style={styles.placeholder} />
+        {user && user.id !== userId && (
+          <TouchableOpacity onPress={handleReportUser} style={styles.reportButton}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle"
+              android_material_icon_name="report"
+              size={24}
+              color={colors.text}
+            />
+          </TouchableOpacity>
+        )}
+        {(!user || user.id === userId) && <View style={styles.placeholder} />}
       </View>
 
       <ScrollView
@@ -335,12 +382,10 @@ export default function PublicProfileScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Banner */}
         {profile.banner_url && (
           <Image source={{ uri: profile.banner_url }} style={[styles.banner, { backgroundColor: colors.backgroundAlt }]} />
         )}
 
-        {/* Profile Header */}
         <View style={styles.profileHeader}>
           <Image
             source={{
@@ -348,7 +393,24 @@ export default function PublicProfileScreen() {
             }}
             style={[styles.avatar, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
           />
-          <Text style={[styles.displayName, { color: colors.text }]}>{profile.display_name || profile.username}</Text>
+          
+          <View style={styles.nameContainer}>
+            <Text style={[styles.displayName, { color: colors.text }]}>
+              {profile.display_name || profile.username}
+            </Text>
+            {vipClub && (
+              <View style={[styles.vipBadge, { backgroundColor: vipClub.badge_color }]}>
+                <IconSymbol
+                  ios_icon_name="crown.fill"
+                  android_material_icon_name="workspace_premium"
+                  size={12}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.vipBadgeText}>{vipClub.badge_name}</Text>
+              </View>
+            )}
+          </View>
+          
           <Text style={[styles.username, { color: colors.textSecondary }]}>@{profile.username}</Text>
 
           {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{profile.bio}</Text>}
@@ -374,7 +436,41 @@ export default function PublicProfileScreen() {
             </View>
           </View>
 
-          {/* Action Buttons */}
+          {/* VIP Club Section */}
+          {vipClub && (
+            <TouchableOpacity
+              style={[styles.vipClubSection, { backgroundColor: `${vipClub.badge_color}15`, borderColor: vipClub.badge_color }]}
+              onPress={handleVIPClubPress}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.vipClubIcon, { backgroundColor: vipClub.badge_color }]}>
+                <IconSymbol
+                  ios_icon_name="crown.fill"
+                  android_material_icon_name="workspace_premium"
+                  size={24}
+                  color="#FFFFFF"
+                />
+              </View>
+              <View style={styles.vipClubInfo}>
+                <Text style={[styles.vipClubName, { color: colors.text }]}>{vipClub.club_name}</Text>
+                <Text style={[styles.vipClubMembers, { color: colors.textSecondary }]}>
+                  {vipClub.total_members} members • {vipClub.monthly_price_sek} SEK/month
+                </Text>
+                {vipClub.description && (
+                  <Text style={[styles.vipClubDescription, { color: colors.textSecondary }]} numberOfLines={2}>
+                    {vipClub.description}
+                  </Text>
+                )}
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron_right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          )}
+
           {user && user.id !== userId && (
             <View style={styles.buttonRow}>
               <View style={styles.buttonFlex}>
@@ -400,7 +496,6 @@ export default function PublicProfileScreen() {
           )}
         </View>
 
-        {/* Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.tabsContainer, { borderBottomColor: colors.border }]}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'posts' && { borderBottomColor: colors.brandPrimary }]}
@@ -463,9 +558,19 @@ export default function PublicProfileScreen() {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Content */}
         {renderContent()}
       </ScrollView>
+
+      {/* Report User Modal */}
+      {user && userId && (
+        <ReportUserModal
+          visible={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          reportedUserId={userId}
+          reportedUsername={profile?.username || 'User'}
+          reporterUserId={user.id}
+        />
+      )}
     </View>
   );
 }
@@ -507,6 +612,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
+  reportButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   placeholder: {
     width: 40,
   },
@@ -533,10 +644,29 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 3,
   },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   displayName: {
     fontSize: 24,
     fontWeight: '800',
-    marginBottom: 4,
+  },
+  vipBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  vipBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
   },
   username: {
     fontSize: 16,
@@ -576,6 +706,40 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     height: 30,
+  },
+  vipClubSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    borderWidth: 2,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    gap: 12,
+  },
+  vipClubIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vipClubInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  vipClubName: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  vipClubMembers: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  vipClubDescription: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 2,
   },
   buttonRow: {
     flexDirection: 'row',

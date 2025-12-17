@@ -1,302 +1,191 @@
 
-import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { cloudflareService } from '@/app/services/cloudflareService';
+import { supabase } from '@/app/integrations/supabase/client';
 
-/**
- * Live Stream State Machine
- * 
- * States:
- * - IDLE: No stream activity
- * - PRE_LIVE_SETUP: User is in pre-live setup screen
- * - CONTENT_LABEL_SELECTED: Content label has been selected
- * - PRACTICE_MODE_ACTIVE: Practice mode is enabled (optional)
- * - STREAM_CREATING: Creating Cloudflare stream (async, non-blocking)
- * - STREAM_READY: Stream created successfully
- * - BROADCASTING: Live stream is active
- * - STREAM_ENDED: Stream has ended
- * - ERROR: Error occurred during stream lifecycle
- */
-
-export type LiveStreamState =
+type StreamState = 
   | 'IDLE'
-  | 'PRE_LIVE_SETUP'
-  | 'CONTENT_LABEL_SELECTED'
-  | 'PRACTICE_MODE_ACTIVE'
-  | 'STREAM_CREATING'
-  | 'STREAM_READY'
-  | 'BROADCASTING'
-  | 'STREAM_ENDED'
+  | 'CREATING_STREAM'
+  | 'READY'
+  | 'LIVE'
+  | 'ENDING'
+  | 'ENDED'
   | 'ERROR';
 
-interface LiveStreamStateContextType {
-  currentState: LiveStreamState;
-  previousState: LiveStreamState | null;
-  error: string | null;
-  isCreatingStream: boolean;
-  
-  // State transitions
-  enterPreLiveSetup: () => void;
-  selectContentLabel: () => void;
-  enablePracticeMode: () => void;
-  disablePracticeMode: () => void;
-  startStreamCreation: () => void;
-  streamCreated: () => void;
-  startBroadcasting: () => void;
-  endStream: () => void;
-  setError: (error: string) => void;
-  resetToIdle: () => void;
-  cancelStreamCreation: () => void;
-  
-  // State checks
-  canGoLive: () => boolean;
-  isInSetup: () => boolean;
-  isCreatingStreamState: () => boolean;
-  isLive: () => boolean;
-  hasError: () => boolean;
+interface StreamData {
+  streamId: string;
+  cloudflareStreamId: string;
+  rtmpsUrl: string;
+  rtmpsStreamKey: string;
+  playbackUrl: string;
 }
 
-const LiveStreamStateContext = createContext<LiveStreamStateContextType | undefined>(undefined);
+interface LiveStreamStateMachineContextType {
+  state: StreamState;
+  streamData: StreamData | null;
+  error: string | null;
+  startStream: (title: string, contentLabel: string) => Promise<{ success: boolean; streamId?: string; error?: string }>;
+  endStream: (streamId: string, saveReplay: boolean) => Promise<{ success: boolean; error?: string }>;
+  resetState: () => void;
+}
 
-const STREAM_CREATION_TIMEOUT = 30000; // 30 seconds
+const LiveStreamStateMachineContext = createContext<LiveStreamStateMachineContextType | undefined>(undefined);
 
-export function LiveStreamStateProvider({ children }: { children: ReactNode }) {
-  const [currentState, setCurrentState] = useState<LiveStreamState>('IDLE');
-  const [previousState, setPreviousState] = useState<LiveStreamState | null>(null);
-  const [error, setErrorState] = useState<string | null>(null);
-  const [isCreatingStream, setIsCreatingStream] = useState(false);
-  
-  const streamCreationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const streamCreationAttemptRef = useRef<boolean>(false);
+export function LiveStreamStateMachineProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<StreamState>('IDLE');
+  const [streamData, setStreamData] = useState<StreamData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clear timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (streamCreationTimeoutRef.current) {
-        clearTimeout(streamCreationTimeoutRef.current);
-      }
-    };
+  const setErrorState = useCallback((errorMessage: string) => {
+    console.error('❌ [STATE_MACHINE] Error:', errorMessage);
+    setError(errorMessage);
+    setState('ERROR');
   }, []);
 
-  const transitionTo = useCallback((newState: LiveStreamState) => {
-    console.log(`🔄 [STATE MACHINE] ${currentState} → ${newState}`);
-    setPreviousState(currentState);
-    setCurrentState(newState);
-    
-    // Clear error when transitioning away from ERROR state
-    if (currentState === 'ERROR' && newState !== 'ERROR') {
-      setErrorState(null);
-    }
-  }, [currentState]);
+  const startStream = useCallback(async (title: string, contentLabel: string) => {
+    console.log('🚀 [STATE_MACHINE] Starting stream creation...');
+    setState('CREATING_STREAM');
+    setError(null);
 
-  const enterPreLiveSetup = useCallback(() => {
-    if (currentState === 'IDLE' || currentState === 'STREAM_ENDED' || currentState === 'ERROR') {
-      transitionTo('PRE_LIVE_SETUP');
-    } else {
-      console.warn(`⚠️ [STATE MACHINE] Cannot enter PRE_LIVE_SETUP from ${currentState}`);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
-  }, [currentState, transitionTo]);
 
-  const selectContentLabel = useCallback(() => {
-    if (currentState === 'PRE_LIVE_SETUP') {
-      transitionTo('CONTENT_LABEL_SELECTED');
-    } else {
-      console.warn(`⚠️ [STATE MACHINE] Cannot select content label from ${currentState}`);
-    }
-  }, [currentState, transitionTo]);
+    timeoutRef.current = setTimeout(() => {
+      console.error('⏱️ [STATE_MACHINE] Stream creation timeout (30s)');
+      setErrorState('Stream creation timed out. Please try again.');
+    }, 30000);
 
-  const enablePracticeMode = useCallback(() => {
-    if (currentState === 'PRE_LIVE_SETUP' || currentState === 'CONTENT_LABEL_SELECTED') {
-      transitionTo('PRACTICE_MODE_ACTIVE');
-    }
-  }, [currentState, transitionTo]);
-
-  const disablePracticeMode = useCallback(() => {
-    if (currentState === 'PRACTICE_MODE_ACTIVE') {
-      transitionTo('CONTENT_LABEL_SELECTED');
-    }
-  }, [currentState, transitionTo]);
-
-  const startStreamCreation = useCallback(() => {
-    const validStates = ['CONTENT_LABEL_SELECTED', 'PRACTICE_MODE_ACTIVE', 'PRE_LIVE_SETUP'];
-    
-    // Prevent duplicate stream creation calls
-    if (streamCreationAttemptRef.current) {
-      console.warn('⚠️ [STATE MACHINE] Stream creation already in progress, ignoring duplicate call');
-      return;
-    }
-    
-    if (validStates.includes(currentState)) {
-      streamCreationAttemptRef.current = true;
-      setIsCreatingStream(true);
-      transitionTo('STREAM_CREATING');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
       
-      // Set timeout for stream creation
-      streamCreationTimeoutRef.current = setTimeout(() => {
-        if (currentState === 'STREAM_CREATING') {
-          console.error('❌ [STATE MACHINE] Stream creation timed out after 30 seconds');
-          setIsCreatingStream(false);
-          streamCreationAttemptRef.current = false;
-          setError('Stream creation timed out. Please check your connection and try again.');
-        }
-      }, STREAM_CREATION_TIMEOUT);
-    } else {
-      console.warn(`⚠️ [STATE MACHINE] Cannot start stream creation from ${currentState}`);
-    }
-  }, [currentState, transitionTo]);
-
-  const streamCreated = useCallback(() => {
-    // Clear timeout
-    if (streamCreationTimeoutRef.current) {
-      clearTimeout(streamCreationTimeoutRef.current);
-      streamCreationTimeoutRef.current = null;
-    }
-    
-    if (currentState === 'STREAM_CREATING') {
-      setIsCreatingStream(false);
-      streamCreationAttemptRef.current = false;
-      transitionTo('STREAM_READY');
-    } else {
-      console.warn(`⚠️ [STATE MACHINE] Cannot mark stream as ready from ${currentState}`);
-    }
-  }, [currentState, transitionTo]);
-
-  const cancelStreamCreation = useCallback(() => {
-    // Clear timeout
-    if (streamCreationTimeoutRef.current) {
-      clearTimeout(streamCreationTimeoutRef.current);
-      streamCreationTimeoutRef.current = null;
-    }
-    
-    setIsCreatingStream(false);
-    streamCreationAttemptRef.current = false;
-    
-    if (currentState === 'STREAM_CREATING') {
-      console.log('🔄 [STATE MACHINE] Stream creation cancelled by user');
-      transitionTo('PRE_LIVE_SETUP');
-    }
-  }, [currentState, transitionTo]);
-
-  const startBroadcasting = useCallback(() => {
-    if (currentState === 'STREAM_READY' || currentState === 'STREAM_CREATING') {
-      // Clear any pending timeouts
-      if (streamCreationTimeoutRef.current) {
-        clearTimeout(streamCreationTimeoutRef.current);
-        streamCreationTimeoutRef.current = null;
+      if (!user) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        setErrorState('User not authenticated');
+        return { success: false, error: 'User not authenticated' };
       }
-      setIsCreatingStream(false);
-      streamCreationAttemptRef.current = false;
-      transitionTo('BROADCASTING');
-    } else {
-      console.warn(`⚠️ [STATE MACHINE] Cannot start broadcasting from ${currentState}`);
+
+      console.log('📡 [STATE_MACHINE] Creating Cloudflare stream...');
+      const cloudflareResult = await cloudflareService.createLiveStream();
+
+      if (!cloudflareResult.success || !cloudflareResult.data) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        setErrorState(cloudflareResult.error || 'Failed to create Cloudflare stream');
+        return { success: false, error: cloudflareResult.error };
+      }
+
+      console.log('✅ [STATE_MACHINE] Cloudflare stream created');
+
+      console.log('💾 [STATE_MACHINE] Creating database stream record...');
+      const { data: stream, error: dbError } = await supabase
+        .from('streams')
+        .insert({
+          broadcaster_id: user.id,
+          title,
+          status: 'live',
+          cloudflare_stream_id: cloudflareResult.data.uid,
+          playback_url: cloudflareResult.data.playback?.hls || null,
+          ingest_url: cloudflareResult.data.rtmps?.url || null,
+          stream_key: cloudflareResult.data.rtmps?.streamKey || null,
+          content_label: contentLabel,
+          viewer_count: 0,
+        })
+        .select()
+        .single();
+
+      if (dbError || !stream) {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        console.error('❌ [STATE_MACHINE] Database error:', dbError);
+        setErrorState('Failed to create stream record');
+        return { success: false, error: 'Failed to create stream record' };
+      }
+
+      console.log('✅ [STATE_MACHINE] Stream record created:', stream.id);
+
+      const data: StreamData = {
+        streamId: stream.id,
+        cloudflareStreamId: cloudflareResult.data.uid,
+        rtmpsUrl: cloudflareResult.data.rtmps?.url || '',
+        rtmpsStreamKey: cloudflareResult.data.rtmps?.streamKey || '',
+        playbackUrl: cloudflareResult.data.playback?.hls || '',
+      };
+
+      setStreamData(data);
+      setState('READY');
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      console.log('✅ [STATE_MACHINE] Stream ready');
+      return { success: true, streamId: stream.id };
+    } catch (error: any) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      console.error('❌ [STATE_MACHINE] Error in startStream:', error);
+      setErrorState(error.message || 'Failed to start stream');
+      return { success: false, error: error.message };
     }
-  }, [currentState, transitionTo]);
+  }, [setErrorState]);
 
-  const endStream = useCallback(() => {
-    // Clear any pending timeouts
-    if (streamCreationTimeoutRef.current) {
-      clearTimeout(streamCreationTimeoutRef.current);
-      streamCreationTimeoutRef.current = null;
+  const endStream = useCallback(async (streamId: string, saveReplay: boolean) => {
+    console.log('🛑 [STATE_MACHINE] Ending stream...');
+    setState('ENDING');
+
+    try {
+      const { error: updateError } = await supabase
+        .from('streams')
+        .update({
+          status: 'ended',
+          ended_at: new Date().toISOString(),
+        })
+        .eq('id', streamId);
+
+      if (updateError) {
+        console.error('❌ [STATE_MACHINE] Error updating stream:', updateError);
+        setErrorState('Failed to end stream');
+        return { success: false, error: 'Failed to end stream' };
+      }
+
+      setState('ENDED');
+      console.log('✅ [STATE_MACHINE] Stream ended successfully');
+      return { success: true };
+    } catch (error: any) {
+      console.error('❌ [STATE_MACHINE] Error in endStream:', error);
+      setErrorState(error.message || 'Failed to end stream');
+      return { success: false, error: error.message };
     }
-    
-    setIsCreatingStream(false);
-    streamCreationAttemptRef.current = false;
-    
-    if (currentState === 'BROADCASTING' || currentState === 'STREAM_READY' || currentState === 'STREAM_CREATING') {
-      transitionTo('STREAM_ENDED');
-    } else {
-      console.warn(`⚠️ [STATE MACHINE] Cannot end stream from ${currentState}`);
+  }, [setErrorState]);
+
+  const resetState = useCallback(() => {
+    setState('IDLE');
+    setStreamData(null);
+    setError(null);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
-  }, [currentState, transitionTo]);
-
-  const setError = useCallback((errorMessage: string) => {
-    console.error(`❌ [STATE MACHINE] Error: ${errorMessage}`);
-    
-    // Clear any pending timeouts
-    if (streamCreationTimeoutRef.current) {
-      clearTimeout(streamCreationTimeoutRef.current);
-      streamCreationTimeoutRef.current = null;
-    }
-    
-    setIsCreatingStream(false);
-    streamCreationAttemptRef.current = false;
-    setErrorState(errorMessage);
-    transitionTo('ERROR');
-  }, [transitionTo]);
-
-  const resetToIdle = useCallback(() => {
-    console.log('🔄 [STATE MACHINE] Resetting to IDLE');
-    
-    // Clear any pending timeouts
-    if (streamCreationTimeoutRef.current) {
-      clearTimeout(streamCreationTimeoutRef.current);
-      streamCreationTimeoutRef.current = null;
-    }
-    
-    setIsCreatingStream(false);
-    streamCreationAttemptRef.current = false;
-    setErrorState(null);
-    setPreviousState(null);
-    setCurrentState('IDLE');
-  }, []);
-
-  // State checks
-  const canGoLive = useCallback(() => {
-    return currentState === 'CONTENT_LABEL_SELECTED' || currentState === 'PRACTICE_MODE_ACTIVE';
-  }, [currentState]);
-
-  const isInSetup = useCallback(() => {
-    return ['PRE_LIVE_SETUP', 'CONTENT_LABEL_SELECTED', 'PRACTICE_MODE_ACTIVE'].includes(currentState);
-  }, [currentState]);
-
-  const isCreatingStreamState = useCallback(() => {
-    return currentState === 'STREAM_CREATING';
-  }, [currentState]);
-
-  const isLive = useCallback(() => {
-    return currentState === 'BROADCASTING';
-  }, [currentState]);
-
-  const hasError = useCallback(() => {
-    return currentState === 'ERROR';
-  }, [currentState]);
-
-  useEffect(() => {
-    console.log('✅ [LiveStreamStateProvider] Mounted and ready');
   }, []);
 
   return (
-    <LiveStreamStateContext.Provider
+    <LiveStreamStateMachineContext.Provider
       value={{
-        currentState,
-        previousState,
+        state,
+        streamData,
         error,
-        isCreatingStream,
-        enterPreLiveSetup,
-        selectContentLabel,
-        enablePracticeMode,
-        disablePracticeMode,
-        startStreamCreation,
-        streamCreated,
-        startBroadcasting,
+        startStream,
         endStream,
-        setError,
-        resetToIdle,
-        cancelStreamCreation,
-        canGoLive,
-        isInSetup,
-        isCreatingStreamState,
-        isLive,
-        hasError,
+        resetState,
       }}
     >
       {children}
-    </LiveStreamStateContext.Provider>
+    </LiveStreamStateMachineContext.Provider>
   );
 }
 
-export function useLiveStreamState() {
-  const context = useContext(LiveStreamStateContext);
-  if (context === undefined) {
-    throw new Error('useLiveStreamState must be used within a LiveStreamStateProvider');
+export function useLiveStreamStateMachine() {
+  const context = useContext(LiveStreamStateMachineContext);
+  if (!context) {
+    throw new Error('useLiveStreamStateMachine must be used within LiveStreamStateMachineProvider');
   }
   return context;
 }

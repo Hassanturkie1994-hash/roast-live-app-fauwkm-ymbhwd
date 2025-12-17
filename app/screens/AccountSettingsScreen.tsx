@@ -21,14 +21,34 @@ import { communityGuidelinesService } from '@/app/services/communityGuidelinesSe
 export default function AccountSettingsScreen() {
   const { signOut, user, profile } = useAuth();
   const { colors } = useTheme();
-  const [isPrivateProfile, setIsPrivateProfile] = useState(false);
-  const [commentPermission, setCommentPermission] = useState<'everyone' | 'followers' | 'no_one'>('everyone');
+  const [profileVisibility, setProfileVisibility] = useState<'public' | 'private'>('public');
   const [userRole, setUserRole] = useState<AdminRole | null>(null);
   const [isStreamModerator, setIsStreamModerator] = useState(false);
   const [isLoadingRole, setIsLoadingRole] = useState(true);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isLive, setIsLive] = useState(false);
   const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
   const [isAcceptingGuidelines, setIsAcceptingGuidelines] = useState(false);
+
+  const loadUserSettings = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('profile_visibility')
+        .eq('user_id', user.id)
+        .single();
+
+      if (data) {
+        setProfileVisibility(data.profile_visibility || 'public');
+      }
+    } catch (error) {
+      console.error('Error loading user settings:', error);
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  }, [user]);
 
   const checkUserRole = useCallback(async () => {
     if (!user) {
@@ -38,12 +58,10 @@ export default function AccountSettingsScreen() {
 
     console.log('Checking admin role for user:', user.id);
     
-    // Check staff role
     const staffResult = await adminService.checkAdminRole(user.id);
     console.log('Staff role result:', staffResult);
     setUserRole(staffResult.role);
     
-    // Check stream moderator role
     const modResult = await adminService.checkStreamModeratorRole(user.id);
     console.log('Stream moderator result:', modResult);
     setIsStreamModerator(modResult.isModerator);
@@ -71,7 +89,8 @@ export default function AccountSettingsScreen() {
   useEffect(() => {
     checkUserRole();
     checkIfLive();
-  }, [checkUserRole, checkIfLive]);
+    loadUserSettings();
+  }, [checkUserRole, checkIfLive, loadUserSettings]);
 
   const handleSignOut = async () => {
     if (isLive) {
@@ -152,6 +171,36 @@ export default function AccountSettingsScreen() {
     }
   };
 
+  const handleProfileVisibilityPress = () => {
+    Alert.alert('Profile Visibility', 'Choose who can see your profile content', [
+      { 
+        text: 'Public', 
+        onPress: async () => {
+          setProfileVisibility('public');
+          if (user) {
+            await supabase
+              .from('user_settings')
+              .update({ profile_visibility: 'public' })
+              .eq('user_id', user.id);
+          }
+        }
+      },
+      { 
+        text: 'Private', 
+        onPress: async () => {
+          setProfileVisibility('private');
+          if (user) {
+            await supabase
+              .from('user_settings')
+              .update({ profile_visibility: 'private' })
+              .eq('user_id', user.id);
+          }
+        }
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const getRoleName = (role: AdminRole) => {
     switch (role) {
       case 'HEAD_ADMIN':
@@ -182,15 +231,6 @@ export default function AccountSettingsScreen() {
     }
   };
 
-  const handleCommentPermissionPress = () => {
-    Alert.alert('Who Can Comment', 'Choose who can comment on your posts', [
-      { text: 'Everyone', onPress: () => setCommentPermission('everyone') },
-      { text: 'Followers', onPress: () => setCommentPermission('followers') },
-      { text: 'No One', onPress: () => setCommentPermission('no_one') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
@@ -210,7 +250,7 @@ export default function AccountSettingsScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Dashboard & Tools Section - Role-Based (PROMPT 5) */}
+        {/* Dashboard & Tools Section - Role-Based */}
         {isLoadingRole ? (
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
             <ActivityIndicator size="small" color={colors.brandPrimary} />
@@ -222,7 +262,6 @@ export default function AccountSettingsScreen() {
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Dashboard & Tools</Text>
             </View>
 
-            {/* Staff Role Dashboard */}
             {userRole && (
               <TouchableOpacity 
                 style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
@@ -251,7 +290,6 @@ export default function AccountSettingsScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Stream Moderator Dashboard */}
             {isStreamModerator && (
               <TouchableOpacity 
                 style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
@@ -602,7 +640,6 @@ export default function AccountSettingsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Safety & Rules</Text>
           </View>
 
-          {/* Community Guidelines - NEW (PROMPT 1) */}
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
             onPress={handleCommunityGuidelinesPress}
@@ -692,23 +729,29 @@ export default function AccountSettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Profile Preferences Section - ENTIRE ROW CLICKABLE (PROMPT 6) */}
+        {/* Privacy Preferences Section - REPLACED "Who can comment" with "Profile visibility" */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
-            <RoastIcon name="profile" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Profile Preferences</Text>
+            <RoastIcon name="privacy" size={20} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Privacy Preferences</Text>
           </View>
 
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomColor: colors.divider }]}
-            onPress={handleCommentPermissionPress}
+            onPress={handleProfileVisibilityPress}
             activeOpacity={0.7}
           >
             <View style={styles.settingLeft}>
-              <RoastIcon name="comment" size={20} />
+              <RoastIcon name="profile" size={20} />
               <View style={styles.settingTextContainer}>
-                <Text style={[styles.settingText, { color: colors.text }]}>Who Can Comment</Text>
-                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>{commentPermission}</Text>
+                <Text style={[styles.settingText, { color: colors.text }]}>Profile Visibility</Text>
+                {isLoadingSettings ? (
+                  <ActivityIndicator size="small" color={colors.brandPrimary} />
+                ) : (
+                  <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
+                    {profileVisibility === 'public' ? 'Public' : 'Private'}
+                  </Text>
+                )}
               </View>
             </View>
             <RoastIcon
@@ -749,7 +792,6 @@ export default function AccountSettingsScreen() {
         </View>
       </ScrollView>
 
-      {/* Community Guidelines Modal */}
       <CommunityGuidelinesModal
         visible={showCommunityGuidelinesModal}
         onAccept={handleGuidelinesAccept}

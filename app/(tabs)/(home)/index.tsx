@@ -13,6 +13,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -31,7 +32,7 @@ import { normalizeStreams, NormalizedStream, RawStreamData } from '@/utils/strea
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
 import { contentSafetyService } from '@/app/services/contentSafetyService';
-import { searchService } from '@/app/services/searchService';
+import { searchService, SearchContentType } from '@/app/services/searchService';
 
 interface Post {
   id: string;
@@ -58,7 +59,6 @@ interface SearchUserResult {
 
 const { width: screenWidth } = Dimensions.get('window');
 
-// Memoized post component
 const PostItem = React.memo(({ 
   post, 
   onPress,
@@ -146,9 +146,12 @@ export default function HomeScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showLiveOnly, setShowLiveOnly] = useState(false);
+  const [searchContentType, setSearchContentType] = useState<SearchContentType>('all');
 
-  // Search states (PROMPT 4)
-  const [searchResults, setSearchResults] = useState<SearchUserResult[]>([]);
+  // Search states
+  const [searchResultsUsers, setSearchResultsUsers] = useState<SearchUserResult[]>([]);
+  const [searchResultsPosts, setSearchResultsPosts] = useState<Post[]>([]);
+  const [searchResultsStreams, setSearchResultsStreams] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -161,7 +164,6 @@ export default function HomeScreen() {
   const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
   const [isAcceptingGuidelines, setIsAcceptingGuidelines] = useState(false);
 
-  // Fetch live streams
   const fetchStreams = useCallback(async () => {
     try {
       const data = await queryCache.getCached(
@@ -197,7 +199,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // Fetch saved streams (ONLY streams explicitly saved by users)
   const fetchSavedStreams = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -221,7 +222,6 @@ export default function HomeScreen() {
         return;
       }
 
-      // Transform saved streams to normalized format
       const normalized = (data || []).map((saved: any) => {
         const stream = saved.streams;
         return {
@@ -247,7 +247,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // Memoize fetch posts function
   const fetchPosts = useCallback(async () => {
     try {
       const data = await queryCache.getCached(
@@ -275,7 +274,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // Memoize fetch data function
   const fetchData = useCallback(async () => {
     await Promise.all([fetchStreams(), fetchSavedStreams(), fetchPosts()]);
   }, [fetchStreams, fetchSavedStreams, fetchPosts]);
@@ -284,7 +282,6 @@ export default function HomeScreen() {
     fetchData();
   }, [fetchData]);
 
-  // Memoize refresh handler
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     queryCache.invalidate('streams_live');
@@ -293,14 +290,16 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
-  // PROMPT 4: User search with debouncing
+  // Multi-type search with debouncing
   useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
     if (searchQuery.trim().length === 0) {
-      setSearchResults([]);
+      setSearchResultsUsers([]);
+      setSearchResultsPosts([]);
+      setSearchResultsStreams([]);
       setIsSearching(false);
       return;
     }
@@ -309,16 +308,36 @@ export default function HomeScreen() {
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const result = await searchService.searchUsers(searchQuery);
+        const result = await searchService.searchByType(searchQuery, searchContentType);
         
         if (result.success) {
-          setSearchResults(result.data as SearchUserResult[]);
+          if (searchContentType === 'all' && 'data' in result && typeof result.data === 'object') {
+            setSearchResultsUsers((result.data as any).users || []);
+            setSearchResultsPosts((result.data as any).posts || []);
+            setSearchResultsStreams((result.data as any).streams || []);
+          } else if (searchContentType === 'profiles') {
+            setSearchResultsUsers(result.data as SearchUserResult[]);
+            setSearchResultsPosts([]);
+            setSearchResultsStreams([]);
+          } else if (searchContentType === 'posts') {
+            setSearchResultsUsers([]);
+            setSearchResultsPosts(result.data as Post[]);
+            setSearchResultsStreams([]);
+          } else if (searchContentType === 'lives') {
+            setSearchResultsUsers([]);
+            setSearchResultsPosts([]);
+            setSearchResultsStreams(result.data as any[]);
+          }
         } else {
-          setSearchResults([]);
+          setSearchResultsUsers([]);
+          setSearchResultsPosts([]);
+          setSearchResultsStreams([]);
         }
       } catch (error) {
-        console.error('Error searching users:', error);
-        setSearchResults([]);
+        console.error('Error searching:', error);
+        setSearchResultsUsers([]);
+        setSearchResultsPosts([]);
+        setSearchResultsStreams([]);
       } finally {
         setIsSearching(false);
       }
@@ -329,9 +348,8 @@ export default function HomeScreen() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery]);
+  }, [searchQuery, searchContentType]);
 
-  // Memoize stream press handler
   const handleStreamPress = useCallback((stream: NormalizedStream) => {
     router.push({
       pathname: '/live-player',
@@ -339,12 +357,10 @@ export default function HomeScreen() {
     });
   }, []);
 
-  // Memoize post press handler
   const handlePostPress = useCallback((post: Post) => {
     console.log('Post pressed:', post.id);
   }, []);
 
-  // PROMPT 4: Handle user profile press
   const handleUserPress = useCallback((userId: string) => {
     if (!userId) {
       console.error('Invalid user ID');
@@ -363,7 +379,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // Go Live handlers
   const handleGoLivePress = async () => {
     if (!user) {
       Alert.alert('Fel', 'Du måste vara inloggad för att starta streaming');
@@ -377,7 +392,6 @@ export default function HomeScreen() {
         return;
       }
 
-      // Check community guidelines acceptance (PROMPT 1)
       const hasAcceptedGuidelines = await communityGuidelinesService.hasAcceptedGuidelines(user.id);
       
       if (!hasAcceptedGuidelines) {
@@ -414,8 +428,6 @@ export default function HomeScreen() {
 
       console.log('✅ Community guidelines accepted');
       setShowCommunityGuidelinesModal(false);
-
-      // Continue with go live flow
       setShowGoLiveModal(true);
     } catch (error) {
       console.error('Error accepting guidelines:', error);
@@ -501,22 +513,17 @@ export default function HomeScreen() {
     }
   };
 
-  // Filter content based on active tab and live filter
   const filteredContent = useMemo(() => {
-    // When Live filter is active, show ONLY live streams
     if (showLiveOnly) {
       return streams.filter(s => s.status === 'live');
     }
     
-    // Otherwise, show saved streams + posts (NOT all streams)
     const mixed: any[] = [];
     
-    // Add saved streams
     savedStreams.forEach(stream => {
       mixed.push({ type: 'stream', data: stream });
     });
     
-    // Add posts
     posts.forEach(post => {
       mixed.push({ type: 'post', data: post });
     });
@@ -524,7 +531,6 @@ export default function HomeScreen() {
     return mixed;
   }, [streams, savedStreams, posts, showLiveOnly]);
 
-  // Memoize render function
   const renderItem = useCallback(({ item }: { item: any }) => {
     if (showLiveOnly || item.type === 'stream') {
       const stream = showLiveOnly ? item : item.data;
@@ -545,7 +551,6 @@ export default function HomeScreen() {
     }
   }, [showLiveOnly, handleStreamPress, handlePostPress, colors]);
 
-  // Memoize key extractor
   const keyExtractor = useCallback((item: any, index: number) => {
     if (showLiveOnly) {
       return item.id;
@@ -553,12 +558,12 @@ export default function HomeScreen() {
     return `${item.type}-${item.data.id}-${index}`;
   }, [showLiveOnly]);
 
-  // Memoize header component
   const ListHeaderComponent = useMemo(() => <StoriesBar />, []);
+
+  const totalSearchResults = searchResultsUsers.length + searchResultsPosts.length + searchResultsStreams.length;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header with Logo and Search */}
       <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <AppLogo size="small" alignment="center" withShadow />
         <TouchableOpacity 
@@ -573,37 +578,71 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Search Bar (PROMPT 4) */}
+      {/* Search Bar with Content Type Filter */}
       {showSearch && (
-        <View style={[styles.searchBar, { backgroundColor: colors.backgroundAlt, borderBottomColor: colors.border }]}>
-          <UnifiedRoastIcon
-            name="search"
-            size={20}
-            color={colors.textSecondary}
-          />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Sök profiler..."
-            placeholderTextColor={colors.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoFocus
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <UnifiedRoastIcon
-                name="close"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
-          )}
-        </View>
+        <>
+          <View style={[styles.searchBar, { backgroundColor: colors.backgroundAlt, borderBottomColor: colors.border }]}>
+            <UnifiedRoastIcon
+              name="search"
+              size={20}
+              color={colors.textSecondary}
+            />
+            <TextInput
+              style={[styles.searchInput, { color: colors.text }]}
+              placeholder="Search..."
+              placeholderTextColor={colors.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <UnifiedRoastIcon
+                  name="close"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Content Type Filter */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={[styles.filterBar, { borderBottomColor: colors.border }]}
+            contentContainerStyle={styles.filterBarContent}
+          >
+            {(['all', 'profiles', 'posts', 'lives'] as SearchContentType[]).map((type) => (
+              <TouchableOpacity
+                key={`filter-${type}`}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: searchContentType === type ? colors.brandPrimary : colors.backgroundAlt,
+                    borderColor: searchContentType === type ? colors.brandPrimary : colors.border,
+                  },
+                ]}
+                onPress={() => setSearchContentType(type)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    { color: searchContentType === type ? '#FFFFFF' : colors.text },
+                  ]}
+                >
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
       )}
 
-      {/* Search Results (PROMPT 4) */}
+      {/* Search Results */}
       {showSearch && searchQuery.length > 0 && (
         <View style={[styles.searchResults, { backgroundColor: colors.background }]}>
           {isSearching ? (
@@ -611,53 +650,118 @@ export default function HomeScreen() {
               <ActivityIndicator size="small" color={colors.brandPrimary} />
               <Text style={[styles.searchLoadingText, { color: colors.textSecondary }]}>Searching...</Text>
             </View>
-          ) : searchResults.length === 0 ? (
+          ) : totalSearchResults === 0 ? (
             <View style={styles.searchEmpty}>
               <UnifiedRoastIcon name="search" size={48} color={colors.textSecondary} />
-              <Text style={[styles.searchEmptyText, { color: colors.text }]}>No users found</Text>
+              <Text style={[styles.searchEmptyText, { color: colors.text }]}>No results found</Text>
               <Text style={[styles.searchEmptySubtext, { color: colors.textSecondary }]}>
                 Try a different search term
               </Text>
             </View>
           ) : (
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item) => `search-user-${item.id}`}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.searchResultItem, { borderBottomColor: colors.border }]}
-                  onPress={() => handleUserPress(item.id)}
-                  activeOpacity={0.7}
-                >
-                  <Image
-                    source={{
-                      uri: item.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
-                    }}
-                    style={[styles.searchResultAvatar, { backgroundColor: colors.backgroundAlt }]}
-                  />
-                  <View style={styles.searchResultInfo}>
-                    <Text style={[styles.searchResultName, { color: colors.text }]}>
-                      {item.display_name || item.username}
-                    </Text>
-                    <Text style={[styles.searchResultUsername, { color: colors.textSecondary }]}>
-                      @{item.username}
-                    </Text>
-                    {item.bio && (
-                      <Text style={[styles.searchResultBio, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {item.bio}
-                      </Text>
-                    )}
-                  </View>
-                  <UnifiedRoastIcon
-                    name="chevron-right"
-                    size={20}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              )}
-              contentContainerStyle={styles.searchResultsList}
+            <ScrollView
+              style={styles.searchResultsScroll}
+              contentContainerStyle={styles.searchResultsContent}
               showsVerticalScrollIndicator={false}
-            />
+            >
+              {/* Profiles Results */}
+              {searchResultsUsers.length > 0 && (
+                <View style={styles.searchSection}>
+                  <Text style={[styles.searchSectionTitle, { color: colors.text }]}>Profiles</Text>
+                  {searchResultsUsers.map((item) => (
+                    <TouchableOpacity
+                      key={`search-user-${item.id}`}
+                      style={[styles.searchResultItem, { borderBottomColor: colors.border }]}
+                      onPress={() => handleUserPress(item.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Image
+                        source={{
+                          uri: item.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
+                        }}
+                        style={[styles.searchResultAvatar, { backgroundColor: colors.backgroundAlt }]}
+                      />
+                      <View style={styles.searchResultInfo}>
+                        <Text style={[styles.searchResultName, { color: colors.text }]}>
+                          {item.display_name || item.username}
+                        </Text>
+                        <Text style={[styles.searchResultUsername, { color: colors.textSecondary }]}>
+                          @{item.username}
+                        </Text>
+                        {item.bio && (
+                          <Text style={[styles.searchResultBio, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {item.bio}
+                          </Text>
+                        )}
+                      </View>
+                      <UnifiedRoastIcon
+                        name="chevron-right"
+                        size={20}
+                        color={colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Posts Results */}
+              {searchResultsPosts.length > 0 && (
+                <View style={styles.searchSection}>
+                  <Text style={[styles.searchSectionTitle, { color: colors.text }]}>Posts</Text>
+                  {searchResultsPosts.map((post) => (
+                    <TouchableOpacity
+                      key={`search-post-${post.id}`}
+                      style={[styles.searchPostItem, { borderBottomColor: colors.border }]}
+                      onPress={() => handlePostPress(post)}
+                      activeOpacity={0.7}
+                    >
+                      <Image
+                        source={{ uri: post.media_url }}
+                        style={[styles.searchPostThumbnail, { backgroundColor: colors.backgroundAlt }]}
+                      />
+                      <View style={styles.searchPostInfo}>
+                        <Text style={[styles.searchPostCaption, { color: colors.text }]} numberOfLines={2}>
+                          {post.caption || 'No caption'}
+                        </Text>
+                        <Text style={[styles.searchPostAuthor, { color: colors.textSecondary }]}>
+                          @{post.profiles.username}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Live Streams Results */}
+              {searchResultsStreams.length > 0 && (
+                <View style={styles.searchSection}>
+                  <Text style={[styles.searchSectionTitle, { color: colors.text }]}>Live Streams</Text>
+                  {searchResultsStreams.map((stream) => (
+                    <TouchableOpacity
+                      key={`search-stream-${stream.id}`}
+                      style={[styles.searchStreamItem, { borderBottomColor: colors.border }]}
+                      onPress={() => router.push({ pathname: '/live-player', params: { streamId: stream.id } })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.liveBadge, { backgroundColor: '#FF0000' }]}>
+                        <Text style={styles.liveBadgeText}>LIVE</Text>
+                      </View>
+                      <View style={styles.searchStreamInfo}>
+                        <Text style={[styles.searchStreamTitle, { color: colors.text }]} numberOfLines={1}>
+                          {stream.title}
+                        </Text>
+                        <Text style={[styles.searchStreamAuthor, { color: colors.textSecondary }]}>
+                          {stream.users?.display_name || 'Unknown'}
+                        </Text>
+                        <Text style={[styles.searchStreamViewers, { color: colors.textSecondary }]}>
+                          {stream.viewer_count || 0} viewers
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
           )}
         </View>
       )}
@@ -692,7 +796,6 @@ export default function HomeScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* Live Filter Button - Now acts as a filter */}
           <TouchableOpacity
             style={[
               styles.liveButton,
@@ -732,7 +835,6 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* Community Guidelines Modal (PROMPT 1) */}
       <CommunityGuidelinesModal
         visible={showCommunityGuidelinesModal}
         onAccept={handleGuidelinesAccept}
@@ -740,7 +842,6 @@ export default function HomeScreen() {
         isLoading={isAcceptingGuidelines}
       />
 
-      {/* Go Live Title Modal */}
       <Modal visible={showGoLiveModal} transparent animationType="slide">
         <View style={styles.modal}>
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
@@ -794,7 +895,6 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* Content Label Modal */}
       <ContentLabelModal
         visible={showContentLabelModal}
         onSelect={handleContentLabelSelected}
@@ -804,7 +904,6 @@ export default function HomeScreen() {
         }}
       />
 
-      {/* Creator Rules Modal */}
       <CreatorRulesModal
         visible={showCreatorRulesModal}
         onConfirm={handleCreatorRulesConfirm}
@@ -851,6 +950,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '400',
   },
+  filterBar: {
+    borderBottomWidth: 1,
+  },
+  filterBarContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
   searchResults: {
     flex: 1,
   },
@@ -883,8 +1000,20 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  searchResultsList: {
+  searchResultsScroll: {
+    flex: 1,
+  },
+  searchResultsContent: {
     paddingBottom: 100,
+  },
+  searchSection: {
+    marginBottom: 24,
+  },
+  searchSectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
   searchResultItem: {
     flexDirection: 'row',
@@ -915,6 +1044,63 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     marginTop: 2,
+  },
+  searchPostItem: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+  },
+  searchPostThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  searchPostInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  searchPostCaption: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  searchPostAuthor: {
+    fontSize: 12,
+    fontWeight: '400',
+  },
+  searchStreamItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  liveBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  liveBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  searchStreamInfo: {
+    gap: 4,
+  },
+  searchStreamTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  searchStreamAuthor: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  searchStreamViewers: {
+    fontSize: 12,
+    fontWeight: '400',
   },
   tabBar: {
     flexDirection: 'row',
