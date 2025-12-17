@@ -9,7 +9,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, Stack, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors } from '@/styles/commonStyles';
@@ -39,7 +39,11 @@ export default function PreLiveSetupScreen() {
   const liveStreamState = useLiveStreamStateMachine();
   
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
-  const [permission, requestPermission] = useCameraPermissions();
+  
+  // CRITICAL FIX: Import both camera and microphone permissions
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
+  
   const [facing, setFacing] = useState<CameraType>('front');
 
   // Stream setup states
@@ -106,16 +110,29 @@ export default function PreLiveSetupScreen() {
       return;
     }
 
-    if (!permission?.granted) {
-      requestPermission();
-    }
+    // CRITICAL FIX: Request both camera and microphone permissions
+    const requestPermissions = async () => {
+      console.log('🔐 [PRE-LIVE] Checking permissions...');
+      
+      if (!cameraPermission?.granted) {
+        console.log('📷 [PRE-LIVE] Requesting camera permission...');
+        await requestCameraPermission();
+      }
+      
+      if (!micPermission?.granted) {
+        console.log('🎤 [PRE-LIVE] Requesting microphone permission...');
+        await requestMicPermission();
+      }
+    };
+
+    requestPermissions();
 
     console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
 
     return () => {
       isMountedRef.current = false;
     };
-  }, [user, permission, requestPermission]);
+  }, [user, cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
@@ -139,6 +156,17 @@ export default function PreLiveSetupScreen() {
   const navigateToBroadcaster = useCallback(() => {
     console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
     
+    // CRITICAL FIX: Check permissions before navigation
+    if (!cameraPermission?.granted || !micPermission?.granted) {
+      console.error('❌ [PRE-LIVE] Cannot navigate - permissions not granted');
+      Alert.alert(
+        'Permissions Required',
+        'Camera and microphone permissions are required to start broadcasting.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
     router.push({
       pathname: '/(tabs)/broadcast',
       params: {
@@ -155,10 +183,30 @@ export default function PreLiveSetupScreen() {
     });
 
     console.log('✅ [PRE-LIVE] Navigation initiated successfully');
-  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers]);
+  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers, cameraPermission, micPermission]);
 
   const handleGoLive = useCallback(async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
+
+    // CRITICAL FIX: Check permissions first
+    if (!cameraPermission?.granted || !micPermission?.granted) {
+      console.error('❌ [PRE-LIVE] Permissions not granted');
+      Alert.alert(
+        'Permissions Required',
+        'Camera and microphone permissions are required to start broadcasting. Please grant permissions and try again.',
+        [
+          {
+            text: 'Grant Permissions',
+            onPress: async () => {
+              await requestCameraPermission();
+              await requestMicPermission();
+            },
+          },
+          { text: 'Cancel' },
+        ]
+      );
+      return;
+    }
 
     if (!streamTitle.trim()) {
       Alert.alert('Error', 'Please enter a stream title');
@@ -266,7 +314,7 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, practiceMode, streamMode, battleFormat, navigateToBroadcaster]);
+  }, [streamTitle, contentLabel, user, practiceMode, streamMode, battleFormat, navigateToBroadcaster, cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -318,7 +366,9 @@ export default function PreLiveSetupScreen() {
     }
   };
 
-  if (!permission?.granted) {
+  // CRITICAL FIX: Always return JSX - add early return for permission loading
+  if (!cameraPermission || !micPermission) {
+    console.log('⏳ [PRE-LIVE] Permissions still loading...');
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
@@ -330,14 +380,44 @@ export default function PreLiveSetupScreen() {
               size={64}
               color={colors.textSecondary}
             />
-            <Text style={styles.permissionText}>We need your permission to use the camera</Text>
-            <GradientButton title="Grant Permission" onPress={requestPermission} />
+            <Text style={styles.permissionText}>Loading permissions...</Text>
           </View>
         </View>
       </>
     );
   }
 
+  if (!cameraPermission.granted || !micPermission.granted) {
+    console.log('⚠️ [PRE-LIVE] Permissions not granted');
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.container}>
+          <View style={styles.permissionContainer}>
+            <IconSymbol
+              ios_icon_name="video.fill"
+              android_material_icon_name="videocam"
+              size={64}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.permissionText}>
+              We need camera and microphone permissions to start streaming
+            </Text>
+            <GradientButton 
+              title="Grant Permissions" 
+              onPress={async () => {
+                console.log('🔐 [PRE-LIVE] Requesting permissions...');
+                await requestCameraPermission();
+                await requestMicPermission();
+              }} 
+            />
+          </View>
+        </View>
+      </>
+    );
+  }
+
+  console.log('✅ [PRE-LIVE] Rendering camera view');
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />

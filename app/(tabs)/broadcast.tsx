@@ -12,7 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, CameraView } from 'expo-camera';
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -55,8 +55,9 @@ export default function BroadcastScreen() {
   const { colors } = useTheme();
   const { state, startStream, endStream, error: stateMachineError } = useLiveStreamStateMachine();
   
-  const [cameraPermission, requestCameraPermission] = Camera.useCameraPermissions();
-  const [micPermission, requestMicPermission] = Camera.useMicrophonePermissions();
+  // CRITICAL FIX: Import hooks directly from expo-camera
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
   
   const [showChat, setShowChat] = useState(true);
   const [showGifts, setShowGifts] = useState(false);
@@ -88,10 +89,16 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     const checkPermissions = async () => {
+      console.log('🔐 [BROADCAST] Checking permissions...');
+      console.log('📷 Camera permission:', cameraPermission);
+      console.log('🎤 Mic permission:', micPermission);
+      
       if (!cameraPermission?.granted) {
+        console.log('📷 Requesting camera permission...');
         await requestCameraPermission();
       }
       if (!micPermission?.granted) {
+        console.log('🎤 Requesting mic permission...');
         await requestMicPermission();
       }
     };
@@ -101,6 +108,7 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     if (!user || !streamTitle) {
+      console.error('❌ [BROADCAST] Missing user or stream title');
       Alert.alert('Error', 'Missing stream information');
       router.back();
       return;
@@ -206,7 +214,21 @@ export default function BroadcastScreen() {
     router.replace('/(tabs)/(home)');
   };
 
-  if (!cameraPermission?.granted || !micPermission?.granted) {
+  // CRITICAL FIX: Always return JSX - add early return with loading state
+  if (!cameraPermission || !micPermission) {
+    console.log('⏳ [BROADCAST] Permissions still loading...');
+    return (
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.brandPrimary} />
+        <Text style={[styles.loadingText, { color: colors.text }]}>
+          Checking permissions...
+        </Text>
+      </View>
+    );
+  }
+
+  if (!cameraPermission.granted || !micPermission.granted) {
+    console.log('⚠️ [BROADCAST] Permissions not granted');
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <IconSymbol
@@ -221,6 +243,7 @@ export default function BroadcastScreen() {
         <TouchableOpacity
           style={[styles.permissionButton, { backgroundColor: colors.brandPrimary }]}
           onPress={async () => {
+            console.log('🔐 [BROADCAST] Requesting permissions...');
             await requestCameraPermission();
             await requestMicPermission();
           }}
@@ -232,6 +255,7 @@ export default function BroadcastScreen() {
   }
 
   if (state === 'IDLE' || state === 'CREATING_STREAM') {
+    console.log('⏳ [BROADCAST] State:', state);
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
@@ -243,6 +267,7 @@ export default function BroadcastScreen() {
   }
 
   if (stateMachineError) {
+    console.error('❌ [BROADCAST] State machine error:', stateMachineError);
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <IconSymbol
@@ -265,6 +290,7 @@ export default function BroadcastScreen() {
     );
   }
 
+  console.log('✅ [BROADCAST] Rendering camera view');
   return (
     <View style={styles.container}>
       <CameraView
