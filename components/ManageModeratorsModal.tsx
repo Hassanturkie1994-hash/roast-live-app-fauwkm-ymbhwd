@@ -44,13 +44,7 @@ export default function ManageModeratorsModal({
   const [isSearching, setIsSearching] = useState(false);
   const [showAddSection, setShowAddSection] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      loadModerators();
-    }
-  }, [visible]);
-
-  const loadModerators = async () => {
+  const loadModerators = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await moderationService.getModerators(streamerId);
@@ -68,7 +62,13 @@ export default function ManageModeratorsModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [streamerId]);
+
+  useEffect(() => {
+    if (visible) {
+      loadModerators();
+    }
+  }, [visible, loadModerators]);
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);

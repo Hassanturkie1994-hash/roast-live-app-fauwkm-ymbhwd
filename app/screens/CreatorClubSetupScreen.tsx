@@ -32,13 +32,7 @@ export default function CreatorClubSetupScreen() {
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
 
-  useEffect(() => {
-    if (user) {
-      loadClubData();
-    }
-  }, [user]);
-
-  const loadClubData = async () => {
+  const loadClubData = useCallback(async () => {
     if (!user) return;
 
     setLoading(true);
@@ -57,7 +51,15 @@ export default function CreatorClubSetupScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadClubData();
+    }
+  }, [user, loadClubData]);
+
+
 
   const handleSave = async () => {
     if (!user) return;

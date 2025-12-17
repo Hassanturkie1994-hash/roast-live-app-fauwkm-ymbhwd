@@ -19,11 +19,7 @@ export default function VIPClubBadge({ creatorId, viewerId, size = 'medium' }: V
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchBadgeData();
-  }, [creatorId, viewerId]);
-
-  const fetchBadgeData = async () => {
+  const fetchBadgeData = useCallback(async () => {
     setIsLoading(true);
     try {
       // Check if user is a club member
@@ -59,7 +55,11 @@ export default function VIPClubBadge({ creatorId, viewerId, size = 'medium' }: V
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [creatorId, viewerId]);
+
+  useEffect(() => {
+    fetchBadgeData();
+  }, [fetchBadgeData]);
 
   if (isLoading || !badgeData) {
     return null;

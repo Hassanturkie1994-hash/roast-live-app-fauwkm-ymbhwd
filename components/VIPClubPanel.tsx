@@ -44,13 +44,7 @@ export default function VIPClubPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [memberCount, setMemberCount] = useState(0);
 
-  useEffect(() => {
-    if (visible && user) {
-      loadMyClub();
-    }
-  }, [visible, user]);
-
-  const loadMyClub = async () => {
+  const loadMyClub = useCallback(async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -81,7 +75,13 @@ export default function VIPClubPanel({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user, selectedClub, onSelectClub]);
+
+  useEffect(() => {
+    if (visible && user) {
+      loadMyClub();
+    }
+  }, [visible, user, loadMyClub]);
 
   const handleToggleClub = () => {
     if (selectedClub === myClub?.id) {

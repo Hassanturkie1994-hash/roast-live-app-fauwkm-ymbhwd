@@ -23,11 +23,7 @@ export default function TermsOfServiceScreen() {
   const [acceptedDate, setAcceptedDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadAcceptanceStatus();
-  }, [user]);
-
-  const loadAcceptanceStatus = async () => {
+  const loadAcceptanceStatus = useCallback(async () => {
     if (!user) return;
     
     setLoading(true);
@@ -38,7 +34,11 @@ export default function TermsOfServiceScreen() {
       setAgreed(true);
     }
     setLoading(false);
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadAcceptanceStatus();
+  }, [loadAcceptanceStatus]);
 
   const handleAccept = async () => {
     if (!user) return;

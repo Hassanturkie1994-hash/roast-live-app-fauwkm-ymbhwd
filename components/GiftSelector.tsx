@@ -43,13 +43,7 @@ export default function GiftSelector({
   const [walletBalance, setWalletBalance] = useState(0);
   const [selectedTier, setSelectedTier] = useState<GiftTier | 'ALL'>('ALL');
 
-  useEffect(() => {
-    if (visible) {
-      loadData();
-    }
-  }, [visible]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -73,7 +67,13 @@ export default function GiftSelector({
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (visible) {
+      loadData();
+    }
+  }, [visible, loadData]);
 
   const handlePurchase = async () => {
     if (!user || !selectedGift) return;

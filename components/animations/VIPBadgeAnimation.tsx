@@ -29,7 +29,7 @@ export default function VIPBadgeAnimation({ badgeName, badgeColor }: VIPBadgeAni
         }),
       ])
     ).start();
-  }, []);
+  }, [shineAnim]);
 
   const shineTranslateX = shineAnim.interpolate({
     inputRange: [0, 1],

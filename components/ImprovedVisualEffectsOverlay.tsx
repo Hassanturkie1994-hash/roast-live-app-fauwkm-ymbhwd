@@ -36,6 +36,20 @@ export default function ImprovedVisualEffectsOverlay({
   const animationLoopRef = useRef<boolean>(false);
   const particleIdCounter = useRef(0);
 
+  const startEffect = useCallback((effectConfig: EffectConfig) => {
+    // Create initial particles
+    const newParticles = Array.from(
+      { length: effectConfig.particleCount },
+      (_, i) => createParticle(i, effectConfig)
+    );
+    
+    setParticles(newParticles);
+    animationLoopRef.current = true;
+    
+    // Start animation loop
+    animateParticles(newParticles, effectConfig);
+  }, []);
+
   useEffect(() => {
     if (effect) {
       console.log('✨ [Effects] Starting effect:', effect.name);
@@ -48,21 +62,7 @@ export default function ImprovedVisualEffectsOverlay({
     return () => {
       stopEffect();
     };
-  }, [effect]);
-
-  const startEffect = (effectConfig: EffectConfig) => {
-    // Create initial particles
-    const newParticles = Array.from(
-      { length: effectConfig.particleCount },
-      (_, i) => createParticle(i, effectConfig)
-    );
-    
-    setParticles(newParticles);
-    animationLoopRef.current = true;
-    
-    // Start animation loop
-    animateParticles(newParticles, effectConfig);
-  };
+  }, [effect, startEffect]);
 
   const stopEffect = () => {
     animationLoopRef.current = false;

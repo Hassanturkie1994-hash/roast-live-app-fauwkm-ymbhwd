@@ -32,28 +32,7 @@ export default function ReplayPlayerScreen() {
   const [watchStartTime, setWatchStartTime] = useState(Date.now());
   const [currentPosition, setCurrentPosition] = useState(0);
 
-  useEffect(() => {
-    if (replayId) {
-      loadReplay();
-    }
-  }, [replayId]);
-
-  useEffect(() => {
-    // Track view when component unmounts
-    return () => {
-      if (replay && user) {
-        const watchDuration = Math.floor((Date.now() - watchStartTime) / 1000);
-        replayService.trackView(
-          replay.id,
-          user.id,
-          watchDuration,
-          replay.total_duration_seconds
-        );
-      }
-    };
-  }, [replay, user, watchStartTime]);
-
-  const loadReplay = async () => {
+  const loadReplay = useCallback(async () => {
     if (!replayId) return;
 
     setLoading(true);
@@ -71,7 +50,28 @@ export default function ReplayPlayerScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [replayId]);
+
+  useEffect(() => {
+    if (replayId) {
+      loadReplay();
+    }
+  }, [replayId, loadReplay]);
+
+  useEffect(() => {
+    // Track view when component unmounts
+    return () => {
+      if (replay && user) {
+        const watchDuration = Math.floor((Date.now() - watchStartTime) / 1000);
+        replayService.trackView(
+          replay.id,
+          user.id,
+          watchDuration,
+          replay.total_duration_seconds
+        );
+      }
+    };
+  }, [replay, user, watchStartTime]);
 
   const handleLike = async () => {
     if (!replay || !user) return;

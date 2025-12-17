@@ -32,11 +32,7 @@ export default function LeaderboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    fetchLeaderboard();
-  }, [selectedPeriod, selectedType]);
-
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = useCallback(async () => {
     try {
       setLoading(true);
       const data = await leaderboardSnapshotService.getLeaderboard(selectedPeriod, selectedType, 100);
@@ -52,7 +48,11 @@ export default function LeaderboardScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedPeriod, selectedType, user]);
+
+  useEffect(() => {
+    fetchLeaderboard();
+  }, [fetchLeaderboard]);
 
   const onRefresh = () => {
     setRefreshing(true);

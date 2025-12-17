@@ -77,7 +77,7 @@ export default function PinnedCommentTimer({ expiresAt, onExpire }: PinnedCommen
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [expiresAt]);
+  }, [expiresAt, onExpire, progressAnim, pulseAnim, glowAnim]);
 
   const formatTime = (ms: number): string => {
     const seconds = Math.ceil(ms / 1000);

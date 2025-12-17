@@ -20,6 +20,32 @@ export default function NetworkStabilityIndicator({
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [disconnectDuration, setDisconnectDuration] = useState(0);
 
+  const handleAutoReconnect = useCallback(async () => {
+    if (isReconnecting) return;
+
+    setIsReconnecting(true);
+
+    const success = await networkStabilityService.attemptReconnect(
+      () => {
+        // Reconnect success
+        setIsReconnecting(false);
+        setShowReconnectButton(false);
+        setDisconnectDuration(0);
+        onReconnect?.();
+      },
+      () => {
+        // Reconnect failed
+        setIsReconnecting(false);
+        setShowReconnectButton(true);
+      }
+    );
+
+    if (!success) {
+      // Wait and try again
+      setTimeout(handleAutoReconnect, 2500);
+    }
+  }, [onReconnect]);
+
   useEffect(() => {
     if (!isStreaming || !streamId) {
       networkStabilityService.stopMonitoring();
@@ -50,33 +76,7 @@ export default function NetworkStabilityIndicator({
     return () => {
       networkStabilityService.stopMonitoring();
     };
-  }, [isStreaming, streamId]);
-
-  const handleAutoReconnect = async () => {
-    if (isReconnecting) return;
-
-    setIsReconnecting(true);
-
-    const success = await networkStabilityService.attemptReconnect(
-      () => {
-        // Reconnect success
-        setIsReconnecting(false);
-        setShowReconnectButton(false);
-        setDisconnectDuration(0);
-        onReconnect?.();
-      },
-      () => {
-        // Reconnect failed
-        setIsReconnecting(false);
-        setShowReconnectButton(true);
-      }
-    );
-
-    if (!success) {
-      // Wait and try again
-      setTimeout(handleAutoReconnect, 2500);
-    }
-  };
+  }, [isStreaming, streamId, handleAutoReconnect]);
 
   const handleManualReconnect = () => {
     setShowReconnectButton(false);

@@ -26,11 +26,7 @@ export default function SupportDashboardScreen() {
     openTickets: 0,
   });
 
-  useEffect(() => {
-    checkAccess();
-  }, [user]);
-
-  const checkAccess = async () => {
+  const checkAccess = useCallback(async () => {
     if (!user) {
       router.replace('/auth/login');
       return;
@@ -48,7 +44,11 @@ export default function SupportDashboardScreen() {
 
     await fetchStats();
     setLoading(false);
-  };
+  }, [user]);
+
+  useEffect(() => {
+    checkAccess();
+  }, [checkAccess]);
 
   const fetchStats = async () => {
     try {

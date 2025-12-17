@@ -41,13 +41,7 @@ export default function FanClubManagementScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [showBadgeEditor, setShowBadgeEditor] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
-  }, [user]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -71,7 +65,13 @@ export default function FanClubManagementScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchData();
+    }
+  }, [user, fetchData]);
 
   const handleCreateFanClub = async () => {
     if (!user) return;

@@ -107,7 +107,7 @@ function StreamDashboardContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, fetchVIPClubData, fetchCDNMonitoringData]);
 
   useEffect(() => {
     if (user) {

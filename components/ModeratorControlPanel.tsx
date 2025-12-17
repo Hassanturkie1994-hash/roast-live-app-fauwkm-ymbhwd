@@ -41,13 +41,7 @@ export default function ModeratorControlPanel({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      fetchData();
-    }
-  }, [visible]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [mods, banned] = await Promise.all([
@@ -61,7 +55,13 @@ export default function ModeratorControlPanel({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [streamerId]);
+
+  useEffect(() => {
+    if (visible) {
+      fetchData();
+    }
+  }, [visible, fetchData]);
 
   const handleSearchUsers = async () => {
     if (!searchUsername.trim()) {
