@@ -15,17 +15,19 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 
+interface StoryProfile {
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+}
+
 interface Story {
   id: string;
   user_id: string;
   media_url: string;
   expires_at: string;
   created_at: string;
-  profile: {
-    username: string;
-    display_name: string;
-    avatar_url: string | null;
-  };
+  profile: StoryProfile;
 }
 
 export default function StoriesBar() {
@@ -134,6 +136,7 @@ export default function StoriesBar() {
       >
         {/* Your Story */}
         <TouchableOpacity
+          key="your-story"
           style={styles.storyItem}
           onPress={userHasStory ? handleViewOwnStory : handleCreateStory}
         >
@@ -173,7 +176,7 @@ export default function StoriesBar() {
         {/* Other Users' Stories */}
         {stories.map((story) => (
           <TouchableOpacity
-            key={story.id}
+            key={`story-${story.id}`}
             style={styles.storyItem}
             onPress={() => handleViewStory(story)}
           >

@@ -17,10 +17,12 @@ import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import AppLogo from '@/components/AppLogo';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
+import CommunityGuidelinesModal from '@/components/CommunityGuidelinesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamState } from '@/contexts/LiveStreamStateMachine';
 import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
+import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
 import ImprovedEffectsPanel from '@/components/ImprovedEffectsPanel';
 import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
 import VIPClubPanel from '@/components/VIPClubPanel';
@@ -41,6 +43,7 @@ export default function PreLiveSetupScreen() {
   const [streamTitle, setStreamTitle] = useState('');
   const [contentLabel, setContentLabel] = useState<ContentLabel | null>(null);
   const [showContentLabelModal, setShowContentLabelModal] = useState(false);
+  const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // NEW: Goal states
@@ -237,9 +240,20 @@ export default function PreLiveSetupScreen() {
       setIsLoading(true);
 
       if (!practiceMode) {
+        // Check community guidelines acceptance (PROMPT 1)
+        const hasAcceptedGuidelines = await communityGuidelinesService.hasAcceptedGuidelines(user.id);
+        
+        if (!hasAcceptedGuidelines) {
+          console.log('⚠️ User has not accepted community guidelines - showing modal');
+          setShowCommunityGuidelinesModal(true);
+          setIsLoading(false);
+          return;
+        }
+
         const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
         if (!canStream.canStream) {
           Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+          setIsLoading(false);
           return;
         }
 
@@ -282,6 +296,32 @@ export default function PreLiveSetupScreen() {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
     setContentLabel(label);
     setShowContentLabelModal(false);
+  };
+
+  const handleGuidelinesAccept = async () => {
+    if (!user) return;
+
+    try {
+      setIsLoading(true);
+
+      const result = await communityGuidelinesService.recordAcceptance(user.id);
+      
+      if (!result.success) {
+        Alert.alert('Error', result.error || 'Failed to record acceptance');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('✅ Community guidelines accepted');
+      setShowCommunityGuidelinesModal(false);
+
+      // Continue with go live flow
+      handleGoLive();
+    } catch (error) {
+      console.error('Error accepting guidelines:', error);
+      Alert.alert('Error', 'Failed to accept guidelines. Please try again.');
+      setIsLoading(false);
+    }
   };
 
   if (!permission?.granted) {
@@ -551,6 +591,17 @@ export default function PreLiveSetupScreen() {
             <Text style={styles.practiceModeText}>Practice Mode Enabled</Text>
           </View>
         )}
+
+        {/* COMMUNITY GUIDELINES MODAL (PROMPT 1) */}
+        <CommunityGuidelinesModal
+          visible={showCommunityGuidelinesModal}
+          onAccept={handleGuidelinesAccept}
+          onCancel={() => {
+            setShowCommunityGuidelinesModal(false);
+            setIsLoading(false);
+          }}
+          isLoading={isLoading}
+        />
 
         {/* CONTENT LABEL MODAL */}
         <ContentLabelModal

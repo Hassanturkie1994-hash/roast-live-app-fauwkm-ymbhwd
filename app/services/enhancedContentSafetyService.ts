@@ -1,6 +1,7 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
 import { notificationService } from './notificationService';
+import { communityGuidelinesService } from './communityGuidelinesService';
 import { Platform } from 'react-native';
 import * as Network from 'expo-network';
 
@@ -45,7 +46,66 @@ export interface ForcedReviewLock {
 
 class EnhancedContentSafetyService {
   // ============================================
-  // PROMPT 2: Creator Rules Modal
+  // COMMUNITY GUIDELINES (PROMPT 1)
+  // ============================================
+
+  /**
+   * Check if user can livestream
+   * Requires: Community Guidelines acceptance
+   */
+  async canUserLivestream(userId: string): Promise<{ canStream: boolean; reason?: string }> {
+    // Check community guidelines acceptance first
+    const guidelinesCheck = await communityGuidelinesService.canUserLivestream(userId);
+    if (!guidelinesCheck.canStream) {
+      return guidelinesCheck;
+    }
+
+    // Check if user is under forced review
+    const isLocked = await this.isUserLockedForReview(userId);
+    if (isLocked) {
+      return {
+        canStream: false,
+        reason: 'Your account is under review. Please contact support.',
+      };
+    }
+
+    // Check for active bans/suspensions
+    const { data: activeBan } = await supabase
+      .from('suspension_history')
+      .select('*')
+      .eq('user_id', userId)
+      .or('end_at.is.null,end_at.gt.' + new Date().toISOString())
+      .maybeSingle();
+
+    if (activeBan) {
+      const endDate = activeBan.end_at 
+        ? new Date(activeBan.end_at).toLocaleDateString() 
+        : 'permanent';
+      return {
+        canStream: false,
+        reason: `Your account is suspended until ${endDate}. Reason: ${activeBan.reason}`,
+      };
+    }
+
+    // Check for active strikes (3 or more = cannot stream)
+    const { count } = await supabase
+      .from('content_safety_strikes')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('active', true);
+
+    if (count && count >= 3) {
+      return {
+        canStream: false,
+        reason: 'You have 3 active strikes. Streaming is disabled until strikes expire.',
+      };
+    }
+
+    return { canStream: true };
+  }
+
+  // ============================================
+  // CREATOR RULES
   // ============================================
 
   /**
@@ -99,9 +159,9 @@ class EnhancedContentSafetyService {
         .gte('accepted_at', thirtyDaysAgo.toISOString())
         .order('accepted_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error checking creator rules acceptance:', error);
         return false;
       }
@@ -114,7 +174,7 @@ class EnhancedContentSafetyService {
   }
 
   // ============================================
-  // PROMPT 3: Report Reason Categories
+  // REPORT CATEGORIES
   // ============================================
 
   /**
@@ -191,7 +251,7 @@ class EnhancedContentSafetyService {
   }
 
   // ============================================
-  // PROMPT 4: Auto Expiration Logic
+  // AUTO EXPIRATION LOGIC
   // ============================================
 
   /**
@@ -284,7 +344,7 @@ class EnhancedContentSafetyService {
   }
 
   // ============================================
-  // PROMPT 5: Safety Acknowledgement
+  // SAFETY ACKNOWLEDGEMENT
   // ============================================
 
   /**
@@ -296,9 +356,9 @@ class EnhancedContentSafetyService {
         .from('safety_acknowledgement')
         .select('id')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error checking safety acknowledgement:', error);
         return false;
       }
@@ -336,24 +396,8 @@ class EnhancedContentSafetyService {
     }
   }
 
-  /**
-   * Check if user can livestream (requires safety acknowledgement)
-   */
-  async canUserLivestream(userId: string): Promise<{ canStream: boolean; reason?: string }> {
-    const hasAcknowledgement = await this.hasSafetyAcknowledgement(userId);
-    
-    if (!hasAcknowledgement) {
-      return {
-        canStream: false,
-        reason: 'You must accept the Community Guidelines before you can livestream.',
-      };
-    }
-
-    return { canStream: true };
-  }
-
   // ============================================
-  // PROMPT 6: Forced Review System
+  // FORCED REVIEW SYSTEM
   // ============================================
 
   /**
@@ -386,7 +430,7 @@ class EnhancedContentSafetyService {
           .select('id')
           .eq('user_id', userId)
           .eq('is_active', true)
-          .single();
+          .maybeSingle();
 
         if (!existingLock) {
           // Create lock
@@ -423,9 +467,9 @@ class EnhancedContentSafetyService {
         .select('id')
         .eq('user_id', userId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error checking forced review lock:', error);
         return false;
       }
@@ -447,9 +491,9 @@ class EnhancedContentSafetyService {
         .select('*')
         .eq('user_id', userId)
         .eq('is_active', true)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error fetching forced review lock:', error);
         return null;
       }

@@ -8,9 +8,11 @@ import AppLogo from '@/components/AppLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
 import CreatorRulesModal from '@/components/CreatorRulesModal';
+import CommunityGuidelinesModal from '@/components/CommunityGuidelinesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStreaming } from '@/contexts/StreamingContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
+import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
 
 type StreamMode = 'solo' | 'battle';
 
@@ -22,6 +24,7 @@ export default function GoLiveModal() {
   const [contentLabel, setContentLabel] = useState<ContentLabel | null>(null);
   const [showContentLabelModal, setShowContentLabelModal] = useState(false);
   const [showCreatorRulesModal, setShowCreatorRulesModal] = useState(false);
+  const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleCancel = () => {
@@ -56,10 +59,21 @@ export default function GoLiveModal() {
     try {
       setIsLoading(true);
 
+      // Check if user has accepted community guidelines
+      const hasAcceptedGuidelines = await communityGuidelinesService.hasAcceptedGuidelines(user.id);
+      
+      if (!hasAcceptedGuidelines) {
+        console.log('⚠️ User has not accepted community guidelines - showing modal');
+        setShowCommunityGuidelinesModal(true);
+        setIsLoading(false);
+        return;
+      }
+
       // Check if user can stream
       const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
       if (!canStream.canStream) {
         Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+        setIsLoading(false);
         return;
       }
 
@@ -68,6 +82,42 @@ export default function GoLiveModal() {
     } catch (error) {
       console.error('Error checking stream eligibility:', error);
       Alert.alert('Error', 'Failed to validate stream start. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGuidelinesAccept = async () => {
+    if (!user) return;
+
+    try {
+      setIsLoading(true);
+
+      // Record acceptance
+      const result = await communityGuidelinesService.recordAcceptance(user.id);
+      
+      if (!result.success) {
+        Alert.alert('Error', result.error || 'Failed to record acceptance');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('✅ Community guidelines accepted');
+      setShowCommunityGuidelinesModal(false);
+
+      // Continue with stream setup - check if user can stream
+      const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
+      if (!canStream.canStream) {
+        Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Show content label selection
+      setShowContentLabelModal(true);
+    } catch (error) {
+      console.error('Error accepting guidelines:', error);
+      Alert.alert('Error', 'Failed to accept guidelines. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -224,6 +274,16 @@ export default function GoLiveModal() {
           </View>
         </View>
       </View>
+
+      {/* Community Guidelines Modal */}
+      <CommunityGuidelinesModal
+        visible={showCommunityGuidelinesModal}
+        onAccept={handleGuidelinesAccept}
+        onCancel={() => {
+          setShowCommunityGuidelinesModal(false);
+        }}
+        isLoading={isLoading}
+      />
 
       {/* Content Label Selection Modal */}
       <ContentLabelModal

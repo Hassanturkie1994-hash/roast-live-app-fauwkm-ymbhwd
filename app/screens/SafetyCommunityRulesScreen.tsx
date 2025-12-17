@@ -12,11 +12,31 @@ import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 
+interface ContentItem {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+}
+
+interface RuleItem {
+  id: string;
+  title: string;
+  description: string;
+}
+
+interface SuspensionLevel {
+  id: string;
+  level: string;
+  color: string;
+  description: string;
+}
+
 export default function SafetyCommunityRulesScreen() {
   const { colors } = useTheme();
   const [showFAQModal, setShowFAQModal] = useState(false);
 
-  const allowedContent = [
+  const allowedContent: ContentItem[] = [
     { id: 'comedy', icon: '😂', title: 'Comedy', description: 'Humorous content and jokes' },
     { id: 'roast', icon: '🔥', title: 'Roast Humor', description: 'Playful roasting and banter' },
     { id: 'satire', icon: '🎭', title: 'Satire', description: 'Satirical commentary' },
@@ -26,7 +46,7 @@ export default function SafetyCommunityRulesScreen() {
     { id: 'challenge', icon: '🎯', title: 'Challenge Content', description: 'Fun challenges' },
   ];
 
-  const notAllowedContent = [
+  const notAllowedContent: ContentItem[] = [
     { id: 'hate-speech', icon: '❌', title: 'Hate Speech', description: 'Discriminatory language based on race, religion, gender, etc.' },
     { id: 'sexual', icon: '❌', title: 'Sexual Targeting', description: 'Unwanted sexual advances or harassment' },
     { id: 'violence', icon: '❌', title: 'Violence or Threats', description: 'Threats of physical harm or violence' },
@@ -37,19 +57,19 @@ export default function SafetyCommunityRulesScreen() {
     { id: 'non-consensual', icon: '❌', title: 'Non-Consensual Content', description: 'Content shared without permission' },
   ];
 
-  const chatRules = [
+  const chatRules: RuleItem[] = [
     { id: 'spam', title: 'Spam Detection', description: '5 spam messages in 3 seconds triggers auto-warning' },
     { id: 'hate', title: 'Hate Keywords', description: 'Messages with hate speech are automatically blocked' },
     { id: 'bullying', title: 'Bullying Repetition', description: 'Repeated harassment results in timeout' },
   ];
 
-  const giftRules = [
+  const giftRules: RuleItem[] = [
     { id: 'no-refunds', title: 'No Refunds', description: 'Gifts are non-refundable unless fraud is detected' },
     { id: 'commission', title: 'Platform Commission', description: 'Platform takes a commission from all gifts' },
     { id: 'support', title: 'Support, Not Ownership', description: 'Gifting shows support but doesn\'t grant special privileges' },
   ];
 
-  const suspensionLevels = [
+  const suspensionLevels: SuspensionLevel[] = [
     { id: 'warning', level: 'Warning', color: '#FFA500', description: 'First offense - warning issued' },
     { id: 'timeout', level: 'Timeout', color: '#FF6B6B', description: 'Temporary chat restriction (1-60 minutes)' },
     { id: 'suspension', level: 'Suspension', color: '#DC143C', description: 'Account suspended (7-30 days)' },
@@ -81,7 +101,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {allowedContent.map((item) => (
               <View
-                key={`allowed-${item.id}`}
+                key={item.id}
                 style={[styles.contentCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <Text style={styles.contentIcon}>{item.icon}</Text>
@@ -105,7 +125,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {notAllowedContent.map((item) => (
               <View
-                key={`not-allowed-${item.id}`}
+                key={item.id}
                 style={[styles.contentCard, styles.notAllowedCard, { backgroundColor: colors.card, borderColor: '#DC143C' }]}
               >
                 <Text style={styles.contentIcon}>{item.icon}</Text>
@@ -129,7 +149,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {chatRules.map((item) => (
               <View
-                key={`chat-rule-${item.id}`}
+                key={item.id}
                 style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.ruleBullet, { backgroundColor: colors.brandPrimary }]} />
@@ -153,7 +173,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {giftRules.map((item) => (
               <View
-                key={`gift-rule-${item.id}`}
+                key={item.id}
                 style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.ruleBullet, { backgroundColor: '#FFD700' }]} />
@@ -177,7 +197,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {suspensionLevels.map((item) => (
               <View
-                key={`suspension-${item.id}`}
+                key={item.id}
                 style={[styles.suspensionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.suspensionLevel, { backgroundColor: item.color }]}>

@@ -12,6 +12,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -22,12 +23,15 @@ import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import GradientButton from '@/components/GradientButton';
 import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal';
 import CreatorRulesModal from '@/components/CreatorRulesModal';
+import CommunityGuidelinesModal from '@/components/CommunityGuidelinesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { queryCache } from '@/app/services/queryCache';
 import { normalizeStreams, NormalizedStream, RawStreamData } from '@/utils/streamNormalizer';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
+import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
 import { contentSafetyService } from '@/app/services/contentSafetyService';
+import { searchService } from '@/app/services/searchService';
 
 interface Post {
   id: string;
@@ -42,6 +46,14 @@ interface Post {
     display_name: string | null;
     avatar_url: string | null;
   };
+}
+
+interface SearchUserResult {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -135,12 +147,19 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLiveOnly, setShowLiveOnly] = useState(false);
 
+  // Search states (PROMPT 4)
+  const [searchResults, setSearchResults] = useState<SearchUserResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Go Live modal states
   const [showGoLiveModal, setShowGoLiveModal] = useState(false);
   const [streamTitle, setStreamTitle] = useState('');
   const [showContentLabelModal, setShowContentLabelModal] = useState(false);
   const [contentLabel, setContentLabel] = useState<ContentLabel | null>(null);
   const [showCreatorRulesModal, setShowCreatorRulesModal] = useState(false);
+  const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
+  const [isAcceptingGuidelines, setIsAcceptingGuidelines] = useState(false);
 
   // Fetch live streams
   const fetchStreams = useCallback(async () => {
@@ -274,6 +293,44 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [fetchData]);
 
+  // PROMPT 4: User search with debouncing
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchQuery.trim().length === 0) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const result = await searchService.searchUsers(searchQuery);
+        
+        if (result.success) {
+          setSearchResults(result.data as SearchUserResult[]);
+        } else {
+          setSearchResults([]);
+        }
+      } catch (error) {
+        console.error('Error searching users:', error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
   // Memoize stream press handler
   const handleStreamPress = useCallback((stream: NormalizedStream) => {
     router.push({
@@ -285,6 +342,25 @@ export default function HomeScreen() {
   // Memoize post press handler
   const handlePostPress = useCallback((post: Post) => {
     console.log('Post pressed:', post.id);
+  }, []);
+
+  // PROMPT 4: Handle user profile press
+  const handleUserPress = useCallback((userId: string) => {
+    if (!userId) {
+      console.error('Invalid user ID');
+      return;
+    }
+
+    try {
+      setShowSearch(false);
+      setSearchQuery('');
+      router.push({
+        pathname: '/screens/PublicProfileScreen',
+        params: { userId },
+      });
+    } catch (error) {
+      console.error('Error navigating to profile:', error);
+    }
   }, []);
 
   // Go Live handlers
@@ -301,6 +377,15 @@ export default function HomeScreen() {
         return;
       }
 
+      // Check community guidelines acceptance (PROMPT 1)
+      const hasAcceptedGuidelines = await communityGuidelinesService.hasAcceptedGuidelines(user.id);
+      
+      if (!hasAcceptedGuidelines) {
+        console.log('⚠️ User has not accepted community guidelines - showing modal');
+        setShowCommunityGuidelinesModal(true);
+        return;
+      }
+
       const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
       if (!canStream.canStream) {
         Alert.alert('Kan inte starta stream', canStream.reason, [{ text: 'OK' }]);
@@ -311,6 +396,32 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Error in handleGoLivePress:', error);
       Alert.alert('Fel', 'Kunde inte starta live-inställning. Försök igen.');
+    }
+  };
+
+  const handleGuidelinesAccept = async () => {
+    if (!user) return;
+
+    try {
+      setIsAcceptingGuidelines(true);
+
+      const result = await communityGuidelinesService.recordAcceptance(user.id);
+      
+      if (!result.success) {
+        Alert.alert('Error', result.error || 'Failed to record acceptance');
+        return;
+      }
+
+      console.log('✅ Community guidelines accepted');
+      setShowCommunityGuidelinesModal(false);
+
+      // Continue with go live flow
+      setShowGoLiveModal(true);
+    } catch (error) {
+      console.error('Error accepting guidelines:', error);
+      Alert.alert('Error', 'Failed to accept guidelines. Please try again.');
+    } finally {
+      setIsAcceptingGuidelines(false);
     }
   };
 
@@ -462,7 +573,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Search Bar */}
+      {/* Search Bar (PROMPT 4) */}
       {showSearch && (
         <View style={[styles.searchBar, { backgroundColor: colors.backgroundAlt, borderBottomColor: colors.border }]}>
           <UnifiedRoastIcon
@@ -472,11 +583,13 @@ export default function HomeScreen() {
           />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Sök profiler, live-streams, inlägg..."
+            placeholder="Sök profiler..."
             placeholderTextColor={colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoFocus
+            autoCapitalize="none"
+            autoCorrect={false}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -490,70 +603,141 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* Search Results (PROMPT 4) */}
+      {showSearch && searchQuery.length > 0 && (
+        <View style={[styles.searchResults, { backgroundColor: colors.background }]}>
+          {isSearching ? (
+            <View style={styles.searchLoading}>
+              <ActivityIndicator size="small" color={colors.brandPrimary} />
+              <Text style={[styles.searchLoadingText, { color: colors.textSecondary }]}>Searching...</Text>
+            </View>
+          ) : searchResults.length === 0 ? (
+            <View style={styles.searchEmpty}>
+              <UnifiedRoastIcon name="search" size={48} color={colors.textSecondary} />
+              <Text style={[styles.searchEmptyText, { color: colors.text }]}>No users found</Text>
+              <Text style={[styles.searchEmptySubtext, { color: colors.textSecondary }]}>
+                Try a different search term
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => `search-user-${item.id}`}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.searchResultItem, { borderBottomColor: colors.border }]}
+                  onPress={() => handleUserPress(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <Image
+                    source={{
+                      uri: item.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
+                    }}
+                    style={[styles.searchResultAvatar, { backgroundColor: colors.backgroundAlt }]}
+                  />
+                  <View style={styles.searchResultInfo}>
+                    <Text style={[styles.searchResultName, { color: colors.text }]}>
+                      {item.display_name || item.username}
+                    </Text>
+                    <Text style={[styles.searchResultUsername, { color: colors.textSecondary }]}>
+                      @{item.username}
+                    </Text>
+                    {item.bio && (
+                      <Text style={[styles.searchResultBio, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {item.bio}
+                      </Text>
+                    )}
+                  </View>
+                  <UnifiedRoastIcon
+                    name="chevron-right"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.searchResultsList}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </View>
+      )}
+
       {/* Tabs with Live Filter Button */}
-      <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'explore' && { borderBottomColor: colors.brandPrimary }]}
-          onPress={() => setActiveTab('explore')}
-        >
-          <Text style={[styles.tabButtonText, { color: activeTab === 'explore' ? colors.brandPrimary : colors.textSecondary }]}>
-            Utforska
-          </Text>
-        </TouchableOpacity>
+      {!showSearch && (
+        <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'explore' && { borderBottomColor: colors.brandPrimary }]}
+            onPress={() => setActiveTab('explore')}
+          >
+            <Text style={[styles.tabButtonText, { color: activeTab === 'explore' ? colors.brandPrimary : colors.textSecondary }]}>
+              Utforska
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'friends' && { borderBottomColor: colors.brandPrimary }]}
-          onPress={() => setActiveTab('friends')}
-        >
-          <Text style={[styles.tabButtonText, { color: activeTab === 'friends' ? colors.brandPrimary : colors.textSecondary }]}>
-            Följer
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'friends' && { borderBottomColor: colors.brandPrimary }]}
+            onPress={() => setActiveTab('friends')}
+          >
+            <Text style={[styles.tabButtonText, { color: activeTab === 'friends' ? colors.brandPrimary : colors.textSecondary }]}>
+              Följer
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'foryou' && { borderBottomColor: colors.brandPrimary }]}
-          onPress={() => setActiveTab('foryou')}
-        >
-          <Text style={[styles.tabButtonText, { color: activeTab === 'foryou' ? colors.brandPrimary : colors.textSecondary }]}>
-            För dig
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === 'foryou' && { borderBottomColor: colors.brandPrimary }]}
+            onPress={() => setActiveTab('foryou')}
+          >
+            <Text style={[styles.tabButtonText, { color: activeTab === 'foryou' ? colors.brandPrimary : colors.textSecondary }]}>
+              För dig
+            </Text>
+          </TouchableOpacity>
 
-        {/* Live Filter Button - Now acts as a filter */}
-        <TouchableOpacity
-          style={[
-            styles.liveButton,
-            showLiveOnly && { backgroundColor: colors.brandPrimary }
-          ]}
-          onPress={() => setShowLiveOnly(!showLiveOnly)}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.liveDot, !showLiveOnly && { backgroundColor: '#FF0000' }]} />
-          <Text style={[styles.liveButtonText, { color: showLiveOnly ? '#FFFFFF' : colors.text }]}>
-            LIVE
-          </Text>
-        </TouchableOpacity>
-      </View>
+          {/* Live Filter Button - Now acts as a filter */}
+          <TouchableOpacity
+            style={[
+              styles.liveButton,
+              showLiveOnly && { backgroundColor: colors.brandPrimary }
+            ]}
+            onPress={() => setShowLiveOnly(!showLiveOnly)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.liveDot, !showLiveOnly && { backgroundColor: '#FF0000' }]} />
+            <Text style={[styles.liveButtonText, { color: showLiveOnly ? '#FFFFFF' : colors.text }]}>
+              LIVE
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
-      <FlatList
-        data={filteredContent}
-        keyExtractor={keyExtractor}
-        renderItem={renderItem}
-        ListHeaderComponent={ListHeaderComponent}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.brandPrimary}
-          />
-        }
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={5}
-        updateCellsBatchingPeriod={50}
-        initialNumToRender={5}
-        windowSize={5}
+      {!showSearch && (
+        <FlatList
+          data={filteredContent}
+          keyExtractor={keyExtractor}
+          renderItem={renderItem}
+          ListHeaderComponent={ListHeaderComponent}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.brandPrimary}
+            />
+          }
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={5}
+          windowSize={5}
+        />
+      )}
+
+      {/* Community Guidelines Modal (PROMPT 1) */}
+      <CommunityGuidelinesModal
+        visible={showCommunityGuidelinesModal}
+        onAccept={handleGuidelinesAccept}
+        onCancel={() => setShowCommunityGuidelinesModal(false)}
+        isLoading={isAcceptingGuidelines}
       />
 
       {/* Go Live Title Modal */}
@@ -666,6 +850,71 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '400',
+  },
+  searchResults: {
+    flex: 1,
+  },
+  searchLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  searchLoadingText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  searchEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 40,
+  },
+  searchEmptyText: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 20,
+    textAlign: 'center',
+  },
+  searchEmptySubtext: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  searchResultsList: {
+    paddingBottom: 100,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+  },
+  searchResultAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  searchResultInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  searchResultUsername: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  searchResultBio: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 2,
   },
   tabBar: {
     flexDirection: 'row',

@@ -11,10 +11,12 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import RoastIcon from '@/components/Icons/RoastIcon';
+import CommunityGuidelinesModal from '@/components/CommunityGuidelinesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { adminService, AdminRole } from '@/app/services/adminService';
+import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
 
 export default function AccountSettingsScreen() {
   const { signOut, user, profile } = useAuth();
@@ -25,6 +27,8 @@ export default function AccountSettingsScreen() {
   const [isStreamModerator, setIsStreamModerator] = useState(false);
   const [isLoadingRole, setIsLoadingRole] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
+  const [isAcceptingGuidelines, setIsAcceptingGuidelines] = useState(false);
 
   const checkUserRole = useCallback(async () => {
     if (!user) {
@@ -121,6 +125,33 @@ export default function AccountSettingsScreen() {
     router.push('/screens/TransactionHistoryScreen');
   };
 
+  const handleCommunityGuidelinesPress = () => {
+    setShowCommunityGuidelinesModal(true);
+  };
+
+  const handleGuidelinesAccept = async () => {
+    if (!user) return;
+
+    try {
+      setIsAcceptingGuidelines(true);
+
+      const result = await communityGuidelinesService.recordAcceptance(user.id);
+      
+      if (!result.success) {
+        Alert.alert('Error', result.error || 'Failed to record acceptance');
+        return;
+      }
+
+      Alert.alert('Success', 'Community Guidelines accepted successfully');
+      setShowCommunityGuidelinesModal(false);
+    } catch (error) {
+      console.error('Error accepting guidelines:', error);
+      Alert.alert('Error', 'Failed to accept guidelines. Please try again.');
+    } finally {
+      setIsAcceptingGuidelines(false);
+    }
+  };
+
   const getRoleName = (role: AdminRole) => {
     switch (role) {
       case 'HEAD_ADMIN':
@@ -179,7 +210,7 @@ export default function AccountSettingsScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Dashboard & Tools Section - Role-Based */}
+        {/* Dashboard & Tools Section - Role-Based (PROMPT 5) */}
         {isLoadingRole ? (
           <View style={[styles.section, { borderBottomColor: colors.border }]}>
             <ActivityIndicator size="small" color={colors.brandPrimary} />
@@ -571,15 +602,40 @@ export default function AccountSettingsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Safety & Rules</Text>
           </View>
 
+          {/* Community Guidelines - NEW (PROMPT 1) */}
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
-            onPress={() => router.push('/screens/SafetyCommunityRulesScreen' as any)}
+            onPress={handleCommunityGuidelinesPress}
           >
             <View style={styles.settingLeft}>
               <RoastIcon
                 name="shield-flame"
                 size={20}
                 color={colors.brandPrimary}
+              />
+              <View>
+                <Text style={[styles.settingText, { color: colors.text }]}>Community Guidelines</Text>
+                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
+                  Review and accept guidelines
+                </Text>
+              </View>
+            </View>
+            <RoastIcon
+              name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
+            onPress={() => router.push('/screens/SafetyCommunityRulesScreen' as any)}
+          >
+            <View style={styles.settingLeft}>
+              <RoastIcon
+                name="rules"
+                size={20}
+                color={colors.text}
               />
               <Text style={[styles.settingText, { color: colors.text }]}>Safety & Community Rules</Text>
             </View>
@@ -636,7 +692,7 @@ export default function AccountSettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Profile Preferences Section - ENTIRE ROW CLICKABLE */}
+        {/* Profile Preferences Section - ENTIRE ROW CLICKABLE (PROMPT 6) */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="profile" size={20} />
@@ -692,6 +748,14 @@ export default function AccountSettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Community Guidelines Modal */}
+      <CommunityGuidelinesModal
+        visible={showCommunityGuidelinesModal}
+        onAccept={handleGuidelinesAccept}
+        onCancel={() => setShowCommunityGuidelinesModal(false)}
+        isLoading={isAcceptingGuidelines}
+      />
     </View>
   );
 }

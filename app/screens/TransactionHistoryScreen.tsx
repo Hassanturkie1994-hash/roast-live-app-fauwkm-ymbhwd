@@ -17,8 +17,8 @@ import { supabase } from '@/app/integrations/supabase/client';
 interface Transaction {
   id: string;
   amount: number;
-  type: 'add_balance' | 'withdraw' | 'creator_tip';
-  status: 'pending' | 'completed' | 'failed';
+  type: 'add_balance' | 'withdraw' | 'creator_tip' | 'wallet_topup' | 'gift_purchase';
+  status: 'pending' | 'completed' | 'failed' | 'paid' | 'cancelled';
   created_at: string;
 }
 
@@ -42,7 +42,7 @@ export default function TransactionHistoryScreen() {
           .from('wallet')
           .select('balance')
           .eq('user_id', user.id)
-          .single(),
+          .maybeSingle(),
       ]);
 
       if (transactionsData.data) {
@@ -66,10 +66,12 @@ export default function TransactionHistoryScreen() {
   const getTransactionIcon = (type: string) => {
     switch (type) {
       case 'add_balance':
+      case 'wallet_topup':
         return { ios: 'plus.circle.fill', android: 'add_circle', color: colors.gradientEnd };
       case 'withdraw':
         return { ios: 'arrow.down.circle.fill', android: 'download', color: colors.text };
       case 'creator_tip':
+      case 'gift_purchase':
         return { ios: 'gift.fill', android: 'card_giftcard', color: colors.gradientEnd };
       default:
         return { ios: 'circle.fill', android: 'circle', color: colors.text };
@@ -79,10 +81,12 @@ export default function TransactionHistoryScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
+      case 'paid':
         return '#4CAF50';
       case 'pending':
         return '#FFC107';
       case 'failed':
+      case 'cancelled':
         return '#F44336';
       default:
         return colors.textSecondary;
