@@ -38,6 +38,10 @@ interface ProfileData {
   total_streaming_hours: number;
 }
 
+interface UserSettings {
+  profile_visibility: 'public' | 'private';
+}
+
 interface Post {
   id: string;
   media_url: string;
@@ -62,6 +66,7 @@ export default function PublicProfileScreen() {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'streams' | 'stories' | 'supporters'>('posts');
   const [posts, setPosts] = useState<Post[]>([]);
   const [savedStreams, setSavedStreams] = useState<SavedStream[]>([]);
@@ -69,29 +74,23 @@ export default function PublicProfileScreen() {
   const [followLoading, setFollowLoading] = useState(false);
   const [vipClub, setVipClub] = useState<VIPClub | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [postsCount, setPostsCount] = useState(0);
 
   const fetchProfileData = useCallback(async () => {
     if (!userId) return;
 
     try {
-      const [profileData, postsData, streamsData, followData, vipClubData] = await Promise.all([
+      const [profileData, settingsData, followData, vipClubData, postsCountData] = await Promise.all([
         supabase
           .from('profiles')
           .select('*')
           .eq('id', userId)
           .single(),
         supabase
-          .from('posts')
-          .select('*')
+          .from('user_settings')
+          .select('profile_visibility')
           .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(12),
-        supabase
-          .from('saved_streams')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(12),
+          .single(),
         user
           ? supabase
               .from('followers')
@@ -101,31 +100,72 @@ export default function PublicProfileScreen() {
               .maybeSingle()
           : Promise.resolve({ data: null, error: null }),
         unifiedVIPClubService.getVIPClubByCreator(userId),
+        supabase
+          .from('posts')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId),
       ]);
 
       if (profileData.data) {
         setProfile(profileData.data);
       }
-      if (postsData.data) {
-        setPosts(postsData.data);
+
+      if (settingsData.data) {
+        setUserSettings(settingsData.data);
+      } else {
+        // Default to public if no settings
+        setUserSettings({ profile_visibility: 'public' });
       }
-      if (streamsData.data) {
-        setSavedStreams(streamsData.data);
-      }
+
       if (followData.data) {
         setIsFollowing(true);
       } else {
         setIsFollowing(false);
       }
+
       if (vipClubData) {
         setVipClub(vipClubData);
+      }
+
+      setPostsCount(postsCountData.count || 0);
+
+      // Only fetch content if profile is public OR user is following OR it's the user's own profile
+      const isPublic = settingsData.data?.profile_visibility === 'public' || !settingsData.data;
+      const isOwnProfile = user?.id === userId;
+      const canViewContent = isPublic || isFollowing || isOwnProfile;
+
+      if (canViewContent) {
+        const [postsData, streamsData] = await Promise.all([
+          supabase
+            .from('posts')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(12),
+          supabase
+            .from('saved_streams')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(12),
+        ]);
+
+        if (postsData.data) {
+          setPosts(postsData.data);
+        }
+        if (streamsData.data) {
+          setSavedStreams(streamsData.data);
+        }
+      } else {
+        setPosts([]);
+        setSavedStreams([]);
       }
     } catch (error) {
       console.error('Error fetching profile data:', error);
     } finally {
       setLoading(false);
     }
-  }, [userId, user]);
+  }, [userId, user, isFollowing]);
 
   useEffect(() => {
     fetchProfileData();
@@ -144,6 +184,13 @@ export default function PublicProfileScreen() {
           if (profile) {
             setProfile({ ...profile, followers_count: Math.max(0, profile.followers_count - 1) });
           }
+          // Refresh to hide content if profile is private
+          if (userSettings?.profile_visibility === 'private') {
+            setPosts([]);
+            setSavedStreams([]);
+          }
+        } else {
+          Alert.alert('Error', 'Failed to unfollow user');
         }
       } else {
         const result = await followService.followUser(user.id, userId);
@@ -153,6 +200,12 @@ export default function PublicProfileScreen() {
           if (profile) {
             setProfile({ ...profile, followers_count: profile.followers_count + 1 });
           }
+          // Refresh to show content if profile is private
+          if (userSettings?.profile_visibility === 'private') {
+            fetchProfileData();
+          }
+        } else {
+          Alert.alert('Error', 'Failed to follow user');
         }
       }
     } catch (error) {
@@ -167,17 +220,27 @@ export default function PublicProfileScreen() {
     if (!user || !userId) return;
 
     try {
-      const conversation = await privateMessagingService.getOrCreateConversation(user.id, userId);
+      const result = await privateMessagingService.getOrCreateConversation(user.id, userId);
       
-      if (conversation) {
+      if (result.conversation) {
         router.push({
           pathname: '/screens/ChatScreen',
           params: {
-            conversationId: conversation.id,
+            conversationId: result.conversation.id,
             otherUserId: userId,
             otherUserName: profile?.display_name || profile?.username || 'User',
           },
         });
+
+        // Show info if message request was created
+        if (result.needsRequest) {
+          setTimeout(() => {
+            Alert.alert(
+              'Message Request Sent',
+              `Your message request has been sent to ${profile?.display_name || profile?.username}. They need to accept before you can chat.`
+            );
+          }, 500);
+        }
       } else {
         Alert.alert('Error', 'Failed to start conversation');
       }
@@ -205,7 +268,29 @@ export default function PublicProfileScreen() {
     });
   };
 
+  const isPrivateProfile = userSettings?.profile_visibility === 'private';
+  const isOwnProfile = user?.id === userId;
+  const canViewContent = !isPrivateProfile || isFollowing || isOwnProfile;
+
   const renderContent = () => {
+    // Show privacy message if profile is private and user is not following
+    if (isPrivateProfile && !canViewContent) {
+      return (
+        <View style={styles.privateProfileMessage}>
+          <IconSymbol
+            ios_icon_name="lock.fill"
+            android_material_icon_name="lock"
+            size={64}
+            color={colors.textSecondary}
+          />
+          <Text style={[styles.privateProfileTitle, { color: colors.text }]}>This Account is Private</Text>
+          <Text style={[styles.privateProfileSubtext, { color: colors.textSecondary }]}>
+            Follow this account to see their posts and streams
+          </Text>
+        </View>
+      );
+    }
+
     if (activeTab === 'posts') {
       if (posts.length === 0) {
         return (
@@ -409,6 +494,16 @@ export default function PublicProfileScreen() {
                 <Text style={styles.vipBadgeText}>{vipClub.badge_name}</Text>
               </View>
             )}
+            {isPrivateProfile && (
+              <View style={[styles.privateBadge, { backgroundColor: colors.backgroundAlt }]}>
+                <IconSymbol
+                  ios_icon_name="lock.fill"
+                  android_material_icon_name="lock"
+                  size={12}
+                  color={colors.textSecondary}
+                />
+              </View>
+            )}
           </View>
           
           <Text style={[styles.username, { color: colors.textSecondary }]}>@{profile.username}</Text>
@@ -431,7 +526,7 @@ export default function PublicProfileScreen() {
             </View>
             <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
             <View style={styles.stat}>
-              <Text style={[styles.statValue, { color: colors.text }]}>{posts.length}</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{postsCount}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Posts</Text>
             </View>
           </View>
@@ -475,7 +570,7 @@ export default function PublicProfileScreen() {
             <View style={styles.buttonRow}>
               <View style={styles.buttonFlex}>
                 <GradientButton
-                  title={isFollowing ? 'Following' : 'Follow'}
+                  title={followLoading ? 'Loading...' : (isFollowing ? 'Following' : 'Follow')}
                   onPress={handleFollow}
                   size="medium"
                   disabled={followLoading}
@@ -668,6 +763,13 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     textTransform: 'uppercase',
   },
+  privateBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   username: {
     fontSize: 16,
     fontWeight: '600',
@@ -775,6 +877,23 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  privateProfileMessage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 40,
+    gap: 16,
+  },
+  privateProfileTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  privateProfileSubtext: {
+    fontSize: 14,
+    fontWeight: '400',
+    textAlign: 'center',
   },
   postsGrid: {
     flexDirection: 'row',

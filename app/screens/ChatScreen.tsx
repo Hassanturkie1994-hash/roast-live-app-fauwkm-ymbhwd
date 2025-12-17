@@ -11,6 +11,7 @@ import {
   Platform,
   Image,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -34,6 +35,10 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>(conversationId);
   const [otherUserAvatar, setOtherUserAvatar] = useState<string | null>(null);
+  const [isPendingRequest, setIsPendingRequest] = useState(false);
+  const [isRequester, setIsRequester] = useState(false);
+  const [requestId, setRequestId] = useState<string | undefined>();
+  const [canAccess, setCanAccess] = useState(true);
   const flatListRef = useRef<FlatList>(null);
   const channelRef = useRef<any>(null);
 
@@ -54,13 +59,29 @@ export default function ChatScreen() {
     }
   }, [activeConversationId, user]);
 
+  const checkAccess = useCallback(async () => {
+    if (!activeConversationId || !user) return;
+
+    try {
+      const access = await privateMessagingService.checkConversationAccess(activeConversationId, user.id);
+      setCanAccess(access.canAccess);
+      setIsPendingRequest(access.isPending);
+      setIsRequester(access.isRequester);
+    } catch (error) {
+      console.error('Error checking conversation access:', error);
+    }
+  }, [activeConversationId, user]);
+
   const initializeConversation = useCallback(async () => {
     if (!user || !otherUserId || activeConversationId) return;
 
     try {
-      const conversation = await privateMessagingService.getOrCreateConversation(user.id, otherUserId);
-      if (conversation) {
-        setActiveConversationId(conversation.id);
+      const result = await privateMessagingService.getOrCreateConversation(user.id, otherUserId);
+      if (result.conversation) {
+        setActiveConversationId(result.conversation.id);
+        setIsPendingRequest(result.needsRequest);
+        setIsRequester(result.needsRequest);
+        setRequestId(result.requestId);
       }
 
       // Fetch other user's avatar
@@ -87,6 +108,7 @@ export default function ChatScreen() {
     if (!activeConversationId && otherUserId) {
       initializeConversation();
     } else if (activeConversationId) {
+      checkAccess();
       fetchMessages();
     }
   }, [user, activeConversationId, otherUserId]);
@@ -141,10 +163,16 @@ export default function ChatScreen() {
         channelRef.current = null;
       }
     };
-  }, [activeConversationId, user]);
+  }, [activeConversationId, user, fetchMessages]);
 
   const handleSend = async () => {
     if (!inputText.trim() || !user || !activeConversationId || sending) return;
+
+    // Check if this is a pending request and user is not the requester
+    if (isPendingRequest && !isRequester) {
+      Alert.alert('Message Request', 'You need to accept this message request before you can reply.');
+      return;
+    }
 
     const messageContent = inputText.trim();
     setInputText('');
@@ -166,6 +194,53 @@ export default function ChatScreen() {
     } finally {
       setSending(false);
     }
+  };
+
+  const handleAcceptRequest = async () => {
+    if (!requestId) return;
+
+    try {
+      const success = await privateMessagingService.acceptMessageRequest(requestId);
+      if (success) {
+        setIsPendingRequest(false);
+        setCanAccess(true);
+        Alert.alert('Success', 'Message request accepted!');
+      } else {
+        Alert.alert('Error', 'Failed to accept message request');
+      }
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      Alert.alert('Error', 'Failed to accept message request');
+    }
+  };
+
+  const handleRejectRequest = async () => {
+    if (!requestId) return;
+
+    Alert.alert(
+      'Reject Message Request',
+      'Are you sure you want to reject this message request?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const success = await privateMessagingService.rejectMessageRequest(requestId);
+              if (success) {
+                router.back();
+              } else {
+                Alert.alert('Error', 'Failed to reject message request');
+              }
+            } catch (error) {
+              console.error('Error rejecting request:', error);
+              Alert.alert('Error', 'Failed to reject message request');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderMessage = ({ item }: { item: MessageWithSender }) => {
@@ -249,6 +324,49 @@ export default function ChatScreen() {
         <View style={styles.headerRight} />
       </View>
 
+      {/* Message Request Banner */}
+      {isPendingRequest && !isRequester && (
+        <View style={[styles.requestBanner, { backgroundColor: colors.brandPrimary }]}>
+          <View style={styles.requestBannerContent}>
+            <IconSymbol
+              ios_icon_name="envelope.fill"
+              android_material_icon_name="mail"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.requestBannerText}>Message Request</Text>
+          </View>
+          <View style={styles.requestActions}>
+            <TouchableOpacity
+              style={[styles.requestButton, styles.rejectButton]}
+              onPress={handleRejectRequest}
+            >
+              <Text style={styles.requestButtonText}>Reject</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.requestButton, styles.acceptButton]}
+              onPress={handleAcceptRequest}
+            >
+              <Text style={styles.requestButtonText}>Accept</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {isPendingRequest && isRequester && (
+        <View style={[styles.infoBanner, { backgroundColor: colors.backgroundAlt }]}>
+          <IconSymbol
+            ios_icon_name="info.circle.fill"
+            android_material_icon_name="info"
+            size={20}
+            color={colors.textSecondary}
+          />
+          <Text style={[styles.infoBannerText, { color: colors.textSecondary }]}>
+            Message request sent. Waiting for {otherUserName} to accept.
+          </Text>
+        </View>
+      )}
+
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -275,17 +393,18 @@ export default function ChatScreen() {
       <View style={[styles.inputContainer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <TextInput
           style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.text }]}
-          placeholder="Type a message..."
+          placeholder={isPendingRequest && !isRequester ? 'Accept request to reply...' : 'Type a message...'}
           placeholderTextColor={colors.placeholder}
           value={inputText}
           onChangeText={setInputText}
           multiline
           maxLength={1000}
+          editable={!isPendingRequest || isRequester}
         />
         <TouchableOpacity
           style={[styles.sendButton, { backgroundColor: inputText.trim() ? colors.brandPrimary : colors.border }]}
           onPress={handleSend}
-          disabled={!inputText.trim() || sending}
+          disabled={!inputText.trim() || sending || (isPendingRequest && !isRequester)}
         >
           {sending ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -344,6 +463,54 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     width: 40,
+  },
+  requestBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  requestBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  requestBannerText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  requestActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  requestButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  acceptButton: {
+    backgroundColor: '#FFFFFF',
+  },
+  rejectButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  requestButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
   },
   messagesList: {
     paddingHorizontal: 16,

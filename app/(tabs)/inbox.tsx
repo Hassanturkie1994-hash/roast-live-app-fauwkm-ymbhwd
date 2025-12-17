@@ -13,14 +13,15 @@ import {
   FlatList,
   TextInput,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService, NotificationCategory } from '@/app/services/notificationService';
-import { privateMessagingService, ConversationWithUser } from '@/app/services/privateMessagingService';
-import { unifiedVIPClubService, VIPClubMember } from '@/app/services/unifiedVIPClubService';
+import { privateMessagingService, ConversationWithUser, MessageRequest } from '@/app/services/privateMessagingService';
+import { unifiedVIPClubService } from '@/app/services/unifiedVIPClubService';
 import { supabase } from '@/app/integrations/supabase/client';
 
 interface Notification {
@@ -94,6 +95,7 @@ export default function InboxScreen() {
   const [selectedCategory, setSelectedCategory] = useState<NotificationCategory | 'all'>('all');
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [conversations, setConversations] = useState<ConversationWithUser[]>([]);
+  const [messageRequests, setMessageRequests] = useState<(MessageRequest & { requester: any })[]>([]);
   const [vipClubConversations, setVipClubConversations] = useState<VIPClubConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -103,6 +105,7 @@ export default function InboxScreen() {
   const [showStartConversation, setShowStartConversation] = useState(false);
   const [followedUsers, setFollowedUsers] = useState<FollowedUser[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
@@ -145,6 +148,17 @@ export default function InboxScreen() {
     }
   }, [user]);
 
+  const fetchMessageRequests = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const requests = await privateMessagingService.getMessageRequests(user.id);
+      setMessageRequests(requests);
+    } catch (error) {
+      console.error('Error fetching message requests:', error);
+    }
+  }, [user]);
+
   const fetchVIPClubConversations = useCallback(async () => {
     if (!user) return;
 
@@ -175,14 +189,17 @@ export default function InboxScreen() {
     }
   }, [user]);
 
-  const fetchFollowedUsers = useCallback(async () => {
+  const fetchFollowedUsers = useCallback(async (query?: string) => {
     if (!user) return;
 
+    setSearchLoading(true);
     try {
-      const users = await privateMessagingService.getFollowedUsers(user.id);
+      const users = await privateMessagingService.getFollowedUsers(user.id, query);
       setFollowedUsers(users);
     } catch (error) {
       console.error('Error fetching followed users:', error);
+    } finally {
+      setSearchLoading(false);
     }
   }, [user]);
 
@@ -197,6 +214,7 @@ export default function InboxScreen() {
       }
       if (activeSection === 'all' || activeSection === 'messages') {
         fetchConversations();
+        fetchMessageRequests();
       }
       if (activeSection === 'all' || activeSection === 'vip') {
         fetchVIPClubConversations();
@@ -209,6 +227,7 @@ export default function InboxScreen() {
           }
           if (activeSection === 'all' || activeSection === 'messages') {
             fetchConversations();
+            fetchMessageRequests();
           }
           if (activeSection === 'all' || activeSection === 'vip') {
             fetchVIPClubConversations();
@@ -225,7 +244,18 @@ export default function InboxScreen() {
     return () => {
       mounted = false;
     };
-  }, [user, activeSection, fetchNotifications, fetchConversations, fetchVIPClubConversations]);
+  }, [user, activeSection, fetchNotifications, fetchConversations, fetchMessageRequests, fetchVIPClubConversations]);
+
+  // Debounced search for followed users
+  useEffect(() => {
+    if (!showStartConversation) return;
+
+    const timer = setTimeout(() => {
+      fetchFollowedUsers(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, showStartConversation, fetchFollowedUsers]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -234,11 +264,12 @@ export default function InboxScreen() {
     }
     if (activeSection === 'all' || activeSection === 'messages') {
       fetchConversations();
+      fetchMessageRequests();
     }
     if (activeSection === 'all' || activeSection === 'vip') {
       fetchVIPClubConversations();
     }
-  }, [activeSection, fetchNotifications, fetchConversations, fetchVIPClubConversations]);
+  }, [activeSection, fetchNotifications, fetchConversations, fetchMessageRequests, fetchVIPClubConversations]);
 
   const handleMarkAllAsRead = useCallback(async () => {
     if (!user) return;
@@ -282,6 +313,17 @@ export default function InboxScreen() {
     });
   }, []);
 
+  const handleMessageRequestPress = useCallback((request: MessageRequest & { requester: any }) => {
+    router.push({
+      pathname: '/screens/ChatScreen',
+      params: {
+        conversationId: request.conversation_id,
+        otherUserId: request.requester_id,
+        otherUserName: request.requester.display_name || request.requester.username,
+      },
+    });
+  }, []);
+
   const handleVIPClubPress = useCallback((vipConv: VIPClubConversation) => {
     router.push({
       pathname: '/screens/VIPClubChatScreen',
@@ -294,6 +336,7 @@ export default function InboxScreen() {
   }, []);
 
   const handleStartConversation = useCallback(() => {
+    setSearchQuery('');
     fetchFollowedUsers();
     setShowStartConversation(true);
   }, [fetchFollowedUsers]);
@@ -302,22 +345,25 @@ export default function InboxScreen() {
     if (!user) return;
 
     try {
-      const conversation = await privateMessagingService.getOrCreateConversation(user.id, selectedUser.id);
+      const result = await privateMessagingService.getOrCreateConversation(user.id, selectedUser.id);
       
-      if (conversation) {
+      if (result.conversation) {
         setShowStartConversation(false);
         setSearchQuery('');
         router.push({
           pathname: '/screens/ChatScreen',
           params: {
-            conversationId: conversation.id,
+            conversationId: result.conversation.id,
             otherUserId: selectedUser.id,
             otherUserName: selectedUser.display_name || selectedUser.username,
           },
         });
+      } else {
+        Alert.alert('Error', 'Failed to start conversation');
       }
     } catch (error) {
       console.error('Error starting conversation:', error);
+      Alert.alert('Error', 'Failed to start conversation');
     }
   }, [user]);
 
@@ -338,15 +384,15 @@ export default function InboxScreen() {
   const getNotificationIcon = useCallback((type: string) => {
     switch (type) {
       case 'like':
-        return { ios: 'heart.fill', android: 'heart' as const };
+        return { ios: 'heart.fill', android: 'favorite' as const };
       case 'comment':
-        return { ios: 'bubble.left.fill', android: 'chatbubble' as const };
+        return { ios: 'bubble.left.fill', android: 'comment' as const };
       case 'follow':
-        return { ios: 'person.badge.plus.fill', android: 'person-add' as const };
+        return { ios: 'person.badge.plus.fill', android: 'person_add' as const };
       case 'gift_received':
-        return { ios: 'gift.fill', android: 'gift' as const };
+        return { ios: 'gift.fill', android: 'card_giftcard' as const };
       case 'payout_completed':
-        return { ios: 'checkmark.circle.fill', android: 'checkmark-circle' as const };
+        return { ios: 'checkmark.circle.fill', android: 'check_circle' as const };
       case 'warning':
       case 'timeout_ended':
       case 'ban_lifted':
@@ -359,13 +405,9 @@ export default function InboxScreen() {
     }
   }, []);
 
-  const filteredFollowedUsers = followedUsers.filter(u => 
-    u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.display_name && u.display_name.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
   const totalUnread = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
   const totalConversationUnread = conversations.reduce((sum, conv) => sum + conv.unread_count, 0);
+  const totalMessageRequests = messageRequests.length;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -450,10 +492,10 @@ export default function InboxScreen() {
           >
             Messages
           </Text>
-          {totalConversationUnread > 0 && (
+          {(totalConversationUnread > 0 || totalMessageRequests > 0) && (
             <View style={[styles.sectionBadge, { backgroundColor: colors.brandPrimary }]}>
               <Text style={styles.sectionBadgeText}>
-                {totalConversationUnread > 99 ? '99+' : totalConversationUnread}
+                {(totalConversationUnread + totalMessageRequests) > 99 ? '99+' : (totalConversationUnread + totalMessageRequests)}
               </Text>
             </View>
           )}
@@ -499,6 +541,60 @@ export default function InboxScreen() {
           }
           showsVerticalScrollIndicator={false}
         >
+          {/* Message Requests */}
+          {messageRequests.length > 0 && (
+            <View style={styles.allSection}>
+              <Text style={[styles.allSectionTitle, { color: colors.text }]}>Message Requests</Text>
+              {messageRequests.map((request) => (
+                <TouchableOpacity
+                  key={`request-${request.id}`}
+                  style={[styles.requestCard, { backgroundColor: colors.backgroundAlt, borderBottomColor: colors.border }]}
+                  onPress={() => handleMessageRequestPress(request)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.avatarContainer}>
+                    {request.requester.avatar_url ? (
+                      <Image source={{ uri: request.requester.avatar_url }} style={styles.avatar} />
+                    ) : (
+                      <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: colors.card }]}>
+                        <IconSymbol
+                          ios_icon_name="person.fill"
+                          android_material_icon_name="person"
+                          size={24}
+                          color={colors.textSecondary}
+                        />
+                      </View>
+                    )}
+                    <View style={[styles.requestBadge, { backgroundColor: colors.brandPrimary }]}>
+                      <IconSymbol
+                        ios_icon_name="envelope.fill"
+                        android_material_icon_name="mail"
+                        size={12}
+                        color="#FFFFFF"
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.conversationContent}>
+                    <Text style={[styles.conversationName, { color: colors.text }]} numberOfLines={1}>
+                      {request.requester.display_name || request.requester.username}
+                    </Text>
+                    <Text style={[styles.requestText, { color: colors.textSecondary }]}>
+                      Wants to send you a message
+                    </Text>
+                  </View>
+
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron_right"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           {/* Recent Notifications */}
           {notifications.length > 0 && (
             <View style={styles.allSection}>
@@ -698,7 +794,7 @@ export default function InboxScreen() {
             </View>
           )}
 
-          {notifications.length === 0 && conversations.length === 0 && vipClubConversations.length === 0 && (
+          {notifications.length === 0 && conversations.length === 0 && vipClubConversations.length === 0 && messageRequests.length === 0 && (
             <View style={styles.emptyState}>
               <IconSymbol
                 ios_icon_name="tray"
@@ -804,6 +900,7 @@ export default function InboxScreen() {
           >
             {loading ? (
               <View style={styles.centerContent}>
+                <ActivityIndicator size="large" color={colors.brandPrimary} />
                 <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
                   Loading notifications...
                 </Text>
@@ -812,7 +909,7 @@ export default function InboxScreen() {
               <View style={styles.emptyState}>
                 <IconSymbol
                   ios_icon_name="bell.slash"
-                  android_material_icon_name="notifications-off"
+                  android_material_icon_name="notifications_off"
                   size={64}
                   color={colors.textSecondary}
                 />
@@ -895,56 +992,199 @@ export default function InboxScreen() {
             </TouchableOpacity>
           </View>
 
-          <FlatList
-            data={conversations}
-            keyExtractor={(item) => `conversation-${item.id}`}
-            renderItem={({ item }) => (
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.contentContainer}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={colors.brandPrimary}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Message Requests */}
+            {messageRequests.length > 0 && (
+              <View style={styles.requestsSection}>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Message Requests ({messageRequests.length})</Text>
+                {messageRequests.map((request) => (
+                  <TouchableOpacity
+                    key={`msg-request-${request.id}`}
+                    style={[styles.requestCard, { backgroundColor: colors.backgroundAlt, borderBottomColor: colors.border }]}
+                    onPress={() => handleMessageRequestPress(request)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.avatarContainer}>
+                      {request.requester.avatar_url ? (
+                        <Image source={{ uri: request.requester.avatar_url }} style={styles.avatar} />
+                      ) : (
+                        <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: colors.card }]}>
+                          <IconSymbol
+                            ios_icon_name="person.fill"
+                            android_material_icon_name="person"
+                            size={24}
+                            color={colors.textSecondary}
+                          />
+                        </View>
+                      )}
+                      <View style={[styles.requestBadge, { backgroundColor: colors.brandPrimary }]}>
+                        <IconSymbol
+                          ios_icon_name="envelope.fill"
+                          android_material_icon_name="mail"
+                          size={12}
+                          color="#FFFFFF"
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.conversationContent}>
+                      <Text style={[styles.conversationName, { color: colors.text }]} numberOfLines={1}>
+                        {request.requester.display_name || request.requester.username}
+                      </Text>
+                      <Text style={[styles.requestText, { color: colors.textSecondary }]}>
+                        Wants to send you a message
+                      </Text>
+                    </View>
+
+                    <IconSymbol
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="chevron_right"
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Conversations */}
+            {conversations.length > 0 ? (
+              conversations.map((item) => (
+                <TouchableOpacity
+                  key={`conversation-${item.id}`}
+                  style={[styles.conversationCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
+                  onPress={() => handleConversationPress(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.avatarContainer}>
+                    {item.other_user.avatar_url ? (
+                      <Image source={{ uri: item.other_user.avatar_url }} style={styles.avatar} />
+                    ) : (
+                      <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: colors.backgroundAlt }]}>
+                        <IconSymbol
+                          ios_icon_name="person.fill"
+                          android_material_icon_name="person"
+                          size={24}
+                          color={colors.textSecondary}
+                        />
+                      </View>
+                    )}
+                    {item.unread_count > 0 && (
+                      <View style={[styles.unreadBadge, { backgroundColor: colors.brandPrimary }]}>
+                        <Text style={styles.unreadBadgeText}>{item.unread_count}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.conversationContent}>
+                    <View style={styles.conversationHeader}>
+                      <Text style={[styles.conversationName, { color: colors.text }]} numberOfLines={1}>
+                        {item.other_user.display_name || item.other_user.username}
+                      </Text>
+                      {item.last_message && (
+                        <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
+                          {formatTime(item.last_message.created_at)}
+                        </Text>
+                      )}
+                    </View>
+                    {item.last_message ? (
+                      <Text
+                        style={[
+                          styles.lastMessage,
+                          { color: item.unread_count > 0 ? colors.text : colors.textSecondary },
+                          item.unread_count > 0 && styles.unreadMessage,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {item.last_message.content}
+                      </Text>
+                    ) : (
+                      <Text style={[styles.noMessages, { color: colors.textSecondary }]}>No messages yet</Text>
+                    )}
+                  </View>
+
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron_right"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <IconSymbol
+                  ios_icon_name="bubble.left.and.bubble.right"
+                  android_material_icon_name="chat"
+                  size={64}
+                  color={colors.textSecondary}
+                />
+                <Text style={[styles.emptyText, { color: colors.text }]}>No conversations yet</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+                  Start a conversation by tapping the button above
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </>
+      )}
+
+      {/* VIP Clubs Section */}
+      {activeSection === 'vip' && (
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.contentContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.brandPrimary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          {vipClubConversations.length > 0 ? (
+            vipClubConversations.map((item) => (
               <TouchableOpacity
-                style={[styles.conversationCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
-                onPress={() => handleConversationPress(item)}
+                key={`vip-club-${item.id}`}
+                style={[styles.vipClubCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
+                onPress={() => handleVIPClubPress(item)}
                 activeOpacity={0.7}
               >
-                <View style={styles.avatarContainer}>
-                  {item.other_user.avatar_url ? (
-                    <Image source={{ uri: item.other_user.avatar_url }} style={styles.avatar} />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: colors.backgroundAlt }]}>
-                      <IconSymbol
-                        ios_icon_name="person.fill"
-                        android_material_icon_name="person"
-                        size={24}
-                        color={colors.textSecondary}
-                      />
-                    </View>
-                  )}
-                  {item.unread_count > 0 && (
-                    <View style={[styles.unreadBadge, { backgroundColor: colors.brandPrimary }]}>
-                      <Text style={styles.unreadBadgeText}>{item.unread_count}</Text>
-                    </View>
-                  )}
+                <View style={[styles.vipClubIcon, { backgroundColor: item.badge_color }]}>
+                  <IconSymbol
+                    ios_icon_name="crown.fill"
+                    android_material_icon_name="workspace_premium"
+                    size={24}
+                    color="#FFFFFF"
+                  />
                 </View>
 
-                <View style={styles.conversationContent}>
-                  <View style={styles.conversationHeader}>
-                    <Text style={[styles.conversationName, { color: colors.text }]} numberOfLines={1}>
-                      {item.other_user.display_name || item.other_user.username}
+                <View style={styles.vipClubContent}>
+                  <View style={styles.vipClubHeader}>
+                    <Text style={[styles.vipClubName, { color: colors.text }]} numberOfLines={1}>
+                      {item.club_name}
                     </Text>
-                    {item.last_message && (
+                    {item.last_message_at && (
                       <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
-                        {formatTime(item.last_message.created_at)}
+                        {formatTime(item.last_message_at)}
                       </Text>
                     )}
                   </View>
                   {item.last_message ? (
-                    <Text
-                      style={[
-                        styles.lastMessage,
-                        { color: item.unread_count > 0 ? colors.text : colors.textSecondary },
-                        item.unread_count > 0 && styles.unreadMessage,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {item.last_message.content}
+                    <Text style={[styles.lastMessage, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {item.last_message}
                     </Text>
                   ) : (
                     <Text style={[styles.noMessages, { color: colors.textSecondary }]}>No messages yet</Text>
@@ -958,90 +1198,8 @@ export default function InboxScreen() {
                   color={colors.textSecondary}
                 />
               </TouchableOpacity>
-            )}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                tintColor={colors.brandPrimary}
-              />
-            }
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <IconSymbol
-                  ios_icon_name="bubble.left.and.bubble.right"
-                  android_material_icon_name="chat"
-                  size={64}
-                  color={colors.textSecondary}
-                />
-                <Text style={[styles.emptyText, { color: colors.text }]}>No conversations yet</Text>
-                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-                  Start a conversation by tapping the button above
-                </Text>
-              </View>
-            }
-          />
-        </>
-      )}
-
-      {/* VIP Clubs Section */}
-      {activeSection === 'vip' && (
-        <FlatList
-          data={vipClubConversations}
-          keyExtractor={(item) => `vip-club-${item.id}`}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.vipClubCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
-              onPress={() => handleVIPClubPress(item)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.vipClubIcon, { backgroundColor: item.badge_color }]}>
-                <IconSymbol
-                  ios_icon_name="crown.fill"
-                  android_material_icon_name="workspace_premium"
-                  size={24}
-                  color="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.vipClubContent}>
-                <View style={styles.vipClubHeader}>
-                  <Text style={[styles.vipClubName, { color: colors.text }]} numberOfLines={1}>
-                    {item.club_name}
-                  </Text>
-                  {item.last_message_at && (
-                    <Text style={[styles.timestamp, { color: colors.textSecondary }]}>
-                      {formatTime(item.last_message_at)}
-                    </Text>
-                  )}
-                </View>
-                {item.last_message ? (
-                  <Text style={[styles.lastMessage, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {item.last_message}
-                  </Text>
-                ) : (
-                  <Text style={[styles.noMessages, { color: colors.textSecondary }]}>No messages yet</Text>
-                )}
-              </View>
-
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron_right"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
-          )}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={colors.brandPrimary}
-            />
-          }
-          ListEmptyComponent={
+            ))
+          ) : (
             <View style={styles.emptyState}>
               <IconSymbol
                 ios_icon_name="crown"
@@ -1054,8 +1212,8 @@ export default function InboxScreen() {
                 Join a creator&apos;s VIP Club to access exclusive group chat
               </Text>
             </View>
-          }
-        />
+          )}
+        </ScrollView>
       )}
 
       {/* Start Conversation Modal */}
@@ -1069,7 +1227,10 @@ export default function InboxScreen() {
           <View style={[styles.startConversationModal, { backgroundColor: colors.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Start Conversation</Text>
-              <TouchableOpacity onPress={() => setShowStartConversation(false)}>
+              <TouchableOpacity onPress={() => {
+                setShowStartConversation(false);
+                setSearchQuery('');
+              }}>
                 <IconSymbol
                   ios_icon_name="xmark"
                   android_material_icon_name="close"
@@ -1094,62 +1255,79 @@ export default function InboxScreen() {
                 onChangeText={setSearchQuery}
                 autoCapitalize="none"
               />
-            </View>
-
-            <FlatList
-              data={filteredFollowedUsers}
-              keyExtractor={(item) => `followed-user-${item.id}`}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.userItem, { borderBottomColor: colors.border }]}
-                  onPress={() => handleSelectUser(item)}
-                  activeOpacity={0.7}
-                >
-                  {item.avatar_url ? (
-                    <Image source={{ uri: item.avatar_url }} style={styles.userAvatar} />
-                  ) : (
-                    <View style={[styles.userAvatar, styles.avatarPlaceholder, { backgroundColor: colors.backgroundAlt }]}>
-                      <IconSymbol
-                        ios_icon_name="person.fill"
-                        android_material_icon_name="person"
-                        size={24}
-                        color={colors.textSecondary}
-                      />
-                    </View>
-                  )}
-                  <View style={styles.userInfo}>
-                    <Text style={[styles.userName, { color: colors.text }]}>
-                      {item.display_name || item.username}
-                    </Text>
-                    <Text style={[styles.userUsername, { color: colors.textSecondary }]}>
-                      @{item.username}
-                    </Text>
-                  </View>
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
                   <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron_right"
+                    ios_icon_name="xmark.circle.fill"
+                    android_material_icon_name="cancel"
                     size={20}
                     color={colors.textSecondary}
                   />
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={
-                <View style={styles.emptyState}>
-                  <IconSymbol
-                    ios_icon_name="person.2"
-                    android_material_icon_name="people"
-                    size={64}
-                    color={colors.textSecondary}
-                  />
-                  <Text style={[styles.emptyText, { color: colors.text }]}>
-                    {searchQuery ? 'No users found' : 'No followed users'}
-                  </Text>
-                  <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-                    {searchQuery ? 'Try a different search' : 'Follow users to start conversations'}
-                  </Text>
-                </View>
-              }
-            />
+            </View>
+
+            {searchLoading ? (
+              <View style={styles.searchLoadingContainer}>
+                <ActivityIndicator size="small" color={colors.brandPrimary} />
+                <Text style={[styles.searchLoadingText, { color: colors.textSecondary }]}>Searching...</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={followedUsers}
+                keyExtractor={(item) => `followed-user-${item.id}`}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.userItem, { borderBottomColor: colors.border }]}
+                    onPress={() => handleSelectUser(item)}
+                    activeOpacity={0.7}
+                  >
+                    {item.avatar_url ? (
+                      <Image source={{ uri: item.avatar_url }} style={styles.userAvatar} />
+                    ) : (
+                      <View style={[styles.userAvatar, styles.avatarPlaceholder, { backgroundColor: colors.backgroundAlt }]}>
+                        <IconSymbol
+                          ios_icon_name="person.fill"
+                          android_material_icon_name="person"
+                          size={24}
+                          color={colors.textSecondary}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.userInfo}>
+                      <Text style={[styles.userName, { color: colors.text }]}>
+                        {item.display_name || item.username}
+                      </Text>
+                      <Text style={[styles.userUsername, { color: colors.textSecondary }]}>
+                        @{item.username}
+                      </Text>
+                    </View>
+                    <IconSymbol
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="chevron_right"
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyState}>
+                    <IconSymbol
+                      ios_icon_name="person.2"
+                      android_material_icon_name="people"
+                      size={64}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={[styles.emptyText, { color: colors.text }]}>
+                      {searchQuery ? 'No users found' : 'No followed users'}
+                    </Text>
+                    <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+                      {searchQuery ? 'Try a different search' : 'Follow users to start conversations'}
+                    </Text>
+                  </View>
+                }
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -1314,6 +1492,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 80,
+    gap: 16,
   },
   loadingText: {
     fontSize: 16,
@@ -1346,6 +1525,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
   viewAllButton: {
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -1354,6 +1539,30 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  requestsSection: {
+    marginBottom: 16,
+  },
+  requestCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  requestBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   notificationCard: {
     flexDirection: 'row',
@@ -1536,6 +1745,17 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
+  },
+  searchLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  searchLoadingText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   userItem: {
     flexDirection: 'row',
