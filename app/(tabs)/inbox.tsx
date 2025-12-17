@@ -150,7 +150,7 @@ export default function InboxScreen() {
             club_name: membership.club.club_name,
             creator_id: membership.club.creator_id,
             badge_color: membership.club.badge_color,
-            unread_count: 0, // TODO: Implement unread tracking
+            unread_count: 0,
             last_message: lastMessage?.message || null,
             last_message_at: lastMessage?.created_at || null,
           };
@@ -439,31 +439,32 @@ export default function InboxScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {Object.entries(CATEGORY_CONFIG).map(([key, config]) => (
+              {/* FIX: Added proper keys to mapped category chips */}
+              {Object.entries(CATEGORY_CONFIG).map(([categoryKey, config]) => (
                 <TouchableOpacity
-                  key={`category-${key}`}
+                  key={`category-chip-${categoryKey}`}
                   style={[
                     styles.categoryChip,
                     {
                       backgroundColor:
-                        selectedCategory === key ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
+                        selectedCategory === categoryKey ? (colors.brandPrimary || '#A40028') : colors.backgroundAlt,
                     },
                   ]}
-                  onPress={() => setSelectedCategory(key as NotificationCategory)}
+                  onPress={() => setSelectedCategory(categoryKey as NotificationCategory)}
                   activeOpacity={0.7}
                 >
                   <Text
                     style={[
                       styles.categoryChipText,
-                      { color: selectedCategory === key ? '#FFFFFF' : colors.text },
+                      { color: selectedCategory === categoryKey ? '#FFFFFF' : colors.text },
                     ]}
                   >
                     {config.title}
                   </Text>
-                  {unreadCounts[key] > 0 && (
+                  {unreadCounts[categoryKey] > 0 && (
                     <View style={styles.categoryBadge}>
                       <Text style={styles.categoryBadgeText}>
-                        {unreadCounts[key] > 99 ? '99+' : unreadCounts[key]}
+                        {unreadCounts[categoryKey] > 99 ? '99+' : unreadCounts[categoryKey]}
                       </Text>
                     </View>
                   )}
@@ -562,7 +563,7 @@ export default function InboxScreen() {
       {activeSection === 'messages' && (
         <FlatList
           data={conversations}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => `conversation-${item.id}`}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.conversationCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
@@ -653,7 +654,7 @@ export default function InboxScreen() {
       {activeSection === 'vip' && (
         <FlatList
           data={vipClubConversations}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => `vip-club-${item.id}`}
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.vipClubCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}

@@ -151,7 +151,7 @@ export default function TransactionHistoryScreen() {
               transactions.map((transaction) => {
                 const icon = getTransactionIcon(transaction.type);
                 return (
-                  <View key={transaction.id} style={styles.transactionItem}>
+                  <View key={`transaction-${transaction.id}`} style={styles.transactionItem}>
                     <View style={styles.transactionLeft}>
                       <View style={styles.iconContainer}>
                         <IconSymbol

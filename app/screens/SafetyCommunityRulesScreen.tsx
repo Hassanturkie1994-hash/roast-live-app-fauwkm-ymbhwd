@@ -81,7 +81,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {allowedContent.map((item) => (
               <View
-                key={item.id}
+                key={`allowed-${item.id}`}
                 style={[styles.contentCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <Text style={styles.contentIcon}>{item.icon}</Text>
@@ -105,7 +105,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {notAllowedContent.map((item) => (
               <View
-                key={item.id}
+                key={`not-allowed-${item.id}`}
                 style={[styles.contentCard, styles.notAllowedCard, { backgroundColor: colors.card, borderColor: '#DC143C' }]}
               >
                 <Text style={styles.contentIcon}>{item.icon}</Text>
@@ -129,7 +129,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {chatRules.map((item) => (
               <View
-                key={item.id}
+                key={`chat-rule-${item.id}`}
                 style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.ruleBullet, { backgroundColor: colors.brandPrimary }]} />
@@ -153,7 +153,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {giftRules.map((item) => (
               <View
-                key={item.id}
+                key={`gift-rule-${item.id}`}
                 style={[styles.ruleCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.ruleBullet, { backgroundColor: '#FFD700' }]} />
@@ -177,7 +177,7 @@ export default function SafetyCommunityRulesScreen() {
           <View style={styles.itemsContainer}>
             {suspensionLevels.map((item) => (
               <View
-                key={item.id}
+                key={`suspension-${item.id}`}
                 style={[styles.suspensionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
                 <View style={[styles.suspensionLevel, { backgroundColor: item.color }]}>

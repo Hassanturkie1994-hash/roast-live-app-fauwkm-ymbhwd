@@ -2,12 +2,23 @@
 import { supabase } from '@/app/integrations/supabase/client';
 
 export const searchService = {
+  /**
+   * Search users with partial, case-insensitive matching
+   * Supports searching by username and display_name
+   */
   async searchUsers(query: string) {
     try {
+      if (!query || query.trim().length === 0) {
+        return { success: true, data: [] };
+      }
+
+      const searchTerm = query.trim().toLowerCase();
+
+      // Use ilike for case-insensitive partial matching
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
-        .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+        .select('id, username, display_name, avatar_url, bio')
+        .or(`username.ilike.%${searchTerm}%,display_name.ilike.%${searchTerm}%`)
         .limit(20);
 
       if (error) {
@@ -15,7 +26,34 @@ export const searchService = {
         return { success: false, data: [], error };
       }
 
-      return { success: true, data: data || [] };
+      // Sort results by relevance (exact matches first, then partial matches)
+      const sortedData = (data || []).sort((a, b) => {
+        const aUsername = (a.username || '').toLowerCase();
+        const bUsername = (b.username || '').toLowerCase();
+        const aDisplayName = (a.display_name || '').toLowerCase();
+        const bDisplayName = (b.display_name || '').toLowerCase();
+
+        // Exact username match gets highest priority
+        if (aUsername === searchTerm) return -1;
+        if (bUsername === searchTerm) return 1;
+
+        // Exact display name match
+        if (aDisplayName === searchTerm) return -1;
+        if (bDisplayName === searchTerm) return 1;
+
+        // Username starts with search term
+        if (aUsername.startsWith(searchTerm) && !bUsername.startsWith(searchTerm)) return -1;
+        if (bUsername.startsWith(searchTerm) && !aUsername.startsWith(searchTerm)) return 1;
+
+        // Display name starts with search term
+        if (aDisplayName.startsWith(searchTerm) && !bDisplayName.startsWith(searchTerm)) return -1;
+        if (bDisplayName.startsWith(searchTerm) && !aDisplayName.startsWith(searchTerm)) return 1;
+
+        // Alphabetical order as fallback
+        return aUsername.localeCompare(bUsername);
+      });
+
+      return { success: true, data: sortedData };
     } catch (error) {
       console.error('Error in searchUsers:', error);
       return { success: false, data: [], error };
@@ -24,10 +62,16 @@ export const searchService = {
 
   async searchPosts(query: string) {
     try {
+      if (!query || query.trim().length === 0) {
+        return { success: true, data: [] };
+      }
+
+      const searchTerm = query.trim();
+
       const { data, error } = await supabase
         .from('posts')
         .select('*, profiles(*)')
-        .ilike('caption', `%${query}%`)
+        .ilike('caption', `%${searchTerm}%`)
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -45,10 +89,16 @@ export const searchService = {
 
   async searchStreams(query: string) {
     try {
+      if (!query || query.trim().length === 0) {
+        return { success: true, data: [] };
+      }
+
+      const searchTerm = query.trim();
+
       const { data, error } = await supabase
         .from('streams')
         .select('*, users(*)')
-        .ilike('title', `%${query}%`)
+        .ilike('title', `%${searchTerm}%`)
         .eq('status', 'live')
         .order('viewer_count', { ascending: false })
         .limit(20);
@@ -67,6 +117,13 @@ export const searchService = {
 
   async searchAll(query: string) {
     try {
+      if (!query || query.trim().length === 0) {
+        return {
+          success: true,
+          data: { users: [], posts: [], streams: [] },
+        };
+      }
+
       const [usersResult, postsResult, streamsResult] = await Promise.all([
         searchService.searchUsers(query),
         searchService.searchPosts(query),

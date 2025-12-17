@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,17 +13,16 @@ import {
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { adminService } from '@/app/services/adminService';
+import { searchService } from '@/app/services/searchService';
 import { followService } from '@/app/services/followService';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface SearchUserResult {
   id: string;
   username: string;
-  display_name: string;
+  display_name: string | null;
   avatar_url: string | null;
-  followers_count: number;
-  role: string;
+  bio: string | null;
 }
 
 export default function SearchScreen() {
@@ -33,51 +32,92 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState<SearchUserResult[]>([]);
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const performSearch = useCallback(async (query: string) => {
     if (!query || query.trim().length === 0) {
       setUsers([]);
+      setError(null);
       return;
     }
 
     setLoading(true);
-    try {
-      const results = await adminService.searchUsers(query, 20);
-      setUsers(results);
+    setError(null);
 
-      // Check following status for each user
-      if (user) {
-        const followingStatuses: Record<string, boolean> = {};
-        for (const searchUser of results) {
-          const isFollowing = await followService.isFollowing(user.id, searchUser.id);
-          followingStatuses[searchUser.id] = isFollowing;
+    try {
+      const result = await searchService.searchUsers(query);
+      
+      if (result.success) {
+        setUsers(result.data as SearchUserResult[]);
+
+        // Check following status for each user
+        if (user) {
+          const followingStatuses: Record<string, boolean> = {};
+          for (const searchUser of result.data) {
+            try {
+              const isFollowing = await followService.isFollowing(user.id, searchUser.id);
+              followingStatuses[searchUser.id] = isFollowing;
+            } catch (followError) {
+              console.error('Error checking follow status:', followError);
+              followingStatuses[searchUser.id] = false;
+            }
+          }
+          setFollowingMap(followingStatuses);
         }
-        setFollowingMap(followingStatuses);
+      } else {
+        setError('Failed to search users. Please try again.');
+        setUsers([]);
       }
     } catch (error) {
       console.error('Error performing search:', error);
+      setError('An error occurred while searching. Please try again.');
+      setUsers([]);
     } finally {
       setLoading(false);
     }
   }, [user]);
 
+  // Debounced search effect
   useEffect(() => {
-    if (searchQuery.length > 0) {
-      const delaySearch = setTimeout(() => {
-        performSearch(searchQuery);
-      }, 300);
+    // Clear previous timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
 
-      return () => clearTimeout(delaySearch);
+    if (searchQuery.length > 0) {
+      // Set new timer for debounced search
+      debounceTimerRef.current = setTimeout(() => {
+        performSearch(searchQuery);
+      }, 300); // 300ms debounce
     } else {
       setUsers([]);
+      setError(null);
     }
+
+    // Cleanup
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [searchQuery, performSearch]);
 
   const handleUserPress = useCallback((userId: string) => {
-    router.push({
-      pathname: '/screens/PublicProfileScreen',
-      params: { userId },
-    });
+    if (!userId) {
+      console.error('Invalid user ID');
+      return;
+    }
+
+    try {
+      router.push({
+        pathname: '/screens/PublicProfileScreen',
+        params: { userId },
+      });
+    } catch (error) {
+      console.error('Error navigating to profile:', error);
+    }
   }, []);
 
   const handleFollowToggle = useCallback(async (userId: string) => {
@@ -103,13 +143,13 @@ export default function SearchScreen() {
 
     return (
       <View style={styles.section}>
-        {users.map((searchUser, index) => {
+        {users.map((searchUser) => {
           const isFollowing = followingMap[searchUser.id];
           const isCurrentUser = user?.id === searchUser.id;
 
           return (
             <TouchableOpacity
-              key={searchUser.id || `user-${index}`}
+              key={`user-${searchUser.id}`}
               style={[styles.userCard, { backgroundColor: colors.card }]}
               onPress={() => handleUserPress(searchUser.id)}
               activeOpacity={0.7}
@@ -127,9 +167,11 @@ export default function SearchScreen() {
                 <Text style={[styles.userUsername, { color: colors.textSecondary }]}>
                   @{searchUser.username}
                 </Text>
-                <Text style={[styles.userFollowers, { color: colors.textSecondary }]}>
-                  {searchUser.followers_count || 0} followers
-                </Text>
+                {searchUser.bio && (
+                  <Text style={[styles.userBio, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {searchUser.bio}
+                  </Text>
+                )}
               </View>
               {!isCurrentUser && (
                 <TouchableOpacity
@@ -186,6 +228,8 @@ export default function SearchScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoFocus
+            autoCapitalize="none"
+            autoCorrect={false}
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')}>
@@ -204,11 +248,25 @@ export default function SearchScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Searching...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.emptyState}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle"
+              android_material_icon_name="error"
+              size={64}
+              color={colors.textSecondary}
+            />
+            <Text style={[styles.emptyText, { color: colors.text }]}>Search Error</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+              {error}
+            </Text>
           </View>
         ) : searchQuery.length === 0 ? (
           <View style={styles.emptyState}>
@@ -337,9 +395,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '400',
   },
-  userFollowers: {
+  userBio: {
     fontSize: 12,
     fontWeight: '400',
+    marginTop: 2,
   },
   followButton: {
     paddingHorizontal: 20,
