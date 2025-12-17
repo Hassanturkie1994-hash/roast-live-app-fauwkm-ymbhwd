@@ -22,7 +22,17 @@ export function VIPClubProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedClubId, setSelectedClubId] = useState<string | null>(null);
 
-  const loadClubs = useCallback(async () => {
+  // Load clubs when user changes
+  useEffect(() => {
+    if (user) {
+      loadClubs();
+    } else {
+      setClubs([]);
+      setSelectedClubId(null);
+    }
+  }, [user]);
+
+  const loadClubs = async () => {
     if (!user) return;
 
     try {
@@ -53,17 +63,7 @@ export function VIPClubProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [user, selectedClubId]);
-
-  // Load clubs when user changes
-  useEffect(() => {
-    if (user) {
-      loadClubs();
-    } else {
-      setClubs([]);
-      setSelectedClubId(null);
-    }
-  }, [user, loadClubs]);
+  };
 
   const refreshClubs = async () => {
     await loadClubs();

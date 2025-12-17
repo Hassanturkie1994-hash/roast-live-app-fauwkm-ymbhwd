@@ -52,7 +52,7 @@ export default function ModeratorBadgeAnimation({ username }: ModeratorBadgeAnim
         }),
       ])
     ).start();
-  }, [scaleAnim, fadeAnim, glowAnim]);
+  }, []);
 
   const glowOpacity = glowAnim.interpolate({
     inputRange: [0, 1],

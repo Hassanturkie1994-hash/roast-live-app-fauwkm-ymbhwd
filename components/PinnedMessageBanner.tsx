@@ -33,7 +33,35 @@ export default function PinnedMessageBanner({
   const [fadeAnim] = useState(new Animated.Value(0));
   const channelRef = React.useRef<any>(null);
 
-  const fetchPinnedMessage = useCallback(async () => {
+  useEffect(() => {
+    fetchPinnedMessage();
+    subscribeToPinnedMessages();
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [streamId]);
+
+  useEffect(() => {
+    if (pinnedMessage) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [pinnedMessage]);
+
+  const fetchPinnedMessage = async () => {
     try {
       const { data, error } = await supabase
         .from('stream_pinned_comments')
@@ -54,9 +82,9 @@ export default function PinnedMessageBanner({
     } catch (error) {
       console.error('Error in fetchPinnedMessage:', error);
     }
-  }, [streamId]);
+  };
 
-  const subscribeToPinnedMessages = useCallback(() => {
+  const subscribeToPinnedMessages = () => {
     const channel = supabase
       .channel(`stream:${streamId}:pinned`)
       .on('broadcast', { event: 'pinned_message_update' }, (payload) => {
@@ -66,35 +94,7 @@ export default function PinnedMessageBanner({
       .subscribe();
 
     channelRef.current = channel;
-  }, [streamId, fetchPinnedMessage]);
-
-  useEffect(() => {
-    fetchPinnedMessage();
-    subscribeToPinnedMessages();
-
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
-  }, [fetchPinnedMessage, subscribeToPinnedMessages]);
-
-  useEffect(() => {
-    if (pinnedMessage) {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [pinnedMessage, fadeAnim]);
+  };
 
   const handleUnpin = async () => {
     if (!pinnedMessage || !onUnpin) return;

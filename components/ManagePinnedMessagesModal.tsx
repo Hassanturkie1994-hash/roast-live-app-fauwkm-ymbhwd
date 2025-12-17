@@ -37,7 +37,13 @@ export default function ManagePinnedMessagesModal({
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const fetchPinnedMessages = useCallback(async () => {
+  useEffect(() => {
+    if (visible) {
+      fetchPinnedMessages();
+    }
+  }, [visible]);
+
+  const fetchPinnedMessages = async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -57,13 +63,7 @@ export default function ManagePinnedMessagesModal({
     } finally {
       setIsLoading(false);
     }
-  }, [streamId]);
-
-  useEffect(() => {
-    if (visible) {
-      fetchPinnedMessages();
-    }
-  }, [visible, fetchPinnedMessages]);
+  };
 
   const handleUnpin = async (messageId: string, messageText: string) => {
     Alert.alert(

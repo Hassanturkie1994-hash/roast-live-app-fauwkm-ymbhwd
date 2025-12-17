@@ -352,7 +352,7 @@ export default function WebRTCLivePublisher({
     return () => {
       cleanup();
     };
-  }, [rtcPublishUrl, webRTCReady, initializeWebRTCStream]);
+  }, [rtcPublishUrl, webRTCReady]);
 
   const cleanup = () => {
     console.log('🧹 Cleaning up WebRTC resources');

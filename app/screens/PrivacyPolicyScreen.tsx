@@ -23,7 +23,11 @@ export default function PrivacyPolicyScreen() {
   const [acceptedDate, setAcceptedDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadAcceptanceStatus = useCallback(async () => {
+  useEffect(() => {
+    loadAcceptanceStatus();
+  }, [user]);
+
+  const loadAcceptanceStatus = async () => {
     if (!user) return;
     
     setLoading(true);
@@ -34,11 +38,7 @@ export default function PrivacyPolicyScreen() {
       setAgreed(true);
     }
     setLoading(false);
-  }, [user]);
-
-  useEffect(() => {
-    loadAcceptanceStatus();
-  }, [loadAcceptanceStatus]);
+  };
 
   const handleAccept = async () => {
     if (!user) return;

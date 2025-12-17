@@ -62,7 +62,73 @@ export default function ViewerListModal({
   const [activeGuestCount, setActiveGuestCount] = useState(0);
   const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
 
-  const fetchViewers = useCallback(async () => {
+  const fetchData = useCallback(async () => {
+    await Promise.all([
+      fetchViewers(),
+      fetchFanClubBadges(),
+      fetchModerators(),
+      fetchActiveGuests(),
+      fetchSeatsLockStatus(),
+    ]);
+  }, [streamId, streamerId]);
+
+  useEffect(() => {
+    if (visible) {
+      fetchData();
+      
+      // Auto-refresh viewer list every 5 seconds
+      const interval = setInterval(fetchData, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [visible, fetchData]);
+
+  const fetchFanClubBadges = async () => {
+    const fanClub = await fanClubService.getFanClub(streamerId);
+    if (!fanClub) return;
+
+    const members = await fanClubService.getFanClubMembers(fanClub.id);
+    const badgeMap = new Map();
+    members.forEach((member) => {
+      badgeMap.set(member.user_id, {
+        color: fanClub.badge_color,
+        name: fanClub.club_name,
+      });
+    });
+    setFanClubBadges(badgeMap);
+  };
+
+  const fetchModerators = async () => {
+    const mods = await moderationService.getModerators(streamerId);
+    const modIds = new Set(mods.map((m) => m.user_id));
+    setModeratorIds(modIds);
+  };
+
+  const fetchActiveGuests = async () => {
+    try {
+      const activeGuests = await streamGuestService.getActiveGuestSeats(streamId);
+      const guestIds = new Set(activeGuests.map((g) => g.user_id).filter((id): id is string => id !== null));
+      setActiveGuestIds(guestIds);
+      setActiveGuestCount(activeGuests.length);
+    } catch (error) {
+      console.error('Error fetching active guests:', error);
+    }
+  };
+
+  const fetchSeatsLockStatus = async () => {
+    try {
+      const { data } = await supabase
+        .from('streams')
+        .select('seats_locked')
+        .eq('id', streamId)
+        .single();
+      
+      setSeatsLocked(data?.seats_locked || false);
+    } catch (error) {
+      console.error('Error fetching seats lock status:', error);
+    }
+  };
+
+  const fetchViewers = async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
@@ -83,75 +149,7 @@ export default function ViewerListModal({
     } finally {
       setIsLoading(false);
     }
-  }, [streamId]);
-
-  const fetchFanClubBadges = useCallback(async () => {
-    const fanClub = await fanClubService.getFanClub(streamerId);
-    if (!fanClub) return;
-
-    const members = await fanClubService.getFanClubMembers(fanClub.id);
-    const badgeMap = new Map();
-    members.forEach((member) => {
-      badgeMap.set(member.user_id, {
-        color: fanClub.badge_color,
-        name: fanClub.club_name,
-      });
-    });
-    setFanClubBadges(badgeMap);
-  }, [streamerId]);
-
-  const fetchModerators = useCallback(async () => {
-    const mods = await moderationService.getModerators(streamerId);
-    const modIds = new Set(mods.map((m) => m.user_id));
-    setModeratorIds(modIds);
-  }, [streamerId]);
-
-  const fetchActiveGuests = useCallback(async () => {
-    try {
-      const activeGuests = await streamGuestService.getActiveGuestSeats(streamId);
-      const guestIds = new Set(activeGuests.map((g) => g.user_id).filter((id): id is string => id !== null));
-      setActiveGuestIds(guestIds);
-      setActiveGuestCount(activeGuests.length);
-    } catch (error) {
-      console.error('Error fetching active guests:', error);
-    }
-  }, [streamId]);
-
-  const fetchSeatsLockStatus = useCallback(async () => {
-    try {
-      const { data } = await supabase
-        .from('streams')
-        .select('seats_locked')
-        .eq('id', streamId)
-        .single();
-      
-      setSeatsLocked(data?.seats_locked || false);
-    } catch (error) {
-      console.error('Error fetching seats lock status:', error);
-    }
-  }, [streamId]);
-
-  const fetchData = useCallback(async () => {
-    await Promise.all([
-      fetchViewers(),
-      fetchFanClubBadges(),
-      fetchModerators(),
-      fetchActiveGuests(),
-      fetchSeatsLockStatus(),
-    ]);
-  }, [fetchViewers, fetchFanClubBadges, fetchModerators, fetchActiveGuests, fetchSeatsLockStatus]);
-
-  useEffect(() => {
-    if (visible) {
-      fetchData();
-      
-      // Auto-refresh viewer list every 5 seconds
-      const interval = setInterval(fetchData, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [visible, fetchData]);
-
-
+  };
 
   const handleViewerPress = (viewer: Viewer) => {
     if (isStreamer || isModerator) {

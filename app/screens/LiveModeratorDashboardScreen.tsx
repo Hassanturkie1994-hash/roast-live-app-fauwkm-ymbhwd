@@ -25,7 +25,11 @@ export default function LiveModeratorDashboardScreen() {
     actionsToday: 0,
   });
 
-  const checkAccess = useCallback(async () => {
+  useEffect(() => {
+    checkAccess();
+  }, [user]);
+
+  const checkAccess = async () => {
     if (!user) {
       router.replace('/auth/login');
       return;
@@ -41,11 +45,7 @@ export default function LiveModeratorDashboardScreen() {
 
     await fetchStats();
     setLoading(false);
-  }, [user]);
-
-  useEffect(() => {
-    checkAccess();
-  }, [checkAccess]);
+  };
 
   const fetchStats = async () => {
     try {

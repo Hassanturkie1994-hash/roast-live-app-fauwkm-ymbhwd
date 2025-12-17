@@ -37,7 +37,13 @@ export default function JoinClubModal({
   const [club, setClub] = useState<CreatorClub | null>(null);
   const [isMember, setIsMember] = useState(false);
 
-  const loadClubData = useCallback(async () => {
+  useEffect(() => {
+    if (visible && creatorId) {
+      loadClubData();
+    }
+  }, [visible, creatorId]);
+
+  const loadClubData = async () => {
     setLoading(true);
     try {
       const clubData = await creatorClubService.getClubByCreator(creatorId);
@@ -52,13 +58,7 @@ export default function JoinClubModal({
     } finally {
       setLoading(false);
     }
-  }, [creatorId, user]);
-
-  useEffect(() => {
-    if (visible && creatorId) {
-      loadClubData();
-    }
-  }, [visible, creatorId, loadClubData]);
+  };
 
   const handleJoinClub = async () => {
     if (!user || !club) return;

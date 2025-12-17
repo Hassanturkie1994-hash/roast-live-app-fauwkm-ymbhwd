@@ -42,9 +42,6 @@ export default function GiftPopupAnimation({
   const isMedium = amount >= 50 && amount < 100;
 
   useEffect(() => {
-    const isMediumGift = amount >= 50 && amount < 100;
-    const isExpensiveGift = amount >= 100;
-
     // Sequence: Slide in → Glow pulse → Hold → Fade out
     Animated.sequence([
       // 1. Slide into center with scale
@@ -109,7 +106,7 @@ export default function GiftPopupAnimation({
     setTimeout(() => {
       particles.forEach((particle, index) => {
         const angle = (index / particles.length) * Math.PI * 2;
-        const distance = isExpensiveGift ? 150 : isMediumGift ? 100 : 80;
+        const distance = isExpensive ? 150 : isMedium ? 100 : 80;
         const targetX = Math.cos(angle) * distance;
         const targetY = Math.sin(angle) * distance;
 
@@ -145,7 +142,7 @@ export default function GiftPopupAnimation({
     }, 400);
 
     // Screen shake for expensive gifts
-    if (isExpensiveGift) {
+    if (isExpensive) {
       setTimeout(() => {
         Animated.sequence([
           Animated.timing(shakeAnim, {
@@ -171,7 +168,7 @@ export default function GiftPopupAnimation({
         ]).start();
       }, 400);
     }
-  }, [onAnimationComplete, slideAnim, scaleAnim, fadeAnim, glowAnim, shakeAnim, particles, amount, isExpensive, isMedium]);
+  }, []);
 
   const glowScale = glowAnim.interpolate({
     inputRange: [0, 1],

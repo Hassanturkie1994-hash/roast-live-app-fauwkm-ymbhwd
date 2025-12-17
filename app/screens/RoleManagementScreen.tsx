@@ -46,7 +46,11 @@ export default function RoleManagementScreen() {
   const [newUserRole, setNewUserRole] = useState<AdminRole | null>(null);
   const [isCreatingUser, setIsCreatingUser] = useState(false);
 
-  const checkAccess = useCallback(async () => {
+  useEffect(() => {
+    checkAccess();
+  }, [user]);
+
+  const checkAccess = async () => {
     if (!user) {
       router.replace('/auth/login');
       return;
@@ -62,11 +66,7 @@ export default function RoleManagementScreen() {
 
     await fetchUsers();
     setLoading(false);
-  }, [user]);
-
-  useEffect(() => {
-    checkAccess();
-  }, [checkAccess]);
+  };
 
   const fetchUsers = async () => {
     try {
