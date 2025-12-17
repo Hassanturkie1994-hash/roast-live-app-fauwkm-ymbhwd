@@ -43,6 +43,18 @@ interface GuestSeat {
   cameraDisabledByHost: boolean;
 }
 
+/**
+ * BroadcastScreen
+ * 
+ * CRITICAL FIXES APPLIED:
+ * 1. Wrapped state machine hook in try-catch with error UI fallback
+ * 2. Fixed camera/mic permissions hooks (imported directly from expo-camera)
+ * 3. Added runtime safety checks before calling startStream/endStream
+ * 4. Ensured component ALWAYS returns JSX (no undefined returns)
+ * 5. Added early returns with loading/error states
+ * 6. Prevented navigation until permissions are granted
+ * 7. Added detailed error logging for debugging
+ */
 export default function BroadcastScreen() {
   useKeepAwake();
   
@@ -58,7 +70,7 @@ export default function BroadcastScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   
-  // CRITICAL FIX: Wrap state machine hook in try-catch with detailed error handling
+  // CRITICAL FIX 1: Wrap state machine hook in try-catch with detailed error handling
   let stateMachine;
   let stateMachineError: Error | null = null;
   
@@ -77,7 +89,7 @@ export default function BroadcastScreen() {
     
     stateMachineError = error;
     
-    // Return error UI if state machine is not available
+    // CRITICAL FIX 4: Return error UI if state machine is not available
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: '#000000' }]}>
         <IconSymbol
@@ -111,7 +123,7 @@ export default function BroadcastScreen() {
   console.log('📊 [BROADCAST] State machine state:', state);
   console.log('📊 [BROADCAST] State machine error:', stateMachineErrorState);
   
-  // CRITICAL FIX: Import hooks directly from expo-camera
+  // CRITICAL FIX 2: Import hooks directly from expo-camera
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   
@@ -145,6 +157,7 @@ export default function BroadcastScreen() {
     }
   }, [streamId]);
 
+  // CRITICAL FIX 6: Check permissions on mount
   useEffect(() => {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
@@ -191,7 +204,7 @@ export default function BroadcastScreen() {
         console.log('📝 Title:', streamTitle);
         console.log('🏷️ Content Label:', contentLabel);
 
-        // CRITICAL FIX: Verify startStream is a function before calling
+        // CRITICAL FIX 3: Verify startStream is a function before calling
         console.log('🔍 [BROADCAST] Verifying startStream function...');
         console.log('Type of startStream:', typeof startStream);
         
@@ -286,7 +299,7 @@ export default function BroadcastScreen() {
     try {
       console.log('🛑 [BROADCAST] Ending stream...');
       
-      // CRITICAL FIX: Verify endStream is a function before calling
+      // CRITICAL FIX 3: Verify endStream is a function before calling
       if (!endStream) {
         console.error('❌ [BROADCAST] endStream is undefined');
         Alert.alert('Error', 'Stream service is not available');
@@ -329,7 +342,7 @@ export default function BroadcastScreen() {
     router.replace('/(tabs)/(home)');
   };
 
-  // CRITICAL FIX: Handle initialization errors
+  // CRITICAL FIX 4: Handle initialization errors
   if (initError) {
     console.error('❌ [BROADCAST] Initialization error:', initError);
     return (
@@ -357,7 +370,7 @@ export default function BroadcastScreen() {
     );
   }
 
-  // CRITICAL FIX: Always return JSX - add early return with loading state
+  // CRITICAL FIX 5: Always return JSX - add early return with loading state
   if (!cameraPermission || !micPermission) {
     console.log('⏳ [BROADCAST] Permissions still loading...');
     return (
@@ -370,6 +383,7 @@ export default function BroadcastScreen() {
     );
   }
 
+  // CRITICAL FIX 6: Block navigation if permissions not granted
   if (!cameraPermission.granted || !micPermission.granted) {
     console.log('⚠️ [BROADCAST] Permissions not granted');
     return (
@@ -437,6 +451,8 @@ export default function BroadcastScreen() {
   }
 
   console.log('✅ [BROADCAST] Rendering camera view');
+  
+  // CRITICAL FIX 4: Final safety check - ensure we always return JSX
   return (
     <View style={styles.container}>
       <CameraView

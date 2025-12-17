@@ -15,10 +15,11 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { DeviceBanGuard } from '@/components/DeviceBanGuard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
+import withEditableWrapper_ from '@/babel-plugins/react/withEditableWrapper_';
 
 SplashScreen.preventAutoHideAsync();
 
-// FIX ISSUE 4: Safe window dimensions with defaults
+// CRITICAL FIX: Safe window dimensions with defaults
 const getWindowDimensions = () => {
   try {
     const dims = Dimensions.get('window');
@@ -95,7 +96,7 @@ function RootLayoutContent() {
     }
   }, [fontsLoaded]);
 
-  // FIX ISSUE 6: Delay rendering until providers are ready
+  // CRITICAL FIX: Delay rendering until providers are ready
   useEffect(() => {
     // Ensure window dimensions are available
     const dims = getWindowDimensions();
@@ -127,22 +128,27 @@ function RootLayoutContent() {
 /**
  * RootLayout (iOS)
  * 
- * CRITICAL FIX: Correct provider hierarchy
+ * CRITICAL FIX: Correct provider hierarchy with EditableContext
  * 
  * Provider order (top → bottom):
  * 1. ErrorBoundary (outermost - catches all errors)
- * 2. ThemeProvider (theme context for all components)
- * 3. AuthProvider (authentication state)
- * 4. LiveStreamStateMachineProvider (live stream state machine) ← ADDED
- * 5. StreamingProvider (streaming context)
- * 6. CameraEffectsProvider (camera filters/effects) ← ADDED
- * 7. ModeratorsProvider (moderator management)
- * 8. VIPClubProvider (VIP club features)
- * 9. WidgetProvider (widget state)
- * 10. RootLayoutContent (actual app content)
+ * 2. EditableContext (from withEditableWrapper_ - MUST be at root for babel plugin)
+ * 3. ThemeProvider (theme context for all components)
+ * 4. AuthProvider (authentication state)
+ * 5. LiveStreamStateMachineProvider (live stream state machine)
+ * 6. StreamingProvider (streaming context)
+ * 7. CameraEffectsProvider (camera filters/effects)
+ * 8. ModeratorsProvider (moderator management)
+ * 9. VIPClubProvider (VIP club features)
+ * 10. WidgetProvider (widget state)
+ * 11. RootLayoutContent (actual app content)
+ * 
+ * IMPORTANT: All providers MUST be mounted before any screen that uses them
  */
-export default function RootLayout() {
+function RootLayoutBase() {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🚀 [LAYOUT] RootLayout mounting (iOS)...');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return (
     <ErrorBoundary FallbackComponent={GlobalErrorFallback}>
@@ -166,6 +172,12 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
+
+// CRITICAL FIX: Wrap the entire layout with EditableContext provider
+// This ensures EditableElement_ components can access the context
+const RootLayout = withEditableWrapper_(RootLayoutBase);
+
+export default RootLayout;
 
 const styles = StyleSheet.create({
   errorContainer: {

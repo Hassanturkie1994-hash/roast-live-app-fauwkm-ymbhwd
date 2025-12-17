@@ -1,8 +1,9 @@
+
 /* eslint-disable */
 
 // @eslint-ignore-file
 // @ts-nocheck
-import { cloneElement, PropsWithChildren, useContext } from "react";
+import React, { cloneElement, PropsWithChildren, useContext } from "react";
 import { EditableContext } from "./withEditableWrapper_";
 import { Platform } from "react-native";
 
@@ -28,12 +29,41 @@ export const getType = (el: any): ElementTypes | undefined => {
   return undefined;
 };
 
-const toArray = (object: T | T[]): T[] => {
+const toArray = <T,>(object: T | T[]): T[] => {
   if (Array.isArray(object)) return object;
   return [object];
 };
 
+/**
+ * EditableElement_ Component
+ * 
+ * CRITICAL FIX: Added runtime safety checks to prevent crashes
+ * 
+ * This component is injected by the babel plugin and wraps elements
+ * to make them editable in the Natively editor.
+ * 
+ * IMPORTANT: This component requires EditableContext from withEditableWrapper_
+ * to be mounted at the app root.
+ */
 export default function EditableElement_(_props: PropsWithChildren<any>) {
+  // CRITICAL FIX: Safely access context with fallback
+  let context;
+  try {
+    context = useContext(EditableContext);
+  } catch (error) {
+    console.error('❌ [EditableElement_] Failed to access EditableContext:', error);
+    // Return children without editable functionality
+    const { children } = _props;
+    return children;
+  }
+
+  // CRITICAL FIX: If context is undefined, return children without editable functionality
+  if (!context) {
+    console.warn('⚠️ [EditableElement_] EditableContext is not available, rendering without editable functionality');
+    const { children } = _props;
+    return children;
+  }
+
   const {
     editModeEnabled,
     selected,
@@ -42,9 +72,16 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
     hovered,
     pushHovered,
     popHovered,
-  } = useContext(EditableContext);
+  } = context;
 
   const { children } = _props;
+  
+  // CRITICAL FIX: Validate children exists
+  if (!children) {
+    console.warn('⚠️ [EditableElement_] No children provided');
+    return null;
+  }
+
   const { props } = children;
 
   // If we are not running in the web the windows will causes
@@ -56,8 +93,8 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
   const type = getType(children);
   const __sourceLocation = props.__sourceLocation;
   const __trace = props.__trace;
-  const id = __trace.join("");
-  const attributes = overwrittenProps[id] ?? {};
+  const id = __trace?.join("") || 'unknown';
+  const attributes = overwrittenProps?.[id] ?? {};
 
   const editStyling =
     selected === id
@@ -71,6 +108,8 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
       : {};
 
   const onClick = (ev: any) => {
+    if (!onElementClick) return;
+    
     ev.stopPropagation();
     ev.preventDefault();
     onElementClick({
@@ -86,10 +125,10 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
   };
 
   const editProps = {
-    onMouseOver: () => pushHovered(id),
-    onMouseLeave: () => popHovered(id),
-    onClick: (ev) => onClick(ev),
-    onPress: (ev) => onClick(ev),
+    onMouseOver: pushHovered ? () => pushHovered(id) : undefined,
+    onMouseLeave: popHovered ? () => popHovered(id) : undefined,
+    onClick: (ev: any) => onClick(ev),
+    onPress: (ev: any) => onClick(ev),
   };
 
   if (type === "Text") {
@@ -135,4 +174,12 @@ export default function EditableElement_(_props: PropsWithChildren<any>) {
       children: children.props.children,
     });
   }
+
+  // CRITICAL FIX: Always return valid JSX
+  return children;
+}
+
+// Verify export is not undefined
+if (typeof EditableElement_ === 'undefined') {
+  console.error('❌ CRITICAL: EditableElement_ is undefined at export time!');
 }
