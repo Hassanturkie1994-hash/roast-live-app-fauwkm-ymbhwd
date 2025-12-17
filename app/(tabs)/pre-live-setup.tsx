@@ -135,6 +135,28 @@ export default function PreLiveSetupScreen() {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
+  // FIXED: Separate function to navigate to broadcaster screen
+  const navigateToBroadcaster = useCallback(() => {
+    console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
+    
+    router.push({
+      pathname: '/(tabs)/broadcast',
+      params: {
+        streamTitle,
+        contentLabel: contentLabel || 'family_friendly',
+        aboutLive,
+        practiceMode: practiceMode.toString(),
+        whoCanWatch,
+        selectedModerators: JSON.stringify(selectedModerators),
+        selectedVIPClub: selectedVIPClub || '',
+        giftGoal: giftGoal || '',
+        roastGoalViewers: roastGoalViewers || '0',
+      },
+    });
+
+    console.log('✅ [PRE-LIVE] Navigation initiated successfully');
+  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers]);
+
   const handleGoLive = useCallback(async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
 
@@ -234,24 +256,8 @@ export default function PreLiveSetupScreen() {
 
       console.log('✅ [PRE-LIVE] Validation passed');
 
-      console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
-      
-      router.push({
-        pathname: '/(tabs)/broadcast',
-        params: {
-          streamTitle,
-          contentLabel,
-          aboutLive,
-          practiceMode: practiceMode.toString(),
-          whoCanWatch,
-          selectedModerators: JSON.stringify(selectedModerators),
-          selectedVIPClub: selectedVIPClub || '',
-          giftGoal: giftGoal || '',
-          roastGoalViewers: roastGoalViewers || '0',
-        },
-      });
-
-      console.log('✅ [PRE-LIVE] Navigation initiated successfully');
+      // Navigate to broadcaster screen
+      navigateToBroadcaster();
     } catch (error) {
       console.error('❌ [PRE-LIVE] Error in handleGoLive:', error);
       Alert.alert('Error', 'Failed to start stream setup. Please try again.');
@@ -260,7 +266,7 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, practiceMode, aboutLive, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers, streamMode, battleFormat]);
+  }, [streamTitle, contentLabel, user, practiceMode, streamMode, battleFormat, navigateToBroadcaster]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -268,6 +274,7 @@ export default function PreLiveSetupScreen() {
     setShowContentLabelModal(false);
   };
 
+  // FIXED: After accepting guidelines, continue with the flow without recursion
   const handleGuidelinesAccept = async () => {
     if (!user) return;
 
@@ -285,12 +292,29 @@ export default function PreLiveSetupScreen() {
       console.log('✅ Community guidelines accepted');
       setShowCommunityGuidelinesModal(false);
 
-      // Continue with go live flow
-      handleGoLive();
+      // FIXED: Continue with validation and navigation instead of calling handleGoLive again
+      if (!practiceMode) {
+        const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
+        if (!canStream.canStream) {
+          Alert.alert('Cannot Start Stream', canStream.reason, [{ text: 'OK' }]);
+          setIsLoading(false);
+          return;
+        }
+
+        await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
+      }
+
+      console.log('✅ [PRE-LIVE] Validation passed after guidelines acceptance');
+
+      // Navigate to broadcaster screen
+      navigateToBroadcaster();
     } catch (error) {
       console.error('Error accepting guidelines:', error);
       Alert.alert('Error', 'Failed to accept guidelines. Please try again.');
-      setIsLoading(false);
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
