@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -52,8 +52,7 @@ export default function LeaderboardScreen() {
 
   useEffect(() => {
     fetchLeaderboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchLeaderboard]);
 
   const onRefresh = () => {
     setRefreshing(true);
