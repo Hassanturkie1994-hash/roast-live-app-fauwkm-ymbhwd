@@ -54,6 +54,7 @@ interface GuestSeat {
  * 5. Conditional logic moved AFTER all hooks
  * 6. Prevented navigation until permissions are granted
  * 7. Added detailed error logging for debugging
+ * 8. Fixed all useEffect dependency arrays
  */
 export default function BroadcastScreen() {
   useKeepAwake();
