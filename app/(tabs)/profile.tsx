@@ -27,12 +27,21 @@ interface Post {
   created_at: string;
 }
 
+interface Story {
+  id: string;
+  media_url: string;
+  created_at: string;
+  expires_at: string;
+  views_count: number;
+}
+
 export default function ProfileScreen() {
   const { user, profile, signOut } = useAuth();
   const { colors } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<'replays' | 'posts' | 'stories'>('replays');
   const [posts, setPosts] = useState<Post[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
   const [likedPosts, setLikedPosts] = useState<Post[]>([]);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -42,11 +51,18 @@ export default function ProfileScreen() {
     if (!user) return;
 
     try {
-      const [postsData, likedData, profileData, walletData] = await Promise.all([
+      const [postsData, storiesData, likedData, profileData, walletData] = await Promise.all([
         supabase
           .from('posts')
           .select('*')
           .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .then(res => ({ data: res.data || [], error: res.error })),
+        supabase
+          .from('stories')
+          .select('*')
+          .eq('user_id', user.id)
+          .gt('expires_at', new Date().toISOString())
           .order('created_at', { ascending: false })
           .then(res => ({ data: res.data || [], error: res.error })),
         supabase
@@ -70,6 +86,7 @@ export default function ProfileScreen() {
       ]);
 
       if (postsData.data) setPosts(postsData.data);
+      if (storiesData.data) setStories(storiesData.data);
       if (likedData.data) {
         const liked = likedData.data.map((item: any) => item.posts).filter(Boolean);
         setLikedPosts(liked);
@@ -127,6 +144,13 @@ export default function ProfileScreen() {
 
   const handleArchivedStreams = () => {
     router.push('/screens/ArchivedStreamsScreen');
+  };
+
+  const handleStoryPress = (story: Story) => {
+    router.push({
+      pathname: '/screens/StoryViewerScreen',
+      params: { storyId: story.id },
+    });
   };
 
   const renderContent = () => {
@@ -205,20 +229,47 @@ export default function ProfileScreen() {
     }
 
     // Stories tab
+    if (stories.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <UnifiedRoastIcon
+            name="hot-circle"
+            size={48}
+            color={colors.textSecondary}
+          />
+          <Text style={[styles.emptyText, { color: colors.text }]}>Inga story-höjdpunkter</Text>
+          <TouchableOpacity 
+            style={[styles.createButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+            onPress={handleCreateStory}
+          >
+            <Text style={[styles.createButtonText, { color: colors.text }]}>Skapa en story</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     return (
-      <View style={styles.emptyState}>
-        <UnifiedRoastIcon
-          name="hot-circle"
-          size={48}
-          color={colors.textSecondary}
-        />
-        <Text style={[styles.emptyText, { color: colors.text }]}>Inga story-höjdpunkter</Text>
-        <TouchableOpacity 
-          style={[styles.createButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
-          onPress={handleCreateStory}
-        >
-          <Text style={[styles.createButtonText, { color: colors.text }]}>Skapa en story</Text>
-        </TouchableOpacity>
+      <View style={styles.storiesGrid}>
+        {stories.map((story, index) => (
+          <TouchableOpacity
+            key={index}
+            style={[styles.storyCard, { backgroundColor: colors.card, width: (screenWidth - 6) / 3 }]}
+            onPress={() => handleStoryPress(story)}
+            activeOpacity={0.8}
+          >
+            <Image source={{ uri: story.media_url }} style={styles.storyImage} />
+            <View style={styles.storyOverlay}>
+              <View style={styles.storyStats}>
+                <UnifiedRoastIcon
+                  name="eye"
+                  size={16}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.storyStatText}>{story.views_count}</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ))}
       </View>
     );
   };
@@ -292,59 +343,47 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* Wallet Balance - Clickable */}
-          <TouchableOpacity 
-            style={[styles.walletCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
-            onPress={() => router.push('/screens/WalletScreen')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.walletLeft}>
-              <UnifiedRoastIcon name="lava-wallet" size={24} />
-              <Text style={[styles.walletLabel, { color: colors.text }]}>Saldo</Text>
-            </View>
-            <View style={styles.walletRight}>
-              <Text style={[styles.walletAmount, { color: colors.brandPrimary }]}>{walletBalance.toFixed(2)} SEK</Text>
-              <UnifiedRoastIcon
-                name="chevron-right"
-                size={16}
-                color={colors.textSecondary}
-              />
-            </View>
-          </TouchableOpacity>
+          {/* Compact Action Buttons Row */}
+          <View style={styles.compactActionsRow}>
+            {/* Wallet Balance */}
+            <TouchableOpacity 
+              style={[styles.compactCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+              onPress={() => router.push('/screens/WalletScreen')}
+              activeOpacity={0.7}
+            >
+              <UnifiedRoastIcon name="lava-wallet" size={18} />
+              <View style={styles.compactCardContent}>
+                <Text style={[styles.compactCardLabel, { color: colors.textSecondary }]}>Saldo</Text>
+                <Text style={[styles.compactCardValue, { color: colors.brandPrimary }]}>{walletBalance.toFixed(0)} SEK</Text>
+              </View>
+            </TouchableOpacity>
 
-          {/* Saved Streams Link */}
-          <TouchableOpacity 
-            style={[styles.savedStreamsCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
-            onPress={handleSavedStreams}
-            activeOpacity={0.7}
-          >
-            <View style={styles.savedStreamsLeft}>
-              <UnifiedRoastIcon name="video" size={24} />
-              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Sparade streams</Text>
-            </View>
-            <UnifiedRoastIcon
-              name="chevron-right"
-              size={16}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
+            {/* Saved Streams */}
+            <TouchableOpacity 
+              style={[styles.compactCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+              onPress={handleSavedStreams}
+              activeOpacity={0.7}
+            >
+              <UnifiedRoastIcon name="video" size={18} />
+              <View style={styles.compactCardContent}>
+                <Text style={[styles.compactCardLabel, { color: colors.textSecondary }]}>Sparade</Text>
+                <Text style={[styles.compactCardValue, { color: colors.text }]}>Streams</Text>
+              </View>
+            </TouchableOpacity>
 
-          {/* Archived Streams Link */}
-          <TouchableOpacity 
-            style={[styles.savedStreamsCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
-            onPress={handleArchivedStreams}
-            activeOpacity={0.7}
-          >
-            <View style={styles.savedStreamsLeft}>
-              <UnifiedRoastIcon name="history" size={24} />
-              <Text style={[styles.savedStreamsLabel, { color: colors.text }]}>Streamhistorik</Text>
-            </View>
-            <UnifiedRoastIcon
-              name="chevron-right"
-              size={16}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
+            {/* Stream History */}
+            <TouchableOpacity 
+              style={[styles.compactCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]} 
+              onPress={handleArchivedStreams}
+              activeOpacity={0.7}
+            >
+              <UnifiedRoastIcon name="history" size={18} />
+              <View style={styles.compactCardContent}>
+                <Text style={[styles.compactCardLabel, { color: colors.textSecondary }]}>Historik</Text>
+                <Text style={[styles.compactCardValue, { color: colors.text }]}>Streams</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.buttonRow}>
             <View style={styles.buttonFlex}>
@@ -548,6 +587,33 @@ const styles = StyleSheet.create({
     width: 1,
     height: 30,
   },
+  compactActionsRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 8,
+    marginBottom: 16,
+  },
+  compactCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    gap: 8,
+  },
+  compactCardContent: {
+    flex: 1,
+  },
+  compactCardLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  compactCardValue: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
   buttonRow: {
     flexDirection: 'row',
     width: '100%',
@@ -584,55 +650,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  walletCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginTop: 16,
-    width: '100%',
-  },
-  walletLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  walletLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  walletRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  walletAmount: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  savedStreamsCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginTop: 8,
-    width: '100%',
-  },
-  savedStreamsLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  savedStreamsLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   tabsContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
@@ -653,6 +670,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   postsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 1,
+    gap: 2,
+  },
+  storiesGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 1,
@@ -718,6 +741,30 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   postStatText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  storyCard: {
+    aspectRatio: 9 / 16,
+    position: 'relative',
+  },
+  storyImage: {
+    width: '100%',
+    height: '100%',
+  },
+  storyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    padding: 8,
+    justifyContent: 'flex-end',
+  },
+  storyStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  storyStatText: {
     fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',

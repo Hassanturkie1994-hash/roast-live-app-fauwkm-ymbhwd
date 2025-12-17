@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  Switch,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -16,7 +15,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { adminService, AdminRole } from '@/app/services/adminService';
-import { battleService } from '@/app/services/battleService';
 
 export default function AccountSettingsScreen() {
   const { signOut, user, profile } = useAuth();
@@ -27,7 +25,6 @@ export default function AccountSettingsScreen() {
   const [isStreamModerator, setIsStreamModerator] = useState(false);
   const [isLoadingRole, setIsLoadingRole] = useState(true);
   const [isLive, setIsLive] = useState(false);
-  const [hasActiveBattle, setHasActiveBattle] = useState(false);
 
   const checkUserRole = useCallback(async () => {
     if (!user) {
@@ -67,22 +64,10 @@ export default function AccountSettingsScreen() {
     }
   }, [user]);
 
-  const checkActiveBattle = useCallback(async () => {
-    if (!user) return;
-
-    try {
-      const { lobby } = await battleService.getUserActiveLobby(user.id);
-      setHasActiveBattle(!!lobby);
-    } catch (error) {
-      console.error('Error checking active battle:', error);
-    }
-  }, [user]);
-
   useEffect(() => {
     checkUserRole();
     checkIfLive();
-    checkActiveBattle();
-  }, [checkUserRole, checkIfLive, checkActiveBattle]);
+  }, [checkUserRole, checkIfLive]);
 
   const handleSignOut = async () => {
     if (isLive) {
@@ -128,56 +113,6 @@ export default function AccountSettingsScreen() {
     router.push('/screens/ModeratorDashboardScreen' as any);
   };
 
-  const handleBattleSettings = () => {
-    if (hasActiveBattle) {
-      Alert.alert(
-        'Active Battle',
-        'You have an active battle. Would you like to return to it?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Return to Battle',
-            onPress: async () => {
-              const { lobby } = await battleService.getUserActiveLobby(user!.id);
-              if (lobby) {
-                if (lobby.status === 'in_battle') {
-                  router.push({
-                    pathname: '/screens/BattleLiveMatchScreen',
-                    params: { lobbyId: lobby.id },
-                  });
-                } else if (lobby.status === 'matched') {
-                  router.push({
-                    pathname: '/screens/BattlePreMatchLobbyScreen',
-                    params: { lobbyId: lobby.id },
-                  });
-                } else {
-                  router.push({
-                    pathname: '/screens/BattleLobbyScreen',
-                    params: { lobbyId: lobby.id },
-                  });
-                }
-              }
-            },
-          },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Battle Mode',
-        'Battle mode allows you to compete against other streamers in live roasting battles!\n\nFeatures:\n- 1v1 to 5v5 battles\n- Invite friends or matchmake\n- Real-time scoring\n- Viewer participation\n- Earn rewards\n\nStart a battle from the Go Live screen!',
-        [{ text: 'Got it!' }]
-      );
-    }
-  };
-
-  const handleEnable2FA = () => {
-    Alert.alert('Two-Factor Authentication', 'This feature will be available soon.');
-  };
-
-  const handleAddCredits = () => {
-    Alert.alert('Add Credits', 'Payment integration coming soon.');
-  };
-
   const handleWithdrawEarnings = () => {
     router.push('/screens/WithdrawScreen');
   };
@@ -214,6 +149,15 @@ export default function AccountSettingsScreen() {
       default:
         return '';
     }
+  };
+
+  const handleCommentPermissionPress = () => {
+    Alert.alert('Who Can Comment', 'Choose who can comment on your posts', [
+      { text: 'Everyone', onPress: () => setCommentPermission('everyone') },
+      { text: 'Followers', onPress: () => setCommentPermission('followers') },
+      { text: 'No One', onPress: () => setCommentPermission('no_one') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   return (
@@ -488,30 +432,6 @@ export default function AccountSettingsScreen() {
 
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
-            onPress={handleBattleSettings}
-          >
-            <View style={styles.settingLeft}>
-              <RoastIcon
-                name="crown-flame"
-                size={20}
-                color="#FFD700"
-              />
-              <View>
-                <Text style={[styles.settingText, { color: colors.text }]}>Battle Mode</Text>
-                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
-                  {hasActiveBattle ? 'Active battle in progress' : 'Compete in live roasting battles'}
-                </Text>
-              </View>
-            </View>
-            <RoastIcon
-              name="chevron-right"
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
             onPress={() => router.push('/screens/SavedStreamsScreen')}
           >
             <View style={styles.settingLeft}>
@@ -723,72 +643,16 @@ export default function AccountSettingsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Profile Preferences</Text>
           </View>
 
-          <View style={[styles.settingItem, { borderBottomColor: colors.divider }]}>
-            <View style={styles.settingLeft}>
-              <RoastIcon
-                name="profile"
-                size={20}
-                color={colors.text}
-              />
-              <Text style={[styles.settingText, { color: colors.text }]}>Private Profile</Text>
-            </View>
-            <Switch
-              value={isPrivateProfile}
-              onValueChange={setIsPrivateProfile}
-              trackColor={{ false: colors.border, true: colors.brandPrimary }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-
-          <View style={[styles.settingItem, { borderBottomColor: colors.divider }]}>
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]}
+            onPress={handleCommentPermissionPress}
+            activeOpacity={0.7}
+          >
             <View style={styles.settingLeft}>
               <RoastIcon name="comment" size={20} />
               <View>
                 <Text style={[styles.settingText, { color: colors.text }]}>Who Can Comment</Text>
                 <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>{commentPermission}</Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              onPress={() => {
-                Alert.alert('Who Can Comment', 'Choose who can comment on your posts', [
-                  { text: 'Everyone', onPress: () => setCommentPermission('everyone') },
-                  { text: 'Followers', onPress: () => setCommentPermission('followers') },
-                  { text: 'No One', onPress: () => setCommentPermission('no_one') },
-                  { text: 'Cancel', style: 'cancel' },
-                ]);
-              }}
-            >
-              <RoastIcon
-                name="chevron-right"
-                size={20}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* System & Diagnostics Section */}
-        <View style={[styles.section, { borderBottomColor: colors.border }]}>
-          <View style={styles.sectionTitleRow}>
-            <RoastIcon name="settings" size={20} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>System & Diagnostics</Text>
-          </View>
-
-          <TouchableOpacity 
-            style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
-            onPress={() => router.push('/diagnostic')}
-          >
-            <View style={styles.settingLeft}>
-              <RoastIcon
-                name="settings"
-                size={20}
-                color={colors.brandPrimary}
-              />
-              <View>
-                <Text style={[styles.settingText, { color: colors.text }]}>System Diagnostics</Text>
-                <Text style={[styles.settingSubtext, { color: colors.textSecondary }]}>
-                  Test app configuration & troubleshoot issues
-                </Text>
               </View>
             </View>
             <RoastIcon
