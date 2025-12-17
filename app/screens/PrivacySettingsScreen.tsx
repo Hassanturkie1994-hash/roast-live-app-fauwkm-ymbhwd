@@ -22,16 +22,7 @@ export default function PrivacySettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [profileVisibility, setProfileVisibility] = useState<'public' | 'private'>('public');
 
-  useEffect(() => {
-    if (!user) {
-      router.replace('/auth/login');
-      return;
-    }
-
-    loadSettings();
-  }, [user]);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -53,7 +44,16 @@ export default function PrivacySettingsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      router.replace('/auth/login');
+      return;
+    }
+
+    loadSettings();
+  }, [user, loadSettings]);
 
   const handleSaveSettings = async () => {
     if (!user) return;

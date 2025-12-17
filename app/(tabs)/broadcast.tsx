@@ -47,11 +47,11 @@ interface GuestSeat {
  * BroadcastScreen
  * 
  * CRITICAL FIXES APPLIED:
- * 1. Wrapped state machine hook in try-catch with error UI fallback
+ * 1. ALL HOOKS MOVED TO TOP - No conditional hook calls
  * 2. Fixed camera/mic permissions hooks (imported directly from expo-camera)
  * 3. Added runtime safety checks before calling startStream/endStream
  * 4. Ensured component ALWAYS returns JSX (no undefined returns)
- * 5. Added early returns with loading/error states
+ * 5. Conditional logic moved AFTER all hooks
  * 6. Prevented navigation until permissions are granted
  * 7. Added detailed error logging for debugging
  */
@@ -70,63 +70,18 @@ export default function BroadcastScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   
-  // CRITICAL FIX 1: Wrap state machine hook in try-catch with detailed error handling
-  let stateMachine;
-  let stateMachineError: Error | null = null;
+  // CRITICAL FIX: ALL HOOKS MUST BE CALLED UNCONDITIONALLY AT THE TOP
+  // This is the #1 rule of React Hooks - they must be called in the same order every render
   
-  try {
-    console.log('🔍 [BROADCAST] Attempting to access state machine...');
-    stateMachine = useLiveStreamStateMachine();
-    console.log('✅ [BROADCAST] State machine accessed successfully');
-  } catch (error: any) {
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('❌ [BROADCAST] CRITICAL: Failed to access state machine');
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
-    stateMachineError = error;
-    
-    // CRITICAL FIX 4: Return error UI if state machine is not available
-    return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: '#000000' }]}>
-        <IconSymbol
-          ios_icon_name="exclamationmark.triangle"
-          android_material_icon_name="error"
-          size={64}
-          color="#FF4444"
-        />
-        <Text style={[styles.errorText, { color: '#FFFFFF' }]}>Service Error</Text>
-        <Text style={[styles.errorSubtext, { color: '#CCCCCC' }]}>
-          Live streaming service is not available.
-        </Text>
-        <Text style={[styles.errorDetails, { color: '#999999' }]}>
-          {error.message}
-        </Text>
-        <TouchableOpacity
-          style={[styles.errorButton, { backgroundColor: '#FF4444' }]}
-          onPress={() => {
-            console.log('🔙 [BROADCAST] User pressed Go Back button');
-            router.back();
-          }}
-        >
-          <Text style={styles.errorButtonText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
+  // State machine hook - MUST be called unconditionally
+  const stateMachine = useLiveStreamStateMachine();
   const { state, startStream, endStream, error: stateMachineErrorState } = stateMachine;
   
-  console.log('📊 [BROADCAST] State machine state:', state);
-  console.log('📊 [BROADCAST] State machine error:', stateMachineErrorState);
-  
-  // CRITICAL FIX 2: Import hooks directly from expo-camera
+  // Permission hooks - MUST be called unconditionally
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   
+  // All useState hooks - MUST be called unconditionally
   const [showChat, setShowChat] = useState(true);
   const [showGifts, setShowGifts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -142,10 +97,12 @@ export default function BroadcastScreen() {
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
   
+  // All useRef hooks - MUST be called unconditionally
   const cameraRef = useRef<CameraView>(null);
   const viewerCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const initAttemptedRef = useRef<boolean>(false);
 
+  // All useCallback hooks - MUST be called unconditionally
   const loadActiveGuests = useCallback(async () => {
     if (!streamId) return;
 
@@ -157,7 +114,7 @@ export default function BroadcastScreen() {
     }
   }, [streamId]);
 
-  // CRITICAL FIX 6: Check permissions on mount
+  // All useEffect hooks - MUST be called unconditionally
   useEffect(() => {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
@@ -204,7 +161,7 @@ export default function BroadcastScreen() {
         console.log('📝 Title:', streamTitle);
         console.log('🏷️ Content Label:', contentLabel);
 
-        // CRITICAL FIX 3: Verify startStream is a function before calling
+        // CRITICAL FIX: Verify startStream is a function before calling
         console.log('🔍 [BROADCAST] Verifying startStream function...');
         console.log('Type of startStream:', typeof startStream);
         
@@ -291,6 +248,8 @@ export default function BroadcastScreen() {
     return () => clearInterval(interval);
   }, [streamId, loadActiveGuests]);
 
+  // END OF ALL HOOKS - Now we can do conditional rendering
+
   const handleEndStream = async (saveReplay: boolean) => {
     if (!streamId || isEnding) return;
 
@@ -299,7 +258,7 @@ export default function BroadcastScreen() {
     try {
       console.log('🛑 [BROADCAST] Ending stream...');
       
-      // CRITICAL FIX 3: Verify endStream is a function before calling
+      // CRITICAL FIX: Verify endStream is a function before calling
       if (!endStream) {
         console.error('❌ [BROADCAST] endStream is undefined');
         Alert.alert('Error', 'Stream service is not available');
@@ -342,7 +301,9 @@ export default function BroadcastScreen() {
     router.replace('/(tabs)/(home)');
   };
 
-  // CRITICAL FIX 4: Handle initialization errors
+  // CONDITIONAL RENDERING - All hooks have been called above
+  
+  // Handle initialization errors
   if (initError) {
     console.error('❌ [BROADCAST] Initialization error:', initError);
     return (
@@ -370,7 +331,7 @@ export default function BroadcastScreen() {
     );
   }
 
-  // CRITICAL FIX 5: Always return JSX - add early return with loading state
+  // Handle permissions loading
   if (!cameraPermission || !micPermission) {
     console.log('⏳ [BROADCAST] Permissions still loading...');
     return (
@@ -383,7 +344,7 @@ export default function BroadcastScreen() {
     );
   }
 
-  // CRITICAL FIX 6: Block navigation if permissions not granted
+  // Handle permissions not granted
   if (!cameraPermission.granted || !micPermission.granted) {
     console.log('⚠️ [BROADCAST] Permissions not granted');
     return (
@@ -411,6 +372,7 @@ export default function BroadcastScreen() {
     );
   }
 
+  // Handle stream initialization states
   if (state === 'IDLE' || state === 'CREATING_STREAM') {
     console.log('⏳ [BROADCAST] State:', state);
     return (
@@ -423,6 +385,7 @@ export default function BroadcastScreen() {
     );
   }
 
+  // Handle state machine errors
   if (stateMachineErrorState) {
     console.error('❌ [BROADCAST] State machine error:', stateMachineErrorState);
     return (
@@ -452,7 +415,7 @@ export default function BroadcastScreen() {
 
   console.log('✅ [BROADCAST] Rendering camera view');
   
-  // CRITICAL FIX 4: Final safety check - ensure we always return JSX
+  // Main render - camera view with all controls
   return (
     <View style={styles.container}>
       <CameraView

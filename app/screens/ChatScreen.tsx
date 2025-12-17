@@ -111,7 +111,7 @@ export default function ChatScreen() {
       checkAccess();
       fetchMessages();
     }
-  }, [user, activeConversationId, otherUserId]);
+  }, [user, activeConversationId, otherUserId, initializeConversation, checkAccess, fetchMessages]);
 
   // REALTIME: Subscribe to new messages
   useEffect(() => {

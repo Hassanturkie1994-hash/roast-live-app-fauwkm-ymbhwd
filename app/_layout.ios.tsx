@@ -53,7 +53,7 @@ function NavigationGuard() {
       console.log('✅ User authenticated, redirecting to home');
       router.replace('/(tabs)/(home)');
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
 
   return null;
 }
