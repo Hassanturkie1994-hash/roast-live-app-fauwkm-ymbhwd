@@ -3,6 +3,16 @@
 
 This directory contains all sound files for the Roast Gift System.
 
+## ⚠️ IMPORTANT: Sound Files Not Included
+
+The actual `.mp3` sound files are **not included** in this repository. To enable sound playback:
+
+1. Add your `.mp3` sound files to this directory (`assets/sounds/`)
+2. Uncomment the sound file mappings in `services/giftSoundEngine.ts`
+3. Ensure file names match the mappings below
+
+The app will work without sound files - it will simply skip sound playback gracefully.
+
 ## Sound Philosophy
 
 Sound is as important as animation. Sounds must amplify humiliation, drama, hype, and crowd energy.
@@ -97,6 +107,7 @@ Sound is as important as animation. Sounds must amplify humiliation, drama, hype
 4. **Sounds must respect audio ducking rules** - Stream audio is ducked based on tier
 5. **Priority-based interruption** - Higher tier sounds can interrupt lower tier sounds
 6. **Performance fallback** - If FPS drops, sounds are skipped gracefully
+7. **Graceful degradation** - App works without sound files, just skips playback
 
 ## Audio Ducking
 
@@ -146,7 +157,18 @@ All sound files should be:
 
 ## Adding New Sounds
 
-1. Add the sound file to this directory
-2. Update `SOUND_FILES` mapping in `services/giftSoundEngine.ts`
-3. Update this README with the new sound description
+1. Add the sound file to this directory (`assets/sounds/`)
+2. Uncomment the corresponding line in `SOUND_FILES` mapping in `services/giftSoundEngine.ts`
+3. Update this README with the new sound description (if adding a new sound)
 4. Test the sound in the app to ensure proper ducking and timing
+
+## Where to Get Sound Files
+
+You can source sound files from:
+- **Freesound.org** - Free sound effects library
+- **Zapsplat.com** - Free sound effects for commercial use
+- **Epidemic Sound** - Royalty-free sound effects (paid)
+- **AudioJungle** - Professional sound effects (paid)
+- **Create your own** - Record and edit custom sounds
+
+Make sure you have the proper licenses for any sound files you use in production.

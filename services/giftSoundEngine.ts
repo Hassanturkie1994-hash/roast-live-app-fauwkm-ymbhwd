@@ -33,7 +33,7 @@ export interface PlayingSoundInfo {
 
 class GiftSoundEngine {
   private activeSounds: Map<string, PlayingSoundInfo> = new Map();
-  private soundQueue: { soundId: string; tier: SoundTier }[] = [];
+  private soundQueue: Array<{ soundId: string; tier: SoundTier }> = [];
   private isProcessing: boolean = false;
   private streamAudioVolume: number = 1.0;
   private performanceFallback: boolean = false;
@@ -47,67 +47,68 @@ class GiftSoundEngine {
     ULTRA: { maxDuration: 8000, ducking: -20, priority: 4 },
   };
 
-  // Sound file mappings
+  // Sound file mappings - Commented out until actual sound files are added
+  // To add sounds: Place .mp3 files in assets/sounds/ directory and uncomment the mappings below
   private readonly SOUND_FILES: Record<string, any> = {
     // LOW TIER (1-10 SEK)
-    crowd_boo: require('../assets/sounds/crowd_boo.mp3'),
-    cricket_chirp: require('../assets/sounds/crickets.mp3'),
-    sad_trombone: require('../assets/sounds/sad_trombone.mp3'),
-    slap_sound: require('../assets/sounds/facepalm.mp3'),
-    tomato_splat: require('../assets/sounds/tomato_splat.mp3'),
-    sitcom_laugh: require('../assets/sounds/sitcom_laugh.mp3'),
-    yawn_sound: require('../assets/sounds/yawn.mp3'),
-    clown_horn: require('../assets/sounds/clown_horn.mp3'),
-    trash_dump: require('../assets/sounds/trash_dump.mp3'),
-    death_sound: require('../assets/sounds/death.mp3'),
-    fart_sound: require('../assets/sounds/fart.mp3'),
-    sigh_sound: require('../assets/sounds/sigh.mp3'),
-    snore_sound: require('../assets/sounds/snore.mp3'),
+    // crowd_boo: require('../assets/sounds/crowd_boo.mp3'),
+    // cricket_chirp: require('../assets/sounds/crickets.mp3'),
+    // sad_trombone: require('../assets/sounds/sad_trombone.mp3'),
+    // slap_sound: require('../assets/sounds/facepalm.mp3'),
+    // tomato_splat: require('../assets/sounds/tomato_splat.mp3'),
+    // sitcom_laugh: require('../assets/sounds/sitcom_laugh.mp3'),
+    // yawn_sound: require('../assets/sounds/yawn.mp3'),
+    // clown_horn: require('../assets/sounds/clown_horn.mp3'),
+    // trash_dump: require('../assets/sounds/trash_dump.mp3'),
+    // death_sound: require('../assets/sounds/death.mp3'),
+    // fart_sound: require('../assets/sounds/fart.mp3'),
+    // sigh_sound: require('../assets/sounds/sigh.mp3'),
+    // snore_sound: require('../assets/sounds/snore.mp3'),
     
     // MID TIER (20-100 SEK)
-    mic_drop_thud: require('../assets/sounds/mic_drop.mp3'),
-    airhorn_blast: require('../assets/sounds/airhorn.mp3'),
-    crowd_roar: require('../assets/sounds/laugh_explosion.mp3'),
-    boxing_bell: require('../assets/sounds/boxing_bell.mp3'),
-    fire_whoosh: require('../assets/sounds/fire_whoosh.mp3'),
-    explosion_boom: require('../assets/sounds/explosion.mp3'),
-    gasp_sound: require('../assets/sounds/gasp.mp3'),
-    savage_sound: require('../assets/sounds/savage.mp3'),
-    salt_pour: require('../assets/sounds/salt_pour.mp3'),
-    tea_spill: require('../assets/sounds/tea_spill.mp3'),
-    cringe_sound: require('../assets/sounds/cringe.mp3'),
+    // mic_drop_thud: require('../assets/sounds/mic_drop.mp3'),
+    // airhorn_blast: require('../assets/sounds/airhorn.mp3'),
+    // crowd_roar: require('../assets/sounds/laugh_explosion.mp3'),
+    // boxing_bell: require('../assets/sounds/boxing_bell.mp3'),
+    // fire_whoosh: require('../assets/sounds/fire_whoosh.mp3'),
+    // explosion_boom: require('../assets/sounds/explosion.mp3'),
+    // gasp_sound: require('../assets/sounds/gasp.mp3'),
+    // savage_sound: require('../assets/sounds/savage.mp3'),
+    // salt_pour: require('../assets/sounds/salt_pour.mp3'),
+    // tea_spill: require('../assets/sounds/tea_spill.mp3'),
+    // cringe_sound: require('../assets/sounds/cringe.mp3'),
     
     // HIGH TIER (150-500 SEK)
-    flamethrower: require('../assets/sounds/fire_blast.mp3'),
-    stamp_slam: require('../assets/sounds/stamp_slam.mp3'),
-    gavel_bang: require('../assets/sounds/judge_gavel.mp3'),
-    crown_fanfare: require('../assets/sounds/crown_fanfare.mp3'),
-    punch_knockout: require('../assets/sounds/punch_knockout.mp3'),
-    bomb_explosion: require('../assets/sounds/bomb_explosion.mp3'),
-    thunder_crack: require('../assets/sounds/alarm_siren.mp3'),
-    trophy_win: require('../assets/sounds/trophy_win.mp3'),
-    hammer_slam: require('../assets/sounds/hammer_slam.mp3'),
-    sword_slash: require('../assets/sounds/sword_slash.mp3'),
-    shield_block: require('../assets/sounds/shield_block.mp3'),
+    // flamethrower: require('../assets/sounds/fire_blast.mp3'),
+    // stamp_slam: require('../assets/sounds/stamp_slam.mp3'),
+    // gavel_bang: require('../assets/sounds/judge_gavel.mp3'),
+    // crown_fanfare: require('../assets/sounds/crown_fanfare.mp3'),
+    // punch_knockout: require('../assets/sounds/punch_knockout.mp3'),
+    // bomb_explosion: require('../assets/sounds/bomb_explosion.mp3'),
+    // thunder_crack: require('../assets/sounds/alarm_siren.mp3'),
+    // trophy_win: require('../assets/sounds/trophy_win.mp3'),
+    // hammer_slam: require('../assets/sounds/hammer_slam.mp3'),
+    // sword_slash: require('../assets/sounds/sword_slash.mp3'),
+    // shield_block: require('../assets/sounds/shield_block.mp3'),
     
     // ULTRA TIER (2000-4000 SEK)
-    funeral_march: require('../assets/sounds/funeral_choir.mp3'),
-    riot_chaos: require('../assets/sounds/riot_sirens.mp3'),
-    game_over: require('../assets/sounds/epic_bass_drop.mp3'),
-    siren: require('../assets/sounds/siren.mp3'),
-    church_bell: require('../assets/sounds/church_bell.mp3'),
-    crowd_chant: require('../assets/sounds/crowd_chant.mp3'),
-    earthquake_rumble: require('../assets/sounds/earthquake_rumble.mp3'),
-    slow_motion: require('../assets/sounds/slow_motion.mp3'),
-    spotlight_on: require('../assets/sounds/spotlight_on.mp3'),
-    mute_sound: require('../assets/sounds/mute_sound.mp3'),
-    time_stop: require('../assets/sounds/time_stop.mp3'),
-    nuke_explosion: require('../assets/sounds/nuke_explosion.mp3'),
-    shame_bell_ring: require('../assets/sounds/shame_bell_ring.mp3'),
-    meteor_impact: require('../assets/sounds/meteor_impact.mp3'),
-    execution_sound: require('../assets/sounds/execution_sound.mp3'),
-    apocalypse_sound: require('../assets/sounds/apocalypse_sound.mp3'),
-    dragon_roar: require('../assets/sounds/dragon_roar.mp3'),
+    // funeral_march: require('../assets/sounds/funeral_choir.mp3'),
+    // riot_chaos: require('../assets/sounds/riot_sirens.mp3'),
+    // game_over: require('../assets/sounds/epic_bass_drop.mp3'),
+    // siren: require('../assets/sounds/siren.mp3'),
+    // church_bell: require('../assets/sounds/church_bell.mp3'),
+    // crowd_chant: require('../assets/sounds/crowd_chant.mp3'),
+    // earthquake_rumble: require('../assets/sounds/earthquake_rumble.mp3'),
+    // slow_motion: require('../assets/sounds/slow_motion.mp3'),
+    // spotlight_on: require('../assets/sounds/spotlight_on.mp3'),
+    // mute_sound: require('../assets/sounds/mute_sound.mp3'),
+    // time_stop: require('../assets/sounds/time_stop.mp3'),
+    // nuke_explosion: require('../assets/sounds/nuke_explosion.mp3'),
+    // shame_bell_ring: require('../assets/sounds/shame_bell_ring.mp3'),
+    // meteor_impact: require('../assets/sounds/meteor_impact.mp3'),
+    // execution_sound: require('../assets/sounds/execution_sound.mp3'),
+    // apocalypse_sound: require('../assets/sounds/apocalypse_sound.mp3'),
+    // dragon_roar: require('../assets/sounds/dragon_roar.mp3'),
   };
 
   /**
@@ -168,7 +169,10 @@ class GiftSoundEngine {
       // Load and play sound
       const soundFile = this.SOUND_FILES[soundProfile];
       if (!soundFile) {
-        console.warn('⚠️ [GiftSoundEngine] Sound file not found:', soundProfile);
+        console.warn('⚠️ [GiftSoundEngine] Sound file not found or not loaded:', soundProfile);
+        console.log('💡 [GiftSoundEngine] To enable sounds, add .mp3 files to assets/sounds/ and uncomment SOUND_FILES mappings');
+        // Restore audio immediately since no sound will play
+        this.restoreStreamAudio();
         return;
       }
 
@@ -204,7 +208,9 @@ class GiftSoundEngine {
    */
   public async stopSound(soundId: string): Promise<void> {
     const soundInfo = this.activeSounds.get(soundId);
-    if (!soundInfo) return;
+    if (!soundInfo) {
+      return;
+    }
 
     try {
       await soundInfo.sound.unloadAsync();
