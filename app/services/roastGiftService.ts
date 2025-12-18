@@ -1,355 +1,326 @@
 
-import { supabase } from '@/app/integrations/supabase/client';
-import { ROAST_GIFT_MANIFEST, RoastGift, RoastGiftTier } from '@/constants/RoastGiftManifest';
-import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+/**
+ * Roast Gift Service
+ * 
+ * Integrates gift transactions with sound engine, battle behaviors, and ranking system.
+ */
 
-const { RoastGiftEngineModule } = NativeModules;
-const roastGiftEventEmitter = RoastGiftEngineModule 
-  ? new NativeEventEmitter(RoastGiftEngineModule)
-  : null;
+import { supabase } from '@/app/integrations/supabase/client';
+import { giftSoundEngine } from '@/services/giftSoundEngine';
+import { battleGiftService } from '@/services/battleGiftService';
+import { roastRankingService } from '@/services/roastRankingService';
+import { getRoastGiftById } from '@/constants/RoastGiftManifest';
 
 export interface RoastGiftTransaction {
   id: string;
   gift_id: string;
+  price_sek: number;
   sender_id: string;
-  receiver_id: string;
+  creator_id: string;
   stream_id: string | null;
-  amount_sek: number;
-  platform_fee: number;
-  creator_payout: number;
-  status: 'pending' | 'completed' | 'failed';
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED';
   created_at: string;
 }
 
-/**
- * Roast Gift Service
- * 
- * Handles all gift-related operations for the new roast gift system.
- * 
- * Features:
- * - Purchase gifts with 30/70 split
- * - Send gifts to native engine for rendering
- * - Track gift transactions
- * - Broadcast gifts via realtime
- */
 class RoastGiftService {
-  private listeners: Map<string, any> = new Map();
-
   /**
-   * Initialize the native gift engine
+   * Send a roast gift
    */
-  async initialize(): Promise<void> {
-    try {
-      console.log('🎁 [RoastGiftService] Initializing...');
-      
-      if (RoastGiftEngineModule) {
-        await RoastGiftEngineModule.preloadAssets();
-        console.log('✅ [RoastGiftService] Native engine initialized');
-      } else {
-        console.warn('⚠️ [RoastGiftService] Native module not available');
-      }
-      
-      this.setupEventListeners();
-    } catch (error) {
-      console.error('❌ [RoastGiftService] Initialization error:', error);
-    }
-  }
-
-  /**
-   * Setup event listeners for native events
-   */
-  private setupEventListeners(): void {
-    if (!roastGiftEventEmitter) return;
-
-    // Listen for gift completion
-    const completionListener = roastGiftEventEmitter.addListener(
-      'RoastGiftCompleted',
-      (event: any) => {
-        console.log('✅ [RoastGiftService] Gift completed:', event.giftId);
-      }
-    );
-
-    // Listen for performance warnings
-    const performanceListener = roastGiftEventEmitter.addListener(
-      'RoastGiftPerformanceWarning',
-      (event: any) => {
-        console.warn('⚠️ [RoastGiftService] Performance warning, FPS:', event.fps);
-      }
-    );
-
-    this.listeners.set('completion', completionListener);
-    this.listeners.set('performance', performanceListener);
-  }
-
-  /**
-   * Get all available gifts
-   */
-  getAllGifts(): RoastGift[] {
-    return ROAST_GIFT_MANIFEST;
-  }
-
-  /**
-   * Get gift by ID
-   */
-  getGiftById(giftId: string): RoastGift | undefined {
-    return ROAST_GIFT_MANIFEST.find((gift) => gift.giftId === giftId);
-  }
-
-  /**
-   * Get gifts by tier
-   */
-  getGiftsByTier(tier: RoastGiftTier): RoastGift[] {
-    return ROAST_GIFT_MANIFEST.filter((gift) => gift.tier === tier);
-  }
-
-  /**
-   * Purchase and send a gift
-   * 
-   * This handles:
-   * 1. Wallet balance check
-   * 2. Transaction creation with 30/70 split
-   * 3. Wallet updates
-   * 4. Native engine notification
-   * 5. Realtime broadcast
-   */
-  async purchaseGift(
+  public async sendGift(
     giftId: string,
     senderId: string,
-    receiverId: string,
-    streamId?: string
-  ): Promise<{ success: boolean; error?: string; transaction?: RoastGiftTransaction }> {
+    creatorId: string,
+    streamId: string | null
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('🎁 [RoastGiftService] Purchasing gift:', giftId);
-
       // Get gift details
-      const gift = this.getGiftById(giftId);
+      const gift = getRoastGiftById(giftId);
       if (!gift) {
         return { success: false, error: 'Gift not found' };
       }
 
-      // Check sender wallet balance
-      const { data: senderWallet, error: walletError } = await supabase
-        .from('wallet')
-        .select('balance')
-        .eq('user_id', senderId)
-        .single();
+      // Check if in battle
+      const battleContext = battleGiftService.getBattleContext();
+      if (battleContext?.isInBattle) {
+        // Route through battle gift service
+        const receiverTeam = this.determineReceiverTeam(creatorId, battleContext);
+        const { allowed, behavior } = await battleGiftService.routeGift(
+          giftId,
+          senderId,
+          receiverTeam,
+          gift.priceSEK
+        );
 
-      if (walletError || !senderWallet) {
-        return { success: false, error: 'Wallet not found' };
+        if (!allowed) {
+          return { success: false, error: 'Gift not allowed in battle context' };
+        }
+
+        console.log('🎮 [RoastGiftService] Battle gift behavior:', behavior);
       }
-
-      const senderBalance = parseFloat(senderWallet.balance);
-      if (senderBalance < gift.priceSEK) {
-        return { success: false, error: 'Insufficient balance' };
-      }
-
-      // Calculate fees (30% platform, 70% creator)
-      const platformFee = gift.priceSEK * 0.3;
-      const creatorPayout = gift.priceSEK * 0.7;
 
       // Create transaction
       const { data: transaction, error: transactionError } = await supabase
         .from('roast_gift_transactions')
         .insert({
           gift_id: giftId,
+          price_sek: gift.priceSEK,
           sender_id: senderId,
-          receiver_id: receiverId,
-          stream_id: streamId || null,
-          amount_sek: gift.priceSEK,
-          platform_fee: platformFee,
-          creator_payout: creatorPayout,
-          status: 'completed',
+          creator_id: creatorId,
+          stream_id: streamId,
+          status: 'CONFIRMED',
         })
         .select()
         .single();
 
       if (transactionError) {
         console.error('❌ [RoastGiftService] Transaction error:', transactionError);
-        return { success: false, error: 'Failed to create transaction' };
+        return { success: false, error: 'Transaction failed' };
       }
 
-      // Update sender wallet (deduct full amount)
-      const { error: senderUpdateError } = await supabase
-        .from('wallet')
-        .update({
-          balance: senderBalance - gift.priceSEK,
-          last_updated: new Date().toISOString(),
-        })
-        .eq('user_id', senderId);
+      // Play sound
+      await giftSoundEngine.playSound(gift.soundProfile, gift.tier);
 
-      if (senderUpdateError) {
-        console.error('❌ [RoastGiftService] Sender wallet update error:', senderUpdateError);
-        return { success: false, error: 'Failed to update sender wallet' };
-      }
+      // Update creator stats
+      await this.updateCreatorStats(creatorId, streamId, gift.priceSEK);
 
-      // Update receiver wallet (add creator payout only)
-      const { data: receiverWallet } = await supabase
-        .from('wallet')
-        .select('balance')
-        .eq('user_id', receiverId)
-        .single();
-
-      const receiverBalance = receiverWallet ? parseFloat(receiverWallet.balance) : 0;
-
-      const { error: receiverUpdateError } = await supabase
-        .from('wallet')
-        .upsert({
-          user_id: receiverId,
-          balance: receiverBalance + creatorPayout,
-          last_updated: new Date().toISOString(),
-        });
-
-      if (receiverUpdateError) {
-        console.error('❌ [RoastGiftService] Receiver wallet update error:', receiverUpdateError);
-        // Rollback sender wallet
-        await supabase
-          .from('wallet')
-          .update({
-            balance: senderBalance,
-            last_updated: new Date().toISOString(),
-          })
-          .eq('user_id', senderId);
-        return { success: false, error: 'Failed to update receiver wallet' };
-      }
-
-      // Get sender info for broadcast
-      const { data: senderInfo } = await supabase
-        .from('profiles')
-        .select('username, display_name')
-        .eq('id', senderId)
-        .single();
-
-      const senderName = senderInfo?.display_name || senderInfo?.username || 'Anonymous';
-
-      // Send to native engine
-      if (RoastGiftEngineModule) {
-        RoastGiftEngineModule.addGift({
-          giftId: gift.giftId,
-          senderId,
-          senderName,
-          receiverId,
-          priceSEK: gift.priceSEK,
-          tier: gift.tier,
-          animationType: gift.animationType,
-          soundProfile: gift.soundProfile,
-          priority: gift.priority,
-        });
-      }
-
-      // Broadcast via realtime
-      if (streamId) {
-        await this.broadcastGift(streamId, {
-          giftId: gift.giftId,
-          displayName: gift.displayName,
-          emoji: gift.emoji,
-          senderName,
-          priceSEK: gift.priceSEK,
-          tier: gift.tier,
-          animationType: gift.animationType,
-        });
-      }
-
-      console.log('✅ [RoastGiftService] Gift purchased successfully');
-      return { success: true, transaction };
-    } catch (error: any) {
-      console.error('❌ [RoastGiftService] Purchase error:', error);
-      return { success: false, error: error?.message || 'An unexpected error occurred' };
-    }
-  }
-
-  /**
-   * Broadcast gift to all viewers via realtime
-   */
-  private async broadcastGift(streamId: string, giftData: any): Promise<void> {
-    try {
-      const channel = supabase.channel(`stream:${streamId}:roast_gifts`);
-      
-      await channel.send({
-        type: 'broadcast',
-        event: 'roast_gift_sent',
-        payload: giftData,
+      // Update ranking stats
+      await roastRankingService.updateCreatorStats(creatorId, {
+        giftsReceivedSek: gift.priceSEK,
+        uniqueRoaster: senderId,
       });
 
-      console.log('✅ [RoastGiftService] Gift broadcasted');
+      // Trigger gift animation via realtime
+      await this.broadcastGiftAnimation(giftId, senderId, creatorId, streamId);
+
+      console.log('✅ [RoastGiftService] Gift sent successfully');
+      return { success: true };
     } catch (error) {
-      console.error('❌ [RoastGiftService] Broadcast error:', error);
+      console.error('❌ [RoastGiftService] Exception sending gift:', error);
+      return { success: false, error: 'Unexpected error' };
     }
   }
 
   /**
-   * Subscribe to gift events for a stream
+   * Determine receiver team in battle
    */
-  subscribeToGifts(
-    streamId: string,
-    onGiftReceived: (giftData: any) => void
-  ): () => void {
-    const channel = supabase
-      .channel(`stream:${streamId}:roast_gifts`)
-      .on('broadcast', { event: 'roast_gift_sent' }, (payload) => {
-        console.log('🎁 [RoastGiftService] Gift received:', payload);
-        onGiftReceived(payload.payload);
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+  private determineReceiverTeam(
+    creatorId: string,
+    battleContext: any
+  ): 'team_a' | 'team_b' {
+    // This would need to check which team the creator is on
+    // For now, default to team_a
+    return 'team_a';
   }
 
   /**
-   * Get current FPS from native engine
+   * Update creator stats
    */
-  async getCurrentFPS(): Promise<number> {
-    if (!RoastGiftEngineModule) return 60;
-    
+  private async updateCreatorStats(
+    creatorId: string,
+    streamId: string | null,
+    amountSek: number
+  ): Promise<void> {
     try {
-      return await RoastGiftEngineModule.getCurrentFPS();
-    } catch (error) {
-      console.error('❌ [RoastGiftService] FPS error:', error);
-      return 60;
-    }
-  }
+      // Get or create stats entry
+      const { data: stats, error: fetchError } = await supabase
+        .from('creator_roast_stats')
+        .select('*')
+        .eq('creator_id', creatorId)
+        .eq('stream_id', streamId)
+        .single();
 
-  /**
-   * Get queue length from native engine
-   */
-  async getQueueLength(): Promise<number> {
-    if (!RoastGiftEngineModule) return 0;
-    
-    try {
-      return await RoastGiftEngineModule.getQueueLength();
-    } catch (error) {
-      console.error('❌ [RoastGiftService] Queue length error:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * Clear gift queue
-   */
-  async clearQueue(): Promise<void> {
-    if (!RoastGiftEngineModule) return;
-    
-    try {
-      await RoastGiftEngineModule.clearQueue();
-      console.log('✅ [RoastGiftService] Queue cleared');
-    } catch (error) {
-      console.error('❌ [RoastGiftService] Clear queue error:', error);
-    }
-  }
-
-  /**
-   * Cleanup
-   */
-  destroy(): void {
-    this.listeners.forEach((listener) => {
-      if (listener && listener.remove) {
-        listener.remove();
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('❌ [RoastGiftService] Error fetching stats:', fetchError);
+        return;
       }
-    });
-    this.listeners.clear();
-    console.log('🗑️ [RoastGiftService] Destroyed');
+
+      if (!stats) {
+        // Create new stats entry
+        await supabase.from('creator_roast_stats').insert({
+          creator_id: creatorId,
+          stream_id: streamId,
+          total_earned_sek: amountSek,
+          total_gifts: 1,
+        });
+      } else {
+        // Update existing stats
+        await supabase
+          .from('creator_roast_stats')
+          .update({
+            total_earned_sek: stats.total_earned_sek + amountSek,
+            total_gifts: stats.total_gifts + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', stats.id);
+      }
+
+      console.log('✅ [RoastGiftService] Creator stats updated');
+    } catch (error) {
+      console.error('❌ [RoastGiftService] Exception updating creator stats:', error);
+    }
+  }
+
+  /**
+   * Broadcast gift animation via realtime
+   */
+  private async broadcastGiftAnimation(
+    giftId: string,
+    senderId: string,
+    creatorId: string,
+    streamId: string | null
+  ): Promise<void> {
+    if (!streamId) return;
+
+    try {
+      const channel = supabase.channel(`roast_gifts:${streamId}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'gift_sent',
+        payload: {
+          giftId,
+          senderId,
+          creatorId,
+          timestamp: Date.now(),
+        },
+      });
+
+      console.log('✅ [RoastGiftService] Gift animation broadcasted');
+    } catch (error) {
+      console.error('❌ [RoastGiftService] Error broadcasting gift:', error);
+    }
+  }
+
+  /**
+   * Get creator earnings summary
+   */
+  public async getCreatorEarnings(
+    creatorId: string,
+    streamId?: string
+  ): Promise<{
+    totalEarnedSek: number;
+    platformCut: number;
+    creatorPayout: number;
+    totalGifts: number;
+  }> {
+    try {
+      let query = supabase
+        .from('creator_roast_stats')
+        .select('*')
+        .eq('creator_id', creatorId);
+
+      if (streamId) {
+        query = query.eq('stream_id', streamId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('❌ [RoastGiftService] Error fetching earnings:', error);
+        return { totalEarnedSek: 0, platformCut: 0, creatorPayout: 0, totalGifts: 0 };
+      }
+
+      const totalEarnedSek = data.reduce((sum, stat) => sum + stat.total_earned_sek, 0);
+      const totalGifts = data.reduce((sum, stat) => sum + stat.total_gifts, 0);
+      const platformCut = Math.floor(totalEarnedSek * 0.3); // 30%
+      const creatorPayout = Math.floor(totalEarnedSek * 0.7); // 70%
+
+      return {
+        totalEarnedSek,
+        platformCut,
+        creatorPayout,
+        totalGifts,
+      };
+    } catch (error) {
+      console.error('❌ [RoastGiftService] Exception fetching earnings:', error);
+      return { totalEarnedSek: 0, platformCut: 0, creatorPayout: 0, totalGifts: 0 };
+    }
+  }
+
+  /**
+   * Get top roasters for a stream
+   */
+  public async getTopRoasters(
+    streamId: string,
+    limit: number = 3
+  ): Promise<Array<{ userId: string; username: string; totalSek: number }>> {
+    try {
+      const { data, error } = await supabase
+        .from('roast_gift_transactions')
+        .select('sender_id, price_sek, profiles(username)')
+        .eq('stream_id', streamId)
+        .eq('status', 'CONFIRMED');
+
+      if (error) {
+        console.error('❌ [RoastGiftService] Error fetching top roasters:', error);
+        return [];
+      }
+
+      // Aggregate by sender
+      const roasterMap = new Map<string, { username: string; totalSek: number }>();
+      for (const transaction of data) {
+        const existing = roasterMap.get(transaction.sender_id);
+        if (existing) {
+          existing.totalSek += transaction.price_sek;
+        } else {
+          roasterMap.set(transaction.sender_id, {
+            username: (transaction.profiles as any)?.username || 'Unknown',
+            totalSek: transaction.price_sek,
+          });
+        }
+      }
+
+      // Sort and limit
+      const topRoasters = Array.from(roasterMap.entries())
+        .map(([userId, data]) => ({ userId, ...data }))
+        .sort((a, b) => b.totalSek - a.totalSek)
+        .slice(0, limit);
+
+      return topRoasters;
+    } catch (error) {
+      console.error('❌ [RoastGiftService] Exception fetching top roasters:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get most brutal gift for a stream
+   */
+  public async getMostBrutalGift(streamId: string): Promise<{
+    giftId: string;
+    giftName: string;
+    priceSek: number;
+    senderUsername: string;
+  } | null> {
+    try {
+      const { data, error } = await supabase
+        .from('roast_gift_transactions')
+        .select('gift_id, price_sek, profiles(username)')
+        .eq('stream_id', streamId)
+        .eq('status', 'CONFIRMED')
+        .order('price_sek', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) {
+        console.error('❌ [RoastGiftService] Error fetching most brutal gift:', error);
+        return null;
+      }
+
+      const gift = getRoastGiftById(data.gift_id);
+      if (!gift) return null;
+
+      return {
+        giftId: data.gift_id,
+        giftName: gift.displayName,
+        priceSek: data.price_sek,
+        senderUsername: (data.profiles as any)?.username || 'Unknown',
+      };
+    } catch (error) {
+      console.error('❌ [RoastGiftService] Exception fetching most brutal gift:', error);
+      return null;
+    }
   }
 }
 
+// Export singleton instance
 export const roastGiftService = new RoastGiftService();
