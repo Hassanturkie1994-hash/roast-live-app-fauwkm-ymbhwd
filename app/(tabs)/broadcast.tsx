@@ -12,6 +12,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useKeepAwake } from 'expo-keep-awake';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
@@ -48,6 +49,12 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * - No assumptions about data existence
  * - Graceful fallbacks for all error cases
  * 
+ * TIKTOK-STYLE CAMERA:
+ * - Portrait orientation locked during streaming
+ * - 9:16 aspect ratio enforced
+ * - 30 fps frame rate
+ * - H.264 codec compatibility
+ * 
  * RESTORED FEATURES:
  * 1. Moderator Panel - Manage moderators and banned users
  * 2. Settings Panel - Stream settings, practice mode, who can watch
@@ -68,7 +75,7 @@ export default function BroadcastScreen() {
   useKeepAwake();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📺 [BROADCAST] Component rendering with ALL FEATURES + STABILITY FIXES');
+  console.log('📺 [BROADCAST] Component rendering with TikTok-style camera');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   const { streamTitle, contentLabel } = useLocalSearchParams<{
@@ -134,6 +141,27 @@ export default function BroadcastScreen() {
   const streamStartTimeRef = useRef<number | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const giftCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // TIKTOK-STYLE: Lock orientation to portrait during streaming
+  useEffect(() => {
+    const lockOrientation = async () => {
+      try {
+        console.log('🔒 [BROADCAST] Locking orientation to portrait for TikTok-style streaming');
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      } catch (error) {
+        console.warn('⚠️ [BROADCAST] Failed to lock orientation:', error);
+      }
+    };
+
+    lockOrientation();
+
+    return () => {
+      // Unlock orientation when leaving broadcast screen
+      ScreenOrientation.unlockAsync().catch((error) => {
+        console.warn('⚠️ [BROADCAST] Failed to unlock orientation:', error);
+      });
+    };
+  }, []);
 
   // CRITICAL FIX: Defensive guest loading with proper method name and null checks
   const loadActiveGuests = useCallback(async () => {
@@ -337,7 +365,7 @@ export default function BroadcastScreen() {
       initAttemptedRef.current = true;
       
       try {
-        console.log('🚀 [BROADCAST] Initializing stream with ALL FEATURES...');
+        console.log('🚀 [BROADCAST] Initializing TikTok-style stream...');
 
         // DEFENSIVE: Check startStream function exists
         if (!startStream) {
@@ -362,7 +390,7 @@ export default function BroadcastScreen() {
         }
 
         if (result.success && result.streamId) {
-          console.log('✅ [BROADCAST] Stream started successfully:', result.streamId);
+          console.log('✅ [BROADCAST] TikTok-style stream started successfully:', result.streamId);
           setStreamId(result.streamId);
           setInitError(null);
           streamStartTimeRef.current = Date.now();
@@ -575,7 +603,7 @@ export default function BroadcastScreen() {
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
         <Text style={[styles.loadingText, { color: colors.text }]}>
-          {state === 'CREATING_STREAM' ? 'Starting stream...' : 'Initializing...'}
+          {state === 'CREATING_STREAM' ? 'Starting TikTok-style stream...' : 'Initializing...'}
         </Text>
       </View>
     );

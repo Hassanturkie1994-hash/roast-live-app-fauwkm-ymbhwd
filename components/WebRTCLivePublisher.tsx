@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, StyleSheet, Platform, Text, Dimensions } from 'react-native';
 import { CameraView, CameraType } from 'expo-camera';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { colors } from '@/styles/commonStyles';
 
 let RTCPeerConnection: any = null;
@@ -41,11 +42,19 @@ interface WebRTCLivePublisherProps {
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// TikTok Live Standard: 9:16 aspect ratio
 const ASPECT_RATIO = 9 / 16;
-const TARGET_WIDTH = 1080;
-const TARGET_HEIGHT = 1920;
-const FALLBACK_WIDTH = 720;
-const FALLBACK_HEIGHT = 1280;
+
+// Primary target: 720x1280 (HD mobile)
+const PRIMARY_WIDTH = 720;
+const PRIMARY_HEIGHT = 1280;
+
+// High quality target: 1080x1920 (Full HD mobile)
+const HIGH_QUALITY_WIDTH = 1080;
+const HIGH_QUALITY_HEIGHT = 1920;
+
+// Frame rate: 30 fps (mobile-safe, H.264 compatible)
+const TARGET_FRAME_RATE = 30;
 
 export default function WebRTCLivePublisher({
   rtcPublishUrl,
@@ -63,6 +72,27 @@ export default function WebRTCLivePublisher({
   const peerConnectionRef = useRef<any>(null);
   const localStreamRef = useRef<any>(null);
   const isMounted = useRef(true);
+
+  // Lock orientation to portrait on mount
+  useEffect(() => {
+    const lockOrientation = async () => {
+      try {
+        console.log('🔒 [WebRTC] Locking orientation to portrait');
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      } catch (error) {
+        console.warn('⚠️ [WebRTC] Failed to lock orientation:', error);
+      }
+    };
+
+    lockOrientation();
+
+    return () => {
+      // Unlock orientation when component unmounts
+      ScreenOrientation.unlockAsync().catch((error) => {
+        console.warn('⚠️ [WebRTC] Failed to unlock orientation:', error);
+      });
+    };
+  }, []);
 
   useEffect(() => {
     isMounted.current = true;
@@ -105,16 +135,21 @@ export default function WebRTCLivePublisher({
         throw new Error('WebRTC not available - using camera preview only');
       }
 
-      console.log('🎬 Starting native WebRTC stream');
+      console.log('🎬 [WebRTC] Starting native WebRTC stream with TikTok-style constraints');
+
+      // TikTok Live constraints: 9:16 vertical format, 30 fps, H.264 compatible
+      const videoConstraints = {
+        width: { ideal: HIGH_QUALITY_WIDTH, min: PRIMARY_WIDTH },
+        height: { ideal: HIGH_QUALITY_HEIGHT, min: PRIMARY_HEIGHT },
+        aspectRatio: { exact: ASPECT_RATIO }, // Force 9:16 aspect ratio
+        frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE }, // Lock to 30 fps
+        facingMode: facing === 'front' ? 'user' : 'environment',
+      };
+
+      console.log('📹 [WebRTC] Requesting camera with constraints:', videoConstraints);
 
       const stream = await mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: TARGET_WIDTH, min: FALLBACK_WIDTH },
-          height: { ideal: TARGET_HEIGHT, min: FALLBACK_HEIGHT },
-          aspectRatio: { ideal: ASPECT_RATIO },
-          frameRate: { ideal: 60, min: 30 },
-          facingMode: facing === 'front' ? 'user' : 'environment',
-        },
+        video: videoConstraints,
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -134,13 +169,24 @@ export default function WebRTCLivePublisher({
 
       const videoTrack = stream.getVideoTracks()[0];
       const settings = videoTrack.getSettings();
-      console.log('📹 Native camera settings:', {
+      console.log('✅ [WebRTC] Native camera settings (TikTok-style):', {
         width: settings.width,
         height: settings.height,
         aspectRatio: settings.aspectRatio,
         frameRate: settings.frameRate,
         facingMode: settings.facingMode,
       });
+
+      // Verify aspect ratio
+      const actualAspectRatio = settings.width && settings.height 
+        ? settings.width / settings.height 
+        : 0;
+      
+      if (Math.abs(actualAspectRatio - ASPECT_RATIO) > 0.01) {
+        console.warn('⚠️ [WebRTC] Aspect ratio mismatch. Expected:', ASPECT_RATIO, 'Got:', actualAspectRatio);
+      } else {
+        console.log('✅ [WebRTC] Perfect 9:16 aspect ratio achieved');
+      }
 
       const peerConnection = new RTCPeerConnection({
         iceServers: [
@@ -179,7 +225,7 @@ export default function WebRTCLivePublisher({
 
       if (isMounted.current) {
         setIsStreaming(true);
-        console.log('✅ Native WebRTC streaming started successfully');
+        console.log('✅ [WebRTC] Native WebRTC streaming started successfully (TikTok-style)');
 
         if (onStreamStarted) {
           onStreamStarted();
@@ -197,7 +243,7 @@ export default function WebRTCLivePublisher({
         }
       };
     } catch (err) {
-      console.error('❌ Error starting native WebRTC stream:', err);
+      console.error('❌ [WebRTC] Error starting native WebRTC stream:', err);
       throw err;
     }
   }, [rtcPublishUrl, facing, onStreamStarted, onStreamError]);
@@ -206,16 +252,21 @@ export default function WebRTCLivePublisher({
     if (!isMounted.current) return;
 
     try {
-      console.log('🎬 Starting web WebRTC stream');
+      console.log('🎬 [WebRTC] Starting web WebRTC stream with TikTok-style constraints');
+
+      // TikTok Live constraints: 9:16 vertical format, 30 fps, H.264 compatible
+      const videoConstraints = {
+        width: { ideal: HIGH_QUALITY_WIDTH, min: PRIMARY_WIDTH },
+        height: { ideal: HIGH_QUALITY_HEIGHT, min: PRIMARY_HEIGHT },
+        aspectRatio: { exact: ASPECT_RATIO }, // Force 9:16 aspect ratio
+        frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE }, // Lock to 30 fps
+        facingMode: facing === 'front' ? 'user' : 'environment',
+      };
+
+      console.log('📹 [WebRTC] Requesting camera with constraints:', videoConstraints);
 
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: TARGET_WIDTH, min: FALLBACK_WIDTH },
-          height: { ideal: TARGET_HEIGHT, min: FALLBACK_HEIGHT },
-          aspectRatio: { ideal: ASPECT_RATIO },
-          frameRate: { ideal: 60, min: 30 },
-          facingMode: facing === 'front' ? 'user' : 'environment',
-        },
+        video: videoConstraints,
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -234,13 +285,24 @@ export default function WebRTCLivePublisher({
 
       const videoTrack = stream.getVideoTracks()[0];
       const settings = videoTrack.getSettings();
-      console.log('📹 Web camera settings:', {
+      console.log('✅ [WebRTC] Web camera settings (TikTok-style):', {
         width: settings.width,
         height: settings.height,
         aspectRatio: settings.aspectRatio,
         frameRate: settings.frameRate,
         facingMode: settings.facingMode,
       });
+
+      // Verify aspect ratio
+      const actualAspectRatio = settings.width && settings.height 
+        ? settings.width / settings.height 
+        : 0;
+      
+      if (Math.abs(actualAspectRatio - ASPECT_RATIO) > 0.01) {
+        console.warn('⚠️ [WebRTC] Aspect ratio mismatch. Expected:', ASPECT_RATIO, 'Got:', actualAspectRatio);
+      } else {
+        console.log('✅ [WebRTC] Perfect 9:16 aspect ratio achieved');
+      }
 
       const peerConnection = new RTCPeerConnection({
         iceServers: [
@@ -279,7 +341,7 @@ export default function WebRTCLivePublisher({
 
       if (isMounted.current) {
         setIsStreaming(true);
-        console.log('✅ Web WebRTC streaming started successfully');
+        console.log('✅ [WebRTC] Web WebRTC streaming started successfully (TikTok-style)');
 
         if (onStreamStarted) {
           onStreamStarted();
@@ -297,7 +359,7 @@ export default function WebRTCLivePublisher({
         }
       };
     } catch (err) {
-      console.error('❌ Error starting web WebRTC stream:', err);
+      console.error('❌ [WebRTC] Error starting web WebRTC stream:', err);
       throw err;
     }
   }, [rtcPublishUrl, facing, onStreamStarted, onStreamError]);
@@ -306,7 +368,7 @@ export default function WebRTCLivePublisher({
     if (!isMounted.current) return;
 
     try {
-      console.log('🎬 Initializing WebRTC stream to:', rtcPublishUrl);
+      console.log('🎬 [WebRTC] Initializing WebRTC stream to:', rtcPublishUrl);
       setIsInitializing(true);
 
       if (Platform.OS === 'web') {
@@ -319,7 +381,7 @@ export default function WebRTCLivePublisher({
         if (webRTCReady && mediaDevices && RTCPeerConnection) {
           await startWebRTCStreamNative();
         } else {
-          console.log('📱 WebRTC native module not available, showing camera preview only');
+          console.log('📱 [WebRTC] WebRTC native module not available, showing camera preview only');
           console.log('This is expected in Expo Go. Use a development build or APK for WebRTC streaming.');
           setError('WebRTC streaming requires native build. Camera preview is shown.');
           
@@ -329,7 +391,7 @@ export default function WebRTCLivePublisher({
         }
       }
     } catch (err) {
-      console.error('❌ Error initializing WebRTC:', err);
+      console.error('❌ [WebRTC] Error initializing WebRTC:', err);
       const error = err instanceof Error ? err : new Error('Failed to initialize WebRTC');
       if (isMounted.current) {
         setError(error.message);
@@ -355,7 +417,7 @@ export default function WebRTCLivePublisher({
   }, [rtcPublishUrl, webRTCReady]);
 
   const cleanup = () => {
-    console.log('🧹 Cleaning up WebRTC resources');
+    console.log('🧹 [WebRTC] Cleaning up WebRTC resources');
 
     if (localStreamRef.current) {
       try {
@@ -393,7 +455,7 @@ export default function WebRTCLivePublisher({
         {isStreaming && (
           <View style={styles.streamingIndicator}>
             <View style={styles.streamingDot} />
-            <Text style={styles.streamingText}>Streaming via WebRTC</Text>
+            <Text style={styles.streamingText}>Streaming 9:16 @ 30fps</Text>
           </View>
         )}
         {error && (
@@ -422,7 +484,7 @@ export default function WebRTCLivePublisher({
         )}
         {isInitializing && (
           <View style={styles.initializingOverlay}>
-            <Text style={styles.initializingText}>Initializing stream...</Text>
+            <Text style={styles.initializingText}>Initializing TikTok-style stream...</Text>
           </View>
         )}
         {error && !isInitializing && (
@@ -448,12 +510,12 @@ export default function WebRTCLivePublisher({
           {isStreaming && (
             <View style={styles.streamingIndicator}>
               <View style={styles.streamingDot} />
-              <Text style={styles.streamingText}>Streaming via WebRTC</Text>
+              <Text style={styles.streamingText}>Streaming 9:16 @ 30fps</Text>
             </View>
           )}
           {isInitializing && (
             <View style={styles.initializingOverlay}>
-              <Text style={styles.initializingText}>Initializing stream...</Text>
+              <Text style={styles.initializingText}>Initializing TikTok-style stream...</Text>
             </View>
           )}
         </View>

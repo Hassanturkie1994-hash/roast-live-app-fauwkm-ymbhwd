@@ -12,6 +12,7 @@ import {
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, Stack, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
@@ -72,6 +73,27 @@ export default function PreLiveSetupScreen() {
 
   const isMountedRef = useRef(true);
 
+  // TIKTOK-STYLE: Lock orientation to portrait
+  useEffect(() => {
+    const lockOrientation = async () => {
+      try {
+        console.log('🔒 [PRE-LIVE] Locking orientation to portrait for TikTok-style setup');
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      } catch (error) {
+        console.warn('⚠️ [PRE-LIVE] Failed to lock orientation:', error);
+      }
+    };
+
+    lockOrientation();
+
+    return () => {
+      // Unlock orientation when leaving pre-live setup
+      ScreenOrientation.unlockAsync().catch((error) => {
+        console.warn('⚠️ [PRE-LIVE] Failed to unlock orientation:', error);
+      });
+    };
+  }, []);
+
   // CRITICAL: Hide bottom tab bar when this screen is focused
   useFocusEffect(
     useCallback(() => {
@@ -120,7 +142,7 @@ export default function PreLiveSetupScreen() {
 
     requestPermissions();
 
-    console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
+    console.log('📹 [PRE-LIVE] Entered TikTok-style pre-live setup screen');
 
     return () => {
       isMountedRef.current = false;
@@ -146,7 +168,7 @@ export default function PreLiveSetupScreen() {
   };
 
   const navigateToBroadcaster = useCallback(() => {
-    console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
+    console.log('🚀 [PRE-LIVE] Navigating to TikTok-style broadcaster screen');
     
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Cannot navigate - permissions not granted');
@@ -175,7 +197,7 @@ export default function PreLiveSetupScreen() {
   }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, cameraPermission, micPermission]);
 
   const handleGoLive = useCallback(async () => {
-    console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
+    console.log('🚀 [PRE-LIVE] Go LIVE button pressed (TikTok-style)');
 
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Permissions not granted');
@@ -289,7 +311,7 @@ export default function PreLiveSetupScreen() {
         await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
       }
 
-      console.log('✅ [PRE-LIVE] Validation passed');
+      console.log('✅ [PRE-LIVE] Validation passed - starting TikTok-style stream');
 
       navigateToBroadcaster();
     } catch (error) {
@@ -399,13 +421,13 @@ export default function PreLiveSetupScreen() {
     );
   }
 
-  console.log('✅ [PRE-LIVE] Rendering camera view');
+  console.log('✅ [PRE-LIVE] Rendering TikTok-style camera view');
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       
       <View style={styles.container}>
-        {/* CAMERA PREVIEW BACKGROUND */}
+        {/* CAMERA PREVIEW BACKGROUND - TikTok-style 9:16 */}
         <CameraView style={StyleSheet.absoluteFill} facing={facing} />
 
         {/* CAMERA FILTER OVERLAY */}
@@ -580,7 +602,7 @@ export default function PreLiveSetupScreen() {
                     ? 'CREATE BATTLE LOBBY' 
                     : practiceMode 
                       ? 'START PRACTICE' 
-                      : 'GO LIVE'
+                      : 'GO LIVE 📱'
               }
               onPress={handleGoLive}
               size="large"
@@ -601,6 +623,11 @@ export default function PreLiveSetupScreen() {
             <Text style={styles.practiceModeText}>Practice Mode Enabled</Text>
           </View>
         )}
+
+        {/* TIKTOK-STYLE FORMAT INDICATOR */}
+        <View style={styles.formatIndicator}>
+          <Text style={styles.formatText}>📱 9:16 • 30fps • Portrait</Text>
+        </View>
 
         {/* COMMUNITY GUIDELINES MODAL */}
         <CommunityGuidelinesModal
@@ -844,5 +871,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  formatIndicator: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  formatText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
 });
