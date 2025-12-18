@@ -10,12 +10,12 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
-} from 'react-native';
+} from 'react';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { creatorClubService, CreatorClub } from '@/app/services/creatorClubService';
+import { unifiedVIPClubService, VIPClub, VIPClubMember } from '@/app/services/unifiedVIPClubService';
 import GradientButton from '@/components/GradientButton';
 
 export default function CreatorClubSetupScreen() {
@@ -23,12 +23,14 @@ export default function CreatorClubSetupScreen() {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [existingClub, setExistingClub] = useState<CreatorClub | null>(null);
+  const [existingClub, setExistingClub] = useState<VIPClub | null>(null);
+  const [members, setMembers] = useState<VIPClubMember[]>([]);
 
   // Form state
   const [clubName, setClubName] = useState('');
-  const [clubTag, setClubTag] = useState('');
-  const [monthlyPrice, setMonthlyPrice] = useState('3.00');
+  const [badgeName, setBadgeName] = useState('');
+  const [badgeColor, setBadgeColor] = useState('#FF1493');
+  const [monthlyPrice, setMonthlyPrice] = useState('30.00');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
 
@@ -37,14 +39,19 @@ export default function CreatorClubSetupScreen() {
 
     setLoading(true);
     try {
-      const club = await creatorClubService.getClubByCreator(user.id);
+      const club = await unifiedVIPClubService.getVIPClubByCreator(user.id);
       if (club) {
         setExistingClub(club);
-        setClubName(club.name);
-        setClubTag(club.tag);
-        setMonthlyPrice((club.monthly_price_cents / 100).toFixed(2));
+        setClubName(club.club_name);
+        setBadgeName(club.badge_name);
+        setBadgeColor(club.badge_color);
+        setMonthlyPrice(club.monthly_price_sek.toString());
         setDescription(club.description || '');
         setIsActive(club.is_active);
+
+        // Load members
+        const clubMembers = await unifiedVIPClubService.getVIPClubMembers(club.id);
+        setMembers(clubMembers);
       }
     } catch (error) {
       console.error('Error loading club data:', error);
@@ -66,13 +73,13 @@ export default function CreatorClubSetupScreen() {
       return;
     }
 
-    if (!clubTag.trim()) {
-      Alert.alert('Error', 'Please enter a club tag');
+    if (!badgeName.trim()) {
+      Alert.alert('Error', 'Please enter a badge name');
       return;
     }
 
-    if (clubTag.length > 5) {
-      Alert.alert('Error', 'Club tag must be 5 characters or less');
+    if (badgeName.length > 20) {
+      Alert.alert('Error', 'Badge name must be 20 characters or less');
       return;
     }
 
@@ -81,9 +88,9 @@ export default function CreatorClubSetupScreen() {
       return;
     }
 
-    const priceCents = Math.round(parseFloat(monthlyPrice) * 100);
-    if (isNaN(priceCents) || priceCents < 100) {
-      Alert.alert('Error', 'Price must be at least 1.00');
+    const price = parseFloat(monthlyPrice);
+    if (isNaN(price) || price < 1) {
+      Alert.alert('Error', 'Price must be at least 1.00 SEK');
       return;
     }
 
@@ -91,32 +98,34 @@ export default function CreatorClubSetupScreen() {
     try {
       if (existingClub) {
         // Update existing club
-        const result = await creatorClubService.updateClub(user.id, {
-          name: clubName.trim(),
-          tag: clubTag.trim(),
-          monthly_price_cents: priceCents,
+        const result = await unifiedVIPClubService.updateVIPClub(existingClub.id, {
+          club_name: clubName.trim(),
+          badge_name: badgeName.trim(),
+          badge_color: badgeColor,
+          monthly_price_sek: price,
           description: description.trim() || undefined,
           is_active: isActive,
         });
 
         if (result.success) {
-          Alert.alert('Success', 'Your club has been updated!');
+          Alert.alert('Success', 'Your VIP Club has been updated!');
           loadClubData();
         } else {
           Alert.alert('Error', result.error || 'Failed to update club');
         }
       } else {
         // Create new club
-        const result = await creatorClubService.createClub(
+        const result = await unifiedVIPClubService.createVIPClub(
           user.id,
           clubName.trim(),
-          clubTag.trim(),
-          priceCents,
+          badgeName.trim(),
+          badgeColor,
+          price,
           description.trim() || undefined
         );
 
         if (result.success) {
-          Alert.alert('Success', 'Your club has been created!');
+          Alert.alert('Success', 'Your VIP Club has been created!');
           loadClubData();
         } else {
           Alert.alert('Error', result.error || 'Failed to create club');
@@ -128,6 +137,20 @@ export default function CreatorClubSetupScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const getVIPLevelColor = (level: number): string => {
+    if (level >= 15) return '#FF1493'; // Hot Pink for top tier
+    if (level >= 10) return '#9B59B6'; // Purple
+    if (level >= 5) return '#3498DB'; // Blue
+    return '#FFD700'; // Gold for entry level
+  };
+
+  const getVIPLevelLabel = (level: number): string => {
+    if (level >= 15) return 'LEGENDARY';
+    if (level >= 10) return 'ELITE';
+    if (level >= 5) return 'PREMIUM';
+    return 'VIP';
   };
 
   if (loading) {
@@ -181,7 +204,7 @@ export default function CreatorClubSetupScreen() {
             color={colors.brandPrimary}
           />
           <Text style={[styles.infoBannerText, { color: colors.text }]}>
-            Create your exclusive VIP club! Members get a custom badge in your streams and priority chat access.
+            Create your exclusive VIP club! Members get a custom badge in your streams, priority chat access, and earn levels (1-20) based on their support.
           </Text>
         </View>
 
@@ -208,11 +231,11 @@ export default function CreatorClubSetupScreen() {
           />
         </View>
 
-        {/* Club Tag */}
+        {/* Badge Name */}
         <View style={styles.section}>
-          <Text style={[styles.label, { color: colors.text }]}>Club Tag</Text>
+          <Text style={[styles.label, { color: colors.text }]}>Badge Name</Text>
           <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-            Max 5 characters - shown as badge
+            Max 20 characters - shown as badge
           </Text>
           <TextInput
             style={[
@@ -223,23 +246,55 @@ export default function CreatorClubSetupScreen() {
                 borderColor: colors.border,
               },
             ]}
-            value={clubTag}
-            onChangeText={(text) => setClubTag(text.toUpperCase())}
-            placeholder="e.g., HASSO"
+            value={badgeName}
+            onChangeText={setBadgeName}
+            placeholder="e.g., HASSO VIP"
             placeholderTextColor={colors.textSecondary}
-            maxLength={5}
-            autoCapitalize="characters"
+            maxLength={20}
           />
-          {clubTag && (
+          {badgeName && (
             <View style={styles.badgePreview}>
-              <View style={[styles.badge, { backgroundColor: colors.brandPrimary }]}>
-                <Text style={styles.badgeText}>{clubTag}</Text>
+              <View style={[styles.badge, { backgroundColor: badgeColor }]}>
+                <IconSymbol
+                  ios_icon_name="star.fill"
+                  android_material_icon_name="workspace_premium"
+                  size={14}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.badgeText}>{badgeName}</Text>
               </View>
               <Text style={[styles.badgePreviewLabel, { color: colors.textSecondary }]}>
                 Badge Preview
               </Text>
             </View>
           )}
+        </View>
+
+        {/* Badge Color */}
+        <View style={styles.section}>
+          <Text style={[styles.label, { color: colors.text }]}>Badge Color</Text>
+          <View style={styles.colorOptions}>
+            {['#FF1493', '#9B59B6', '#3498DB', '#FFD700', '#E74C3C', '#2ECC71'].map((color) => (
+              <TouchableOpacity
+                key={color}
+                style={[
+                  styles.colorOption,
+                  { backgroundColor: color },
+                  badgeColor === color && styles.colorOptionSelected,
+                ]}
+                onPress={() => setBadgeColor(color)}
+              >
+                {badgeColor === color && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Monthly Price */}
@@ -261,7 +316,7 @@ export default function CreatorClubSetupScreen() {
               ]}
               value={monthlyPrice}
               onChangeText={setMonthlyPrice}
-              placeholder="3.00"
+              placeholder="30.00"
               placeholderTextColor={colors.textSecondary}
               keyboardType="decimal-pad"
             />
@@ -318,6 +373,67 @@ export default function CreatorClubSetupScreen() {
           </View>
         )}
 
+        {/* VIP Members List */}
+        {existingClub && members.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.text }]}>
+              VIP Members ({members.length})
+            </Text>
+            <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+              Members earn levels (1-20) based on their support
+            </Text>
+            <View style={styles.membersList}>
+              {members.map((member) => (
+                <View key={member.id} style={[styles.memberCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+                  <View style={styles.memberInfo}>
+                    <View 
+                      style={[
+                        styles.memberAvatar, 
+                        { backgroundColor: getVIPLevelColor(member.vip_level) }
+                      ]}
+                    >
+                      <Text style={styles.memberAvatarText}>
+                        {member.display_name?.charAt(0).toUpperCase() || 'V'}
+                      </Text>
+                    </View>
+                    <View style={styles.memberDetails}>
+                      <Text style={[styles.memberName, { color: colors.text }]}>
+                        {member.display_name || 'VIP Member'}
+                      </Text>
+                      <View style={styles.memberLevelContainer}>
+                        <View 
+                          style={[
+                            styles.memberLevelBadge, 
+                            { backgroundColor: getVIPLevelColor(member.vip_level) }
+                          ]}
+                        >
+                          <IconSymbol
+                            ios_icon_name="star.fill"
+                            android_material_icon_name="workspace_premium"
+                            size={12}
+                            color="#FFFFFF"
+                          />
+                          <Text style={styles.memberLevelText}>
+                            Level {member.vip_level}
+                          </Text>
+                        </View>
+                        <Text style={[styles.memberLevelLabel, { color: colors.textSecondary }]}>
+                          {getVIPLevelLabel(member.vip_level)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.memberStats}>
+                    <Text style={[styles.memberStatText, { color: colors.textSecondary }]}>
+                      {member.total_gifted_sek} SEK gifted
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Benefits List */}
         <View style={[styles.benefitsCard, { backgroundColor: colors.backgroundAlt }]}>
           <Text style={[styles.benefitsTitle, { color: colors.text }]}>
@@ -354,6 +470,17 @@ export default function CreatorClubSetupScreen() {
                 color={colors.brandPrimary}
               />
               <Text style={[styles.benefitText, { color: colors.text }]}>
+                Level progression system (1-20)
+              </Text>
+            </View>
+            <View style={styles.benefitItem}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check_circle"
+                size={20}
+                color={colors.brandPrimary}
+              />
+              <Text style={[styles.benefitText, { color: colors.text }]}>
                 Support your favorite creator
               </Text>
             </View>
@@ -363,7 +490,7 @@ export default function CreatorClubSetupScreen() {
         {/* Save Button */}
         <View style={styles.buttonContainer}>
           <GradientButton
-            title={existingClub ? 'Save Changes' : 'Create Club'}
+            title={existingClub ? 'Save Changes' : 'Create VIP Club'}
             onPress={handleSave}
             loading={saving}
             disabled={saving}
@@ -487,19 +614,38 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 12,
+    gap: 6,
   },
   badgeText: {
     fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
-    letterSpacing: 1,
   },
   badgePreviewLabel: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  colorOptions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  colorOption: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  colorOptionSelected: {
+    borderColor: '#FFFFFF',
   },
   toggleRow: {
     flexDirection: 'row',
@@ -508,6 +654,70 @@ const styles = StyleSheet.create({
   },
   toggleInfo: {
     flex: 1,
+  },
+  membersList: {
+    gap: 12,
+    marginTop: 12,
+  },
+  memberCard: {
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    gap: 10,
+  },
+  memberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  memberAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberAvatarText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  memberDetails: {
+    flex: 1,
+    gap: 6,
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  memberLevelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberLevelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  memberLevelText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  memberLevelLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  memberStats: {
+    paddingLeft: 56,
+  },
+  memberStatText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   benefitsCard: {
     marginHorizontal: 20,

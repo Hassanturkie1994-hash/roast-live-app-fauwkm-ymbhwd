@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { moderationService } from '@/app/services/moderationService';
 import { useAuth } from './AuthContext';
 
@@ -29,6 +29,7 @@ export function ModeratorsProvider({ children }: { children: React.ReactNode }) 
   const refreshModerators = useCallback(async () => {
     if (!user) {
       console.log('⚠️ [ModeratorsContext] No user, skipping refresh');
+      setModerators([]);
       return;
     }
 
@@ -56,6 +57,16 @@ export function ModeratorsProvider({ children }: { children: React.ReactNode }) 
     }
   }, [user]);
 
+  // Load moderators on mount and when user changes
+  useEffect(() => {
+    if (user) {
+      console.log('🔄 [ModeratorsContext] User changed, loading moderators');
+      refreshModerators();
+    } else {
+      setModerators([]);
+    }
+  }, [user, refreshModerators]);
+
   const addModerator = useCallback(async (userId: string): Promise<boolean> => {
     if (!user) {
       console.error('❌ [ModeratorsContext] No user, cannot add moderator');
@@ -65,11 +76,9 @@ export function ModeratorsProvider({ children }: { children: React.ReactNode }) 
     try {
       console.log('➕ [ModeratorsContext] Adding moderator:', userId);
       
-      // Use idempotent addModerator service
       const result = await moderationService.addModerator(user.id, userId, user.id);
       
       if (result.success) {
-        // Refresh moderators list to sync with database
         await refreshModerators();
         console.log('✅ [ModeratorsContext] Moderator added successfully');
         return true;
@@ -95,7 +104,6 @@ export function ModeratorsProvider({ children }: { children: React.ReactNode }) 
       const result = await moderationService.removeModerator(user.id, userId, user.id);
       
       if (result.success) {
-        // Refresh moderators list to sync with database
         await refreshModerators();
         console.log('✅ [ModeratorsContext] Moderator removed successfully');
         return true;

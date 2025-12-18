@@ -35,12 +35,10 @@ export default function PreLiveSetupScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
   
-  // CRITICAL FIX: Use correct hook name
   const liveStreamState = useLiveStreamStateMachine();
   
   const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   
-  // CRITICAL FIX: Import both camera and microphone permissions
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   
@@ -52,10 +50,6 @@ export default function PreLiveSetupScreen() {
   const [showContentLabelModal, setShowContentLabelModal] = useState(false);
   const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
-  // NEW: Goal states
-  const [giftGoal, setGiftGoal] = useState('');
-  const [roastGoalViewers, setRoastGoalViewers] = useState('');
 
   // Panel visibility states
   const [showEffectsPanel, setShowEffectsPanel] = useState(false);
@@ -110,7 +104,6 @@ export default function PreLiveSetupScreen() {
       return;
     }
 
-    // CRITICAL FIX: Request both camera and microphone permissions
     const requestPermissions = async () => {
       console.log('🔐 [PRE-LIVE] Checking permissions...');
       
@@ -152,11 +145,9 @@ export default function PreLiveSetupScreen() {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
-  // FIXED: Separate function to navigate to broadcaster screen
   const navigateToBroadcaster = useCallback(() => {
     console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
     
-    // CRITICAL FIX: Check permissions before navigation
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Cannot navigate - permissions not granted');
       Alert.alert(
@@ -177,18 +168,15 @@ export default function PreLiveSetupScreen() {
         whoCanWatch,
         selectedModerators: JSON.stringify(selectedModerators),
         selectedVIPClub: selectedVIPClub || '',
-        giftGoal: giftGoal || '',
-        roastGoalViewers: roastGoalViewers || '0',
       },
     });
 
     console.log('✅ [PRE-LIVE] Navigation initiated successfully');
-  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, giftGoal, roastGoalViewers, cameraPermission, micPermission]);
+  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, cameraPermission, micPermission]);
 
   const handleGoLive = useCallback(async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
 
-    // CRITICAL FIX: Check permissions first
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Permissions not granted');
       Alert.alert(
@@ -282,7 +270,6 @@ export default function PreLiveSetupScreen() {
       setIsLoading(true);
 
       if (!practiceMode) {
-        // Check community guidelines acceptance (PROMPT 1)
         const hasAcceptedGuidelines = await communityGuidelinesService.hasAcceptedGuidelines(user.id);
         
         if (!hasAcceptedGuidelines) {
@@ -304,7 +291,6 @@ export default function PreLiveSetupScreen() {
 
       console.log('✅ [PRE-LIVE] Validation passed');
 
-      // Navigate to broadcaster screen
       navigateToBroadcaster();
     } catch (error) {
       console.error('❌ [PRE-LIVE] Error in handleGoLive:', error);
@@ -322,7 +308,6 @@ export default function PreLiveSetupScreen() {
     setShowContentLabelModal(false);
   };
 
-  // FIXED: After accepting guidelines, continue with the flow without recursion
   const handleGuidelinesAccept = async () => {
     if (!user) return;
 
@@ -340,7 +325,6 @@ export default function PreLiveSetupScreen() {
       console.log('✅ Community guidelines accepted');
       setShowCommunityGuidelinesModal(false);
 
-      // FIXED: Continue with validation and navigation instead of calling handleGoLive again
       if (!practiceMode) {
         const canStream = await enhancedContentSafetyService.canUserLivestream(user.id);
         if (!canStream.canStream) {
@@ -354,7 +338,6 @@ export default function PreLiveSetupScreen() {
 
       console.log('✅ [PRE-LIVE] Validation passed after guidelines acceptance');
 
-      // Navigate to broadcaster screen
       navigateToBroadcaster();
     } catch (error) {
       console.error('Error accepting guidelines:', error);
@@ -366,7 +349,6 @@ export default function PreLiveSetupScreen() {
     }
   };
 
-  // CRITICAL FIX: Always return JSX - add early return for permission loading
   if (!cameraPermission || !micPermission) {
     console.log('⏳ [PRE-LIVE] Permissions still loading...');
     return (
@@ -451,52 +433,6 @@ export default function PreLiveSetupScreen() {
           </View>
         </View>
 
-        {/* GOALS SECTION - UPDATED */}
-        <View style={styles.goalsContainer}>
-          {/* Gift Goal */}
-          <View style={styles.goalCard}>
-            <IconSymbol
-              ios_icon_name="gift.fill"
-              android_material_icon_name="card_giftcard"
-              size={24}
-              color="#FFD700"
-            />
-            <View style={styles.goalTextContainer}>
-              <Text style={styles.goalLabel}>Gift Goal</Text>
-              <TextInput
-                style={styles.goalInput}
-                placeholder="e.g., Reach 10,000 gifts"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                value={giftGoal}
-                onChangeText={setGiftGoal}
-                maxLength={50}
-              />
-            </View>
-          </View>
-
-          {/* Roast Goal */}
-          <View style={styles.goalCard}>
-            <IconSymbol
-              ios_icon_name="flame.fill"
-              android_material_icon_name="whatshot"
-              size={24}
-              color="#FF6B00"
-            />
-            <View style={styles.goalTextContainer}>
-              <Text style={styles.goalLabel}>Roast Goal</Text>
-              <TextInput
-                style={styles.goalInput}
-                placeholder="Target viewers"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                value={roastGoalViewers}
-                onChangeText={setRoastGoalViewers}
-                keyboardType="number-pad"
-                maxLength={6}
-              />
-            </View>
-          </View>
-        </View>
-
         {/* STREAM TITLE INPUT */}
         <View style={styles.titleContainer}>
           <TextInput
@@ -543,7 +479,7 @@ export default function PreLiveSetupScreen() {
           </View>
         )}
 
-        {/* BOTTOM ACTION BAR - UPDATED ICONS */}
+        {/* BOTTOM ACTION BAR */}
         <View style={styles.bottomBar}>
           <TouchableOpacity 
             style={styles.actionButton} 
@@ -666,7 +602,7 @@ export default function PreLiveSetupScreen() {
           </View>
         )}
 
-        {/* COMMUNITY GUIDELINES MODAL (PROMPT 1) */}
+        {/* COMMUNITY GUIDELINES MODAL */}
         <CommunityGuidelinesModal
           visible={showCommunityGuidelinesModal}
           onAccept={handleGuidelinesAccept}
@@ -771,43 +707,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  goalsContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 120 : 110,
-    left: 20,
-    right: 20,
-    gap: 12,
-    zIndex: 10,
-  },
-  goalCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
-  },
-  goalTextContainer: {
-    flex: 1,
-  },
-  goalLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 6,
-  },
-  goalInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   titleContainer: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 260 : 250,
+    top: Platform.OS === 'android' ? 140 : 130,
     left: 20,
     right: 20,
     zIndex: 10,
@@ -823,7 +725,7 @@ const styles = StyleSheet.create({
   },
   contentLabelDisplay: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 330 : 320,
+    top: Platform.OS === 'android' ? 210 : 200,
     left: 20,
     right: 20,
     flexDirection: 'row',
@@ -842,7 +744,7 @@ const styles = StyleSheet.create({
   },
   battleModeIndicator: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 400 : 390,
+    top: Platform.OS === 'android' ? 280 : 270,
     left: 20,
     right: 20,
     flexDirection: 'row',

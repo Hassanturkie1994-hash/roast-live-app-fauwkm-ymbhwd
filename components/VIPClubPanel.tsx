@@ -14,23 +14,13 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import { useAuth } from '@/contexts/AuthContext';
-import { creatorClubService } from '@/app/services/creatorClubService';
+import { unifiedVIPClubService, VIPClub, VIPClubMember } from '@/app/services/unifiedVIPClubService';
 
 interface VIPClubPanelProps {
   visible: boolean;
   onClose: () => void;
   selectedClub: string | null;
   onSelectClub: (clubId: string | null) => void;
-}
-
-interface CreatorClub {
-  id: string;
-  name: string;
-  tag: string;
-  monthly_price_cents: number;
-  description: string | null;
-  is_active: boolean;
-  member_count?: number;
 }
 
 export default function VIPClubPanel({
@@ -40,9 +30,9 @@ export default function VIPClubPanel({
   onSelectClub,
 }: VIPClubPanelProps) {
   const { user } = useAuth();
-  const [myClub, setMyClub] = useState<CreatorClub | null>(null);
+  const [myClub, setMyClub] = useState<VIPClub | null>(null);
+  const [members, setMembers] = useState<VIPClubMember[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [memberCount, setMemberCount] = useState(0);
 
   useEffect(() => {
     if (visible && user) {
@@ -55,25 +45,26 @@ export default function VIPClubPanel({
 
     setIsLoading(true);
     try {
-      console.log('📥 [VIPClubPanel] Loading creator club for user:', user.id);
+      console.log('📥 [VIPClubPanel] Loading VIP club for user:', user.id);
 
-      const club = await creatorClubService.getCreatorClub(user.id);
+      const club = await unifiedVIPClubService.getVIPClubByCreator(user.id);
       
       if (club) {
         setMyClub(club);
         
-        // Load member count
-        const members = await creatorClubService.getClubMembers(club.id);
-        setMemberCount(members.length);
+        // Load members with levels
+        const clubMembers = await unifiedVIPClubService.getVIPClubMembers(club.id);
+        setMembers(clubMembers);
 
         // Auto-select if not already selected
         if (!selectedClub) {
           onSelectClub(club.id);
         }
 
-        console.log('✅ [VIPClubPanel] Loaded club:', club.name);
+        console.log('✅ [VIPClubPanel] Loaded club:', club.club_name, 'with', clubMembers.length, 'members');
       } else {
         setMyClub(null);
+        setMembers([]);
         console.log('ℹ️ [VIPClubPanel] No VIP club found for this creator');
       }
     } catch (error) {
@@ -99,6 +90,20 @@ export default function VIPClubPanel({
         { text: 'OK' }
       ]
     );
+  };
+
+  const getVIPLevelColor = (level: number): string => {
+    if (level >= 15) return '#FF1493'; // Hot Pink for top tier
+    if (level >= 10) return '#9B59B6'; // Purple
+    if (level >= 5) return '#3498DB'; // Blue
+    return '#FFD700'; // Gold for entry level
+  };
+
+  const getVIPLevelLabel = (level: number): string => {
+    if (level >= 15) return 'LEGENDARY';
+    if (level >= 10) return 'ELITE';
+    if (level >= 5) return 'PREMIUM';
+    return 'VIP';
   };
 
   return (
@@ -135,7 +140,7 @@ export default function VIPClubPanel({
                     <View 
                       style={[
                         styles.clubBadge, 
-                        { backgroundColor: myClub.tag ? colors.brandPrimary : '#FFD700' }
+                        { backgroundColor: myClub.badge_color || colors.brandPrimary }
                       ]}
                     >
                       <IconSymbol
@@ -144,7 +149,7 @@ export default function VIPClubPanel({
                         size={20}
                         color="#FFFFFF"
                       />
-                      <Text style={styles.clubBadgeText}>{myClub.tag || myClub.name}</Text>
+                      <Text style={styles.clubBadgeText}>{myClub.badge_name}</Text>
                     </View>
                     <TouchableOpacity
                       style={[
@@ -163,7 +168,7 @@ export default function VIPClubPanel({
                   </View>
 
                   <View style={styles.clubDetails}>
-                    <Text style={styles.clubName}>{myClub.name}</Text>
+                    <Text style={styles.clubName}>{myClub.club_name}</Text>
                     {myClub.description && (
                       <Text style={styles.clubDescription}>{myClub.description}</Text>
                     )}
@@ -176,7 +181,7 @@ export default function VIPClubPanel({
                           size={16}
                           color={colors.brandPrimary}
                         />
-                        <Text style={styles.clubStatText}>{memberCount} members</Text>
+                        <Text style={styles.clubStatText}>{myClub.total_members} members</Text>
                       </View>
                       <View style={styles.clubStat}>
                         <IconSymbol
@@ -186,7 +191,7 @@ export default function VIPClubPanel({
                           color={colors.brandPrimary}
                         />
                         <Text style={styles.clubStatText}>
-                          {(myClub.monthly_price_cents / 100).toFixed(2)} SEK/month
+                          {myClub.monthly_price_sek} SEK/month
                         </Text>
                       </View>
                     </View>
@@ -207,6 +212,62 @@ export default function VIPClubPanel({
                   )}
                 </View>
 
+                {/* VIP Members List with Levels */}
+                {members.length > 0 && (
+                  <View style={styles.membersSection}>
+                    <Text style={styles.membersSectionTitle}>
+                      VIP Members ({members.length})
+                    </Text>
+                    <View style={styles.membersList}>
+                      {members.slice(0, 10).map((member) => (
+                        <View key={member.id} style={styles.memberCard}>
+                          <View style={styles.memberInfo}>
+                            <View 
+                              style={[
+                                styles.memberAvatar, 
+                                { backgroundColor: getVIPLevelColor(member.vip_level) }
+                              ]}
+                            >
+                              <Text style={styles.memberAvatarText}>
+                                {member.display_name?.charAt(0).toUpperCase() || 'V'}
+                              </Text>
+                            </View>
+                            <View style={styles.memberDetails}>
+                              <Text style={styles.memberName}>{member.display_name || 'VIP Member'}</Text>
+                              <View style={styles.memberLevelContainer}>
+                                <View 
+                                  style={[
+                                    styles.memberLevelBadge, 
+                                    { backgroundColor: getVIPLevelColor(member.vip_level) }
+                                  ]}
+                                >
+                                  <IconSymbol
+                                    ios_icon_name="star.fill"
+                                    android_material_icon_name="workspace_premium"
+                                    size={12}
+                                    color="#FFFFFF"
+                                  />
+                                  <Text style={styles.memberLevelText}>
+                                    Level {member.vip_level}
+                                  </Text>
+                                </View>
+                                <Text style={styles.memberLevelLabel}>
+                                  {getVIPLevelLabel(member.vip_level)}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                      {members.length > 10 && (
+                        <Text style={styles.moreMembers}>
+                          +{members.length - 10} more members
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
                 <View style={styles.infoBox}>
                   <IconSymbol
                     ios_icon_name="info.circle.fill"
@@ -216,7 +277,7 @@ export default function VIPClubPanel({
                   />
                   <Text style={styles.infoText}>
                     When enabled, only your VIP Club members will be able to watch this stream. 
-                    This is the same club you manage in your Stream Dashboard.
+                    Members earn levels (1-20) based on their support and engagement.
                   </Text>
                 </View>
               </View>
@@ -259,7 +320,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   header: {
     flexDirection: 'row',
@@ -392,6 +453,81 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.text,
+  },
+  membersSection: {
+    marginTop: 20,
+  },
+  membersSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  membersList: {
+    gap: 10,
+  },
+  memberCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  memberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  memberAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memberAvatarText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  memberDetails: {
+    flex: 1,
+    gap: 6,
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  memberLevelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberLevelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  memberLevelText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  memberLevelLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  moreMembers: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 8,
   },
   infoBox: {
     flexDirection: 'row',
