@@ -500,12 +500,12 @@ export default function PreLiveSetupScreen() {
             onPress={() => setShowEffectsPanel(true)}
           >
             <IconSymbol
-              ios_icon_name="sparkles"
-              android_material_icon_name="auto_awesome"
+              ios_icon_name="face.smiling"
+              android_material_icon_name="face"
               size={28}
               color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
             />
-            <Text style={styles.actionButtonText}>Effects</Text>
+            <Text style={styles.actionButtonText}>Face Effects</Text>
             {hasActiveEffect() && <View style={styles.activeDot} />}
           </TouchableOpacity>
 
@@ -620,7 +620,7 @@ export default function PreLiveSetupScreen() {
           onCancel={() => setShowContentLabelModal(false)}
         />
 
-        {/* EFFECTS PANEL */}
+        {/* FACE EFFECTS PANEL */}
         <ImprovedEffectsPanel
           visible={showEffectsPanel}
           onClose={() => setShowEffectsPanel(false)}

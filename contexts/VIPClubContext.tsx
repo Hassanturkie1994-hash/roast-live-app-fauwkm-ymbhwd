@@ -4,8 +4,11 @@ import { unifiedVIPClubService, VIPClub } from '@/app/services/unifiedVIPClubSer
 import { useAuth } from './AuthContext';
 
 interface VIPClubContextType {
-  myClub: VIPClub | null;
-  loading: boolean;
+  club: VIPClub | null;
+  isLoading: boolean;
+  canCreateClub: boolean;
+  hoursStreamed: number;
+  hoursNeeded: number;
   refreshClub: () => Promise<void>;
 }
 
@@ -13,37 +16,57 @@ const VIPClubContext = createContext<VIPClubContextType | undefined>(undefined);
 
 export function VIPClubProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [myClub, setMyClub] = useState<VIPClub | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [club, setClub] = useState<VIPClub | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [canCreateClub, setCanCreateClub] = useState(false);
+  const [hoursStreamed, setHoursStreamed] = useState(0);
+  const [hoursNeeded] = useState(10);
 
-  const loadClubs = useCallback(async () => {
+  const loadClubData = useCallback(async () => {
     if (!user) {
-      setMyClub(null);
-      setLoading(false);
+      setClub(null);
+      setCanCreateClub(false);
+      setHoursStreamed(0);
+      setIsLoading(false);
       return;
     }
 
     try {
-      const club = await unifiedVIPClubService.getVIPClubByCreator(user.id);
-      setMyClub(club);
+      // Load club
+      const clubData = await unifiedVIPClubService.getVIPClubByCreator(user.id);
+      setClub(clubData);
+
+      // Check eligibility
+      const eligibility = await unifiedVIPClubService.canCreateVIPClub(user.id);
+      setCanCreateClub(eligibility.canCreate);
+      setHoursStreamed(eligibility.hoursStreamed);
     } catch (error) {
-      console.error('Error loading VIP club:', error);
+      console.error('Error loading VIP club data:', error);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   }, [user]);
 
   useEffect(() => {
-    loadClubs();
-  }, [loadClubs]);
+    loadClubData();
+  }, [loadClubData]);
 
   const refreshClub = useCallback(async () => {
-    setLoading(true);
-    await loadClubs();
-  }, [loadClubs]);
+    setIsLoading(true);
+    await loadClubData();
+  }, [loadClubData]);
 
   return (
-    <VIPClubContext.Provider value={{ myClub, loading, refreshClub }}>
+    <VIPClubContext.Provider 
+      value={{ 
+        club, 
+        isLoading, 
+        canCreateClub, 
+        hoursStreamed, 
+        hoursNeeded, 
+        refreshClub 
+      }}
+    >
       {children}
     </VIPClubContext.Provider>
   );

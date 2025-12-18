@@ -19,13 +19,20 @@ interface ImprovedEffectsPanelProps {
 }
 
 /**
- * ImprovedEffectsPanel
+ * ImprovedEffectsPanel - Face Effects
  * 
- * Snapchat-style effect selector with:
- * - Grid layout for easy selection
- * - Instant preview
- * - Animated particle effects
+ * Snapchat/TikTok-style face effect selector with:
+ * - Animated particle effects overlaid on camera
+ * - GPU-optimized animations
  * - Never blocks camera view
+ * 
+ * NOTE: True AI-based face tracking (Big Eyes, Big Nose, Face Distortion)
+ * requires native modules like:
+ * - react-native-vision-camera with frame processors
+ * - expo-gl with custom shaders
+ * - ARKit (iOS) / ARCore (Android)
+ * 
+ * Current implementation provides particle effects as a foundation.
  */
 export default function ImprovedEffectsPanel({
   visible,
@@ -34,12 +41,12 @@ export default function ImprovedEffectsPanel({
   const { activeEffect, setActiveEffect, clearEffect } = useCameraEffects();
 
   const handleSelectEffect = (effect: typeof EFFECT_PRESETS[0]) => {
-    console.log('✨ [Effects] Selected:', effect.name);
+    console.log('✨ [Face Effects] Selected:', effect.name);
     setActiveEffect(effect);
   };
 
   const handleClearEffect = () => {
-    console.log('🧹 [Effects] Cleared');
+    console.log('🧹 [Face Effects] Cleared');
     clearEffect();
   };
 
@@ -49,7 +56,7 @@ export default function ImprovedEffectsPanel({
         <View style={styles.panel}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Effects</Text>
+            <Text style={styles.title}>Face Effects</Text>
             <TouchableOpacity onPress={onClose}>
               <IconSymbol
                 ios_icon_name="xmark"
@@ -63,7 +70,7 @@ export default function ImprovedEffectsPanel({
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             <Text style={styles.description}>
               Add animated particle effects layered on top of your camera feed. Effects are
-              GPU-optimized and won&apos;t impact performance.
+              GPU-optimized and won&apos;t impact performance or hide your face.
             </Text>
 
             {/* Effects Grid */}
@@ -131,9 +138,17 @@ export default function ImprovedEffectsPanel({
                 color={colors.brandPrimary}
               />
               <Text style={styles.infoText}>
-                Effects are animated visual elements that layer on top of your camera feed. They
+                Face Effects are animated visual elements that layer on top of your camera feed. They
                 use GPU-accelerated animations and never block your camera view. Only one effect
                 can be active at a time.
+              </Text>
+            </View>
+
+            {/* AI Face Tracking Note */}
+            <View style={styles.technicalNote}>
+              <Text style={styles.technicalNoteTitle}>🤖 AI Face Tracking (Coming Soon)</Text>
+              <Text style={styles.technicalNoteText}>
+                Advanced face effects like Big Eyes, Big Nose, and Face Distortion require AI-based face tracking. These features will be added in a future update using ARKit (iOS) and ARCore (Android) for real-time face detection and geometry modification.
               </Text>
             </View>
           </ScrollView>
@@ -238,12 +253,32 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     gap: 10,
+    marginBottom: 16,
   },
   infoText: {
     flex: 1,
     fontSize: 12,
     fontWeight: '500',
     color: colors.text,
+    lineHeight: 18,
+  },
+  technicalNote: {
+    backgroundColor: 'rgba(74, 144, 226, 0.1)',
+    borderColor: 'rgba(74, 144, 226, 0.3)',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+  },
+  technicalNoteTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  technicalNoteText: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: colors.textSecondary,
     lineHeight: 18,
   },
   footer: {
