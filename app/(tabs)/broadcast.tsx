@@ -17,7 +17,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
 import { IconSymbol } from '@/components/IconSymbol';
 import ChatOverlay from '@/components/ChatOverlay';
-import GiftSelector from '@/components/GiftSelector';
+import RoastGiftSelector from '@/components/RoastGiftSelector';
+import RoastGiftAnimationOverlay from '@/components/RoastGiftAnimationOverlay';
 import EndStreamModal from '@/components/EndStreamModal';
 import { SaveReplayModal } from '@/components/SaveReplayModal';
 import GuestSeatGrid from '@/components/GuestSeatGrid';
@@ -33,21 +34,24 @@ import StreamHealthDashboard from '@/components/StreamHealthDashboard';
 import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
 import { supabase } from '@/app/integrations/supabase/client';
 import { savedStreamService } from '@/app/services/savedStreamService';
+import { roastGiftService } from '@/app/services/roastGiftService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+interface RoastGiftAnimationData {
+  id: string;
+  giftId: string;
+  displayName: string;
+  emoji: string;
+  senderName: string;
+  priceSEK: number;
+  tier: 'LOW' | 'MID' | 'HIGH' | 'ULTRA';
+}
+
 /**
- * BroadcastScreen - Complete Feature Set with Full Defensive Programming
+ * BroadcastScreen - Complete Feature Set with Roast Gift System
  * 
- * STABILITY FIXES APPLIED:
- * - All service method calls have existence checks
- * - All async operations wrapped in try-catch
- * - All data access uses optional chaining
- * - No assumptions about data existence
- * - Graceful fallbacks for all error cases
- * - React Hooks called unconditionally at top level (FIXED)
- * 
- * RESTORED FEATURES:
+ * FEATURES:
  * 1. Moderator Panel - Manage moderators and banned users
  * 2. Settings Panel - Stream settings, practice mode, who can watch
  * 3. Pinned Messages - Pin and manage important chat messages
@@ -57,20 +61,13 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * 7. VIP Club Integration - Restrict stream to VIP club members
  * 8. CDN Storage - Save streams to CDN and user profiles
  * 9. Stream Health Dashboard - Comprehensive stream metrics
- * 
- * REMOVED FEATURES (per user request):
- * - Camera Filters
- * - Face Effects
+ * 10. NEW ROAST GIFT SYSTEM - 45 roast-themed gifts with animations
  */
 export default function BroadcastScreen() {
-  // ============================================================================
-  // SECTION 1: ALL HOOKS (MUST BE CALLED UNCONDITIONALLY AT TOP LEVEL)
-  // ============================================================================
-  
   useKeepAwake();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📺 [BROADCAST] Component rendering with ALL FEATURES + STABILITY FIXES');
+  console.log('📺 [BROADCAST] Component rendering with ROAST GIFT SYSTEM');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   const { streamTitle, contentLabel } = useLocalSearchParams<{
@@ -81,13 +78,11 @@ export default function BroadcastScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   
-  // CRITICAL FIX: Always call useLiveStreamStateMachine unconditionally
   const stateMachine = useLiveStreamStateMachine();
   
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   
-  // Extract state machine values safely
   const state = stateMachine?.state || 'IDLE';
   const startStream = stateMachine?.startStream || null;
   const endStream = stateMachine?.endStream || null;
@@ -99,7 +94,7 @@ export default function BroadcastScreen() {
   const [showEndModal, setShowEndModal] = useState(false);
   const [showSaveReplayModal, setShowSaveReplayModal] = useState(false);
   
-  // NEW: Feature Panel States
+  // Feature Panel States
   const [showModeratorPanel, setShowModeratorPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showPinnedMessagesModal, setShowPinnedMessagesModal] = useState(false);
@@ -121,12 +116,15 @@ export default function BroadcastScreen() {
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
   
-  // NEW: Settings State
+  // Settings State
   const [aboutLive, setAboutLive] = useState('');
   const [practiceMode, setPracticeMode] = useState(false);
   const [whoCanWatch, setWhoCanWatch] = useState<'public' | 'followers' | 'vip_club'>('public');
   const [selectedModerators, setSelectedModerators] = useState<string[]>([]);
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
+  
+  // NEW: Roast Gift Animation State
+  const [giftAnimations, setGiftAnimations] = useState<RoastGiftAnimationData[]>([]);
   
   const cameraRef = useRef<CameraView>(null);
   const viewerCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -134,8 +132,20 @@ export default function BroadcastScreen() {
   const streamStartTimeRef = useRef<number | null>(null);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const giftCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isMountedRef = useRef<boolean>(true);
 
-  // CRITICAL FIX: Defensive guest loading with proper method name and null checks
+  useEffect(() => {
+    isMountedRef.current = true;
+    
+    // Initialize Roast Gift Service
+    roastGiftService.initialize();
+    
+    return () => {
+      isMountedRef.current = false;
+      roastGiftService.destroy();
+    };
+  }, []);
+
   const loadActiveGuests = useCallback(async () => {
     if (!streamId) {
       console.log('⚠️ [BROADCAST] Cannot load guests: streamId is null');
@@ -143,7 +153,6 @@ export default function BroadcastScreen() {
     }
 
     try {
-      // DEFENSIVE: Check service and method exist
       if (!streamGuestService) {
         console.error('❌ [BROADCAST] streamGuestService is undefined');
         setActiveGuests([]);
@@ -156,10 +165,8 @@ export default function BroadcastScreen() {
         return;
       }
 
-      // DEFENSIVE: Call with try-catch
       const guests = await streamGuestService.getActiveGuestSeats(streamId);
       
-      // DEFENSIVE: Validate response
       if (!guests) {
         console.warn('⚠️ [BROADCAST] getActiveGuestSeats returned null/undefined');
         setActiveGuests([]);
@@ -176,12 +183,10 @@ export default function BroadcastScreen() {
       console.log('✅ [BROADCAST] Loaded', guests.length, 'active guests');
     } catch (error) {
       console.error('❌ [BROADCAST] Error loading active guests:', error);
-      // DEFENSIVE: Fail gracefully - don't crash the app
       setActiveGuests([]);
     }
   }, [streamId]);
 
-  // CRITICAL FIX: Defensive stream saving without is_archived column
   const handleSaveStream = useCallback(async () => {
     if (!streamId) {
       console.warn('⚠️ [BROADCAST] Cannot save stream: streamId is null');
@@ -196,7 +201,6 @@ export default function BroadcastScreen() {
     try {
       console.log('💾 [BROADCAST] Saving stream to CDN and profile...');
       
-      // DEFENSIVE: Check service exists
       if (!savedStreamService) {
         console.error('❌ [BROADCAST] savedStreamService is undefined');
         Alert.alert('Error', 'Stream service is not available');
@@ -209,17 +213,15 @@ export default function BroadcastScreen() {
         return;
       }
 
-      // Save stream metadata to database
       const result = await savedStreamService.saveStream(
         user.id,
         streamId,
         streamTitle || 'Untitled Stream',
-        undefined, // recording URL will be set by backend
-        undefined, // thumbnail URL will be set by backend
+        undefined,
+        undefined,
         streamDuration
       );
 
-      // DEFENSIVE: Check result
       if (!result) {
         console.error('❌ [BROADCAST] saveStream returned null/undefined');
         Alert.alert('Error', 'Failed to save stream');
@@ -241,7 +243,6 @@ export default function BroadcastScreen() {
     }
   }, [streamId, user, streamTitle, streamDuration]);
 
-  // DEFENSIVE: Safe stream deletion
   const handleDeleteStream = useCallback(async () => {
     if (!streamId) {
       console.warn('⚠️ [BROADCAST] Cannot delete stream: streamId is null');
@@ -251,7 +252,6 @@ export default function BroadcastScreen() {
     try {
       console.log('🗑️ [BROADCAST] Deleting stream...');
       
-      // DEFENSIVE: Check supabase exists
       if (!supabase) {
         console.error('❌ [BROADCAST] supabase client is undefined');
         Alert.alert('Error', 'Database connection is not available');
@@ -288,10 +288,34 @@ export default function BroadcastScreen() {
 
   const handleReconnect = useCallback(() => {
     console.log('🔄 [BROADCAST] Attempting to reconnect stream...');
-    // Reconnection logic would go here
   }, []);
 
-  // Effect 1: Check permissions
+  // NEW: Handle gift received from realtime
+  const handleGiftReceived = useCallback((giftData: any) => {
+    if (!isMountedRef.current) return;
+    
+    console.log('🎁 [BROADCAST] Gift received:', giftData);
+    
+    const newAnimation: RoastGiftAnimationData = {
+      id: `${Date.now()}-${Math.random()}`,
+      giftId: giftData.giftId,
+      displayName: giftData.displayName,
+      emoji: giftData.emoji,
+      senderName: giftData.senderName,
+      priceSEK: giftData.priceSEK,
+      tier: giftData.tier,
+    };
+    
+    setGiftAnimations((prev) => [...prev, newAnimation]);
+  }, []);
+
+  // NEW: Handle gift animation complete
+  const handleGiftAnimationComplete = useCallback((animationId: string) => {
+    if (!isMountedRef.current) return;
+    
+    setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
+  }, []);
+
   useEffect(() => {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
@@ -311,7 +335,6 @@ export default function BroadcastScreen() {
     checkPermissions();
   }, [cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
 
-  // Effect 2: Initialize stream with defensive checks
   useEffect(() => {
     if (initAttemptedRef.current) {
       return;
@@ -333,9 +356,8 @@ export default function BroadcastScreen() {
       initAttemptedRef.current = true;
       
       try {
-        console.log('🚀 [BROADCAST] Initializing stream with ALL FEATURES...');
+        console.log('🚀 [BROADCAST] Initializing stream with ROAST GIFT SYSTEM...');
 
-        // DEFENSIVE: Check startStream function exists
         if (!startStream) {
           console.error('❌ [BROADCAST] startStream is undefined');
           setInitError('Stream service is not available');
@@ -350,7 +372,6 @@ export default function BroadcastScreen() {
 
         const result = await startStream(streamTitle, contentLabel || 'family_friendly');
 
-        // DEFENSIVE: Validate result
         if (!result) {
           console.error('❌ [BROADCAST] startStream returned null/undefined');
           setInitError('Failed to start stream');
@@ -375,13 +396,11 @@ export default function BroadcastScreen() {
     initStream();
   }, [user, streamTitle, contentLabel, startStream]);
 
-  // Effect 3: Update viewer count and track peak
   useEffect(() => {
     if (!streamId) return;
 
     const updateViewerCount = async () => {
       try {
-        // DEFENSIVE: Check supabase exists
         if (!supabase) {
           console.error('❌ [BROADCAST] supabase client is undefined');
           return;
@@ -421,7 +440,6 @@ export default function BroadcastScreen() {
     };
   }, [streamId, peakViewers]);
 
-  // Effect 4: Track stream duration
   useEffect(() => {
     if (!streamId || !streamStartTimeRef.current) return;
 
@@ -442,11 +460,9 @@ export default function BroadcastScreen() {
     };
   }, [streamId]);
 
-  // Effect 5: Load active guests with defensive checks
   useEffect(() => {
     if (!streamId) return;
 
-    // DEFENSIVE: Check service and method exist before setting up interval
     if (!streamGuestService) {
       console.error('❌ [BROADCAST] streamGuestService is undefined');
       return;
@@ -466,22 +482,35 @@ export default function BroadcastScreen() {
     return () => clearInterval(interval);
   }, [streamId, loadActiveGuests]);
 
-  // Effect 6: Track gift count
+  // NEW: Subscribe to roast gifts
+  useEffect(() => {
+    if (!streamId) return;
+
+    console.log('🎁 [BROADCAST] Subscribing to roast gifts...');
+    
+    const unsubscribe = roastGiftService.subscribeToGifts(streamId, handleGiftReceived);
+
+    return () => {
+      console.log('🎁 [BROADCAST] Unsubscribing from roast gifts');
+      unsubscribe();
+    };
+  }, [streamId, handleGiftReceived]);
+
+  // Track roast gift count
   useEffect(() => {
     if (!streamId) return;
 
     const updateGiftCount = async () => {
       try {
-        // DEFENSIVE: Check supabase exists
         if (!supabase) {
           console.error('❌ [BROADCAST] supabase client is undefined');
           return;
         }
 
         const { count } = await supabase
-          .from('gift_transactions')
+          .from('roast_gift_transactions')
           .select('*', { count: 'exact', head: true })
-          .eq('livestream_id', streamId);
+          .eq('stream_id', streamId);
 
         setGiftCount(count ?? 0);
       } catch (error) {
@@ -499,10 +528,6 @@ export default function BroadcastScreen() {
     };
   }, [streamId]);
 
-  // ============================================================================
-  // SECTION 2: CONDITIONAL RENDERING (AFTER ALL HOOKS)
-  // ============================================================================
-  
   if (initError) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
@@ -600,10 +625,6 @@ export default function BroadcastScreen() {
     );
   }
 
-  // ============================================================================
-  // SECTION 3: MAIN RENDER (CAMERA VIEW WITH ALL FEATURES)
-  // ============================================================================
-  
   return (
     <View style={styles.container}>
       <CameraView
@@ -612,14 +633,12 @@ export default function BroadcastScreen() {
         facing="front"
         mode="video"
       >
-        {/* Network Stability Indicator */}
         <NetworkStabilityIndicator
           isStreaming={state === 'STREAMING'}
           streamId={streamId || undefined}
           onReconnect={handleReconnect}
         />
 
-        {/* Stream Health Dashboard */}
         {showStreamHealth && (
           <StreamHealthDashboard
             viewerCount={viewerCount}
@@ -628,7 +647,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Guest Seats Grid - DEFENSIVE: Check all required props */}
         {activeGuests.length > 0 && user && streamId && (
           <GuestSeatGrid
             hostName={user.user_metadata?.display_name || 'Host'}
@@ -642,7 +660,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Pinned Message Banner - DEFENSIVE: Check streamId */}
         {streamId && (
           <PinnedMessageBanner
             streamId={streamId}
@@ -651,7 +668,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Top Bar */}
         <View style={styles.topBar}>
           <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
             <View style={styles.liveDot} />
@@ -659,7 +675,6 @@ export default function BroadcastScreen() {
           </View>
 
           <View style={styles.topBarRight}>
-            {/* Stream Health Toggle */}
             <TouchableOpacity
               style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
               onPress={() => setShowStreamHealth(!showStreamHealth)}
@@ -672,7 +687,6 @@ export default function BroadcastScreen() {
               />
             </TouchableOpacity>
 
-            {/* Moderator Panel */}
             <TouchableOpacity
               style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
               onPress={() => setShowModeratorPanel(true)}
@@ -685,7 +699,6 @@ export default function BroadcastScreen() {
               />
             </TouchableOpacity>
 
-            {/* Pinned Messages */}
             <TouchableOpacity
               style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
               onPress={() => setShowPinnedMessagesModal(true)}
@@ -698,7 +711,6 @@ export default function BroadcastScreen() {
               />
             </TouchableOpacity>
 
-            {/* Host Controls */}
             <TouchableOpacity
               style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
               onPress={() => setShowHostControls(!showHostControls)}
@@ -711,7 +723,6 @@ export default function BroadcastScreen() {
               />
             </TouchableOpacity>
 
-            {/* Settings */}
             <TouchableOpacity
               style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
               onPress={() => setShowSettingsPanel(true)}
@@ -724,7 +735,6 @@ export default function BroadcastScreen() {
               />
             </TouchableOpacity>
 
-            {/* End Stream */}
             <TouchableOpacity
               style={[styles.topBarButton, { backgroundColor: 'rgba(255, 0, 0, 0.8)' }]}
               onPress={() => setShowEndModal(true)}
@@ -739,7 +749,6 @@ export default function BroadcastScreen() {
           </View>
         </View>
 
-        {/* Chat Overlay - DEFENSIVE: Check all required props */}
         {showChat && streamId && user && (
           <ChatOverlay
             streamId={streamId}
@@ -749,7 +758,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Bottom Controls */}
         <View style={styles.bottomControls}>
           <TouchableOpacity
             style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
@@ -800,18 +808,17 @@ export default function BroadcastScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Gift Selector - DEFENSIVE: Check user exists */}
+        {/* NEW: Roast Gift Selector */}
         {showGifts && user && (
-          <GiftSelector
+          <RoastGiftSelector
             visible={showGifts}
             onClose={() => setShowGifts(false)}
             receiverId={user.id}
             receiverName={user.user_metadata?.display_name || 'Host'}
-            livestreamId={streamId || undefined}
+            streamId={streamId || undefined}
           />
         )}
 
-        {/* Guest Invitation Modal - DEFENSIVE: Check streamId */}
         {showGuestInvitation && streamId && (
           <GuestInvitationModal
             streamId={streamId}
@@ -823,7 +830,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Host Control Dashboard - DEFENSIVE: Check streamId */}
         {showHostControls && streamId && (
           <HostControlDashboard
             streamId={streamId}
@@ -833,7 +839,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Moderator Control Panel - DEFENSIVE: Check all required props */}
         {showModeratorPanel && streamId && user && (
           <ModeratorControlPanel
             visible={showModeratorPanel}
@@ -845,7 +850,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Live Settings Panel */}
         {showSettingsPanel && (
           <LiveSettingsPanel
             visible={showSettingsPanel}
@@ -861,7 +865,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Manage Pinned Messages Modal - DEFENSIVE: Check streamId */}
         {showPinnedMessagesModal && streamId && (
           <ManagePinnedMessagesModal
             visible={showPinnedMessagesModal}
@@ -870,7 +873,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* VIP Club Panel */}
         {showVIPClubPanel && (
           <VIPClubPanel
             visible={showVIPClubPanel}
@@ -881,7 +883,20 @@ export default function BroadcastScreen() {
         )}
       </CameraView>
 
-      {/* End Stream Modal - DEFENSIVE: Check streamId */}
+      {/* NEW: Roast Gift Animations */}
+      {giftAnimations.map((animation) => (
+        <RoastGiftAnimationOverlay
+          key={animation.id}
+          giftId={animation.giftId}
+          displayName={animation.displayName}
+          emoji={animation.emoji}
+          senderName={animation.senderName}
+          priceSEK={animation.priceSEK}
+          tier={animation.tier}
+          onAnimationComplete={() => handleGiftAnimationComplete(animation.id)}
+        />
+      ))}
+
       {streamId && (
         <EndStreamModal
           visible={showEndModal}
@@ -895,7 +910,6 @@ export default function BroadcastScreen() {
         />
       )}
 
-      {/* Save Replay Modal */}
       <SaveReplayModal
         visible={showSaveReplayModal}
         onSave={handleSaveStream}
