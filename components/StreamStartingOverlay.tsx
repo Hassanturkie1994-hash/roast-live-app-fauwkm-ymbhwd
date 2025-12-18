@@ -8,6 +8,15 @@ interface StreamStartingOverlayProps {
   onComplete?: () => void;
 }
 
+/**
+ * StreamStartingOverlay - "Starting Roast Live" Text Display
+ * 
+ * REQUIREMENT: Display "Starting Roast Live" when stream initializes
+ * - Pure UI/UX level component
+ * - Does not affect streaming logic
+ * - Auto-hides after 2.5 seconds
+ * - Smooth fade in/out animations
+ */
 export default function StreamStartingOverlay({ visible, onComplete }: StreamStartingOverlayProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -79,6 +88,7 @@ export default function StreamStartingOverlay({ visible, onComplete }: StreamSta
           <View style={styles.loadingBar}>
             <View style={styles.loadingBarFill} />
           </View>
+          <Text style={styles.subtitle}>Get ready to roast!</Text>
         </Animated.View>
       </View>
     </View>
@@ -111,11 +121,19 @@ const styles = StyleSheet.create({
     fontSize: 50,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
+    letterSpacing: 1,
+  },
+  subtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+    marginTop: 16,
   },
   loadingBar: {
     width: 200,

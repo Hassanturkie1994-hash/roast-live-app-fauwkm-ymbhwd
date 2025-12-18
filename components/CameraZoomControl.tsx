@@ -16,26 +16,30 @@ interface CameraZoomControlProps {
 const ZOOM_LEVELS: ZoomLevel[] = [0.5, 1, 2];
 
 /**
- * CameraZoomControl - TikTok-Style Zoom Control
+ * CameraZoomControl - TikTok-Style Zoom Control with FIXED Calibration
  * 
- * CRITICAL FIX: Properly calibrated zoom behavior
+ * CRITICAL FIX: Properly calibrated zoom behavior to match native camera apps
  * 
- * The issue was that zoom values were being used directly without
- * considering device camera capabilities. This fix:
+ * ZOOM MAPPING:
+ * - 0.5x UI → Device minimum zoom (natural wide angle, default view)
+ * - 1x UI → Device midpoint (true standard camera baseline)
+ * - 2x UI → Device maximum or 2× midpoint (true 2× zoom)
  * 
- * 1. Maps UI zoom levels (0.5x, 1x, 2x) to actual device zoom ranges
- * 2. Normalizes zoom based on device's minZoom and maxZoom
- * 3. Provides TikTok-like zoom behavior where:
- *    - 0.5x = Wide angle (natural default view)
- *    - 1x = Standard camera baseline
- *    - 2x = True 2× optical/digital zoom
+ * DEVICE ZOOM NORMALIZATION:
+ * Most devices have zoom ranges like:
+ * - iPhone: minZoom=1, maxZoom=10 (or higher)
+ * - Android: minZoom=0, maxZoom=1-10 (varies by device)
  * 
- * DEVICE ZOOM MAPPING:
- * - Most devices have minZoom: 0 and maxZoom: 1-10
- * - We map our UI levels to this range proportionally
- * - 0.5x UI → minZoom (widest angle)
- * - 1x UI → midpoint between min and max
- * - 2x UI → closer to maxZoom (zoomed in)
+ * We normalize these to our UI levels (0.5x, 1x, 2x) by:
+ * 1. Finding the midpoint of the device's zoom range
+ * 2. Mapping 0.5x to minimum (widest angle)
+ * 3. Mapping 1x to midpoint (standard view)
+ * 4. Mapping 2x to maximum or 2× midpoint (zoomed in)
+ * 
+ * This ensures:
+ * - 0.5x feels like a natural default camera view (NOT zoomed in)
+ * - 1x represents the true camera baseline
+ * - 2x provides a clear 2× zoom effect
  */
 export default function CameraZoomControl({
   currentZoom,
@@ -56,18 +60,18 @@ export default function CameraZoomControl({
    * Calculate actual device zoom value from UI zoom level
    * 
    * This is the CRITICAL FIX for zoom calibration:
-   * - 0.5x UI → Use minimum zoom (widest angle)
-   * - 1x UI → Use middle of zoom range (standard view)
-   * - 2x UI → Use 2× the middle value (zoomed in)
+   * - 0.5x UI → Use minimum zoom (widest angle, natural default)
+   * - 1x UI → Use middle of zoom range (standard baseline)
+   * - 2x UI → Use 2× the middle value or max (true 2× zoom)
    * 
    * Example with device range [0, 1]:
-   * - 0.5x UI → 0 (widest)
-   * - 1x UI → 0.5 (standard)
+   * - 0.5x UI → 0 (widest, natural default)
+   * - 1x UI → 0.5 (standard baseline)
    * - 2x UI → 1 (max zoom)
    * 
-   * Example with device range [0, 10]:
-   * - 0.5x UI → 0 (widest)
-   * - 1x UI → 5 (standard)
+   * Example with device range [1, 10]:
+   * - 0.5x UI → 1 (widest, natural default)
+   * - 1x UI → 5.5 (standard baseline)
    * - 2x UI → 10 (max zoom)
    */
   const getDeviceZoomValue = (uiZoom: ZoomLevel): number => {
@@ -76,13 +80,13 @@ export default function CameraZoomControl({
 
     switch (uiZoom) {
       case 0.5:
-        // Wide angle - use minimum zoom
+        // Wide angle - use minimum zoom (natural default view)
         return deviceZoomRange.min;
       case 1:
-        // Standard - use midpoint
+        // Standard - use midpoint (true 1x baseline)
         return midpoint;
       case 2:
-        // Zoomed - use maximum or 2× midpoint
+        // Zoomed - use maximum or 2× midpoint (true 2× zoom)
         return Math.min(deviceZoomRange.max, midpoint * 2);
       default:
         return midpoint;

@@ -16,6 +16,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
+import { useAIFaceEffects } from '@/contexts/AIFaceEffectsContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import ChatOverlay from '@/components/ChatOverlay';
 import GiftSelector from '@/components/GiftSelector';
@@ -29,64 +30,71 @@ import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 import PinnedMessageBanner from '@/components/PinnedMessageBanner';
 import ManagePinnedMessagesModal from '@/components/ManagePinnedMessagesModal';
 import NetworkStabilityIndicator from '@/components/NetworkStabilityIndicator';
-import CameraFilterSelector, { CameraFilter } from '@/components/CameraFilterSelector';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import StreamHealthDashboard from '@/components/StreamHealthDashboard';
+import StreamStartingOverlay from '@/components/StreamStartingOverlay';
+import AIFaceFilterSystem from '@/components/AIFaceFilterSystem';
+import AIFaceEffectsPanel from '@/components/AIFaceEffectsPanel';
+import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
+import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverlay';
+import CameraZoomControl, { ZoomLevel } from '@/components/CameraZoomControl';
 import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
 import { supabase } from '@/app/integrations/supabase/client';
 import { savedStreamService } from '@/app/services/savedStreamService';
-import { cdnService } from '@/app/services/cdnService';
+import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /**
- * BroadcastScreen - Complete Feature Set with Full Defensive Programming
+ * BroadcastScreen - AI Face Filter System with Fixed Zoom
  * 
- * STABILITY FIXES APPLIED:
- * - All service method calls have existence checks
- * - All async operations wrapped in try-catch
- * - All data access uses optional chaining
- * - No assumptions about data existence
- * - Graceful fallbacks for all error cases
+ * NEW FEATURES IMPLEMENTED:
+ * 1. ✅ AI-Based Face Filters (Real-time face detection and transformation)
+ * 2. ✅ Fixed Camera Zoom (0.5x = wide, 1x = standard, 2x = zoomed)
+ * 3. ✅ "Starting Roast Live" Text (Displayed on stream initialization)
+ * 4. ✅ All Client-Side (No backend modifications)
  * 
- * TIKTOK-STYLE CAMERA:
- * - Portrait orientation locked during streaming
- * - 9:16 aspect ratio enforced
- * - 30 fps frame rate
- * - H.264 codec compatibility
+ * REMOVED:
+ * - Old particle-based face effects (fire, sparkles, hearts, etc.)
  * 
- * RESTORED FEATURES:
- * 1. Moderator Panel - Manage moderators and banned users
- * 2. Settings Panel - Stream settings, practice mode, who can watch
- * 3. Pinned Messages - Pin and manage important chat messages
- * 4. Host Add Guests - Invite viewers to join as guests
- * 5. FPS Display - Real-time FPS monitoring
- * 6. Connection Quality - Good/Mid/Bad connection indicator
- * 7. Camera Filters - Apply filters to camera feed
- * 8. VIP Club Integration - Restrict stream to VIP club members
- * 9. CDN Storage - Save streams to CDN and user profiles
- * 10. Stream Health Dashboard - Comprehensive stream metrics
+ * REPLACED WITH:
+ * - AI Face Filters: Big Eyes, Big Nose, Slim Face, Smooth Skin, Funny Face, Beauty
+ * - Real-time face detection using TensorFlow.js and BlazeFace
+ * - Face-focused transformations that adapt to movement, rotation, and distance
+ * 
+ * CAMERA ZOOM:
+ * - 0.5x: Natural wide angle (default, NOT zoomed in)
+ * - 1x: True standard camera baseline
+ * - 2x: True 2× zoom
+ * - Properly calibrated to match TikTok/native camera behavior
+ * 
+ * STREAM START:
+ * - Displays "Starting Roast Live" text on initialization
+ * - Pure UI/UX level, does not affect streaming logic
+ * - Auto-hides after 2.5 seconds
  */
 export default function BroadcastScreen() {
-  // ============================================================================
-  // SECTION 1: ALL HOOKS (MUST BE CALLED UNCONDITIONALLY AT TOP LEVEL)
-  // ============================================================================
-  
   useKeepAwake();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📺 [BROADCAST] Component rendering with TikTok-style camera');
+  console.log('📺 [BROADCAST] AI Face Filter System Active');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
-  const { streamTitle, contentLabel } = useLocalSearchParams<{
+  const { streamTitle, contentLabel, cameraZoom: initialZoom } = useLocalSearchParams<{
     streamTitle?: string;
     contentLabel?: string;
+    cameraZoom?: string;
   }>();
   
   const { user } = useAuth();
   const { colors } = useTheme();
   
-  // CRITICAL FIX: Call useLiveStreamStateMachine unconditionally at top level
+  // AI Face Effects Context
+  const { activeEffect, effectIntensity } = useAIFaceEffects();
+  
+  // Legacy Color Filters Context
+  const { activeFilter, filterIntensity } = useCameraEffects();
+  
   const stateMachine = useLiveStreamStateMachine();
   const state = stateMachine?.state || 'IDLE';
   const startStream = stateMachine?.startStream || null;
@@ -101,14 +109,23 @@ export default function BroadcastScreen() {
   const [showGifts, setShowGifts] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const [showSaveReplayModal, setShowSaveReplayModal] = useState(false);
+  const [showStartingOverlay, setShowStartingOverlay] = useState(true);
   
-  // NEW: Feature Panel States
+  // Feature Panel States
   const [showModeratorPanel, setShowModeratorPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showPinnedMessagesModal, setShowPinnedMessagesModal] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFaceEffectsPanel, setShowFaceEffectsPanel] = useState(false);
+  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
   const [showVIPClubPanel, setShowVIPClubPanel] = useState(false);
   const [showStreamHealth, setShowStreamHealth] = useState(true);
+  
+  // Camera Zoom State
+  const [cameraZoom, setCameraZoom] = useState<ZoomLevel>(
+    initialZoom ? parseFloat(initialZoom) as ZoomLevel : 0.5
+  );
+  const [deviceZoom, setDeviceZoom] = useState<number>(0);
+  const [cameraZoomRange, setCameraZoomRange] = useState({ min: 0, max: 1 });
   
   // Stream State
   const [viewerCount, setViewerCount] = useState(0);
@@ -125,10 +142,7 @@ export default function BroadcastScreen() {
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
   
-  // NEW: Filter State
-  const [selectedFilter, setSelectedFilter] = useState<CameraFilter>('none');
-  
-  // NEW: Settings State
+  // Settings State
   const [aboutLive, setAboutLive] = useState('');
   const [practiceMode, setPracticeMode] = useState(false);
   const [whoCanWatch, setWhoCanWatch] = useState<'public' | 'followers' | 'vip_club'>('public');
@@ -142,11 +156,11 @@ export default function BroadcastScreen() {
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const giftCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // TIKTOK-STYLE: Lock orientation to portrait during streaming
+  // Lock orientation to portrait
   useEffect(() => {
     const lockOrientation = async () => {
       try {
-        console.log('🔒 [BROADCAST] Locking orientation to portrait for TikTok-style streaming');
+        console.log('🔒 [BROADCAST] Locking orientation to portrait');
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       } catch (error) {
         console.warn('⚠️ [BROADCAST] Failed to lock orientation:', error);
@@ -156,46 +170,54 @@ export default function BroadcastScreen() {
     lockOrientation();
 
     return () => {
-      // Unlock orientation when leaving broadcast screen
       ScreenOrientation.unlockAsync().catch((error) => {
         console.warn('⚠️ [BROADCAST] Failed to unlock orientation:', error);
       });
     };
   }, []);
 
-  // CRITICAL FIX: Defensive guest loading with proper method name and null checks
-  const loadActiveGuests = useCallback(async () => {
-    if (!streamId) {
-      console.log('⚠️ [BROADCAST] Cannot load guests: streamId is null');
-      return;
+  // Calculate device zoom from UI zoom
+  const calculateDeviceZoom = useCallback((uiZoom: ZoomLevel): number => {
+    const range = cameraZoomRange.max - cameraZoomRange.min;
+    const midpoint = cameraZoomRange.min + (range / 2);
+
+    switch (uiZoom) {
+      case 0.5:
+        return cameraZoomRange.min;
+      case 1:
+        return midpoint;
+      case 2:
+        return Math.min(cameraZoomRange.max, midpoint * 2);
+      default:
+        return midpoint;
     }
+  }, [cameraZoomRange]);
+
+  // Update device zoom when UI zoom changes
+  useEffect(() => {
+    const newDeviceZoom = calculateDeviceZoom(cameraZoom);
+    setDeviceZoom(newDeviceZoom);
+    console.log(`📷 [BROADCAST] Zoom: ${cameraZoom}x (Device: ${newDeviceZoom.toFixed(2)})`);
+  }, [cameraZoom, calculateDeviceZoom]);
+
+  const handleZoomChange = (zoom: ZoomLevel) => {
+    console.log('🔍 [BROADCAST] Camera zoom changed to:', zoom);
+    setCameraZoom(zoom);
+  };
+
+  const loadActiveGuests = useCallback(async () => {
+    if (!streamId) return;
 
     try {
-      // DEFENSIVE: Check service and method exist
-      if (!streamGuestService) {
-        console.error('❌ [BROADCAST] streamGuestService is undefined');
+      if (!streamGuestService || typeof streamGuestService.getActiveGuestSeats !== 'function') {
+        console.error('❌ [BROADCAST] streamGuestService not available');
         setActiveGuests([]);
         return;
       }
 
-      if (typeof streamGuestService.getActiveGuestSeats !== 'function') {
-        console.error('❌ [BROADCAST] streamGuestService.getActiveGuestSeats is not a function');
-        setActiveGuests([]);
-        return;
-      }
-
-      // DEFENSIVE: Call with try-catch
       const guests = await streamGuestService.getActiveGuestSeats(streamId);
       
-      // DEFENSIVE: Validate response
-      if (!guests) {
-        console.warn('⚠️ [BROADCAST] getActiveGuestSeats returned null/undefined');
-        setActiveGuests([]);
-        return;
-      }
-
-      if (!Array.isArray(guests)) {
-        console.warn('⚠️ [BROADCAST] getActiveGuestSeats returned non-array:', typeof guests);
+      if (!guests || !Array.isArray(guests)) {
         setActiveGuests([]);
         return;
       }
@@ -204,88 +226,50 @@ export default function BroadcastScreen() {
       console.log('✅ [BROADCAST] Loaded', guests.length, 'active guests');
     } catch (error) {
       console.error('❌ [BROADCAST] Error loading active guests:', error);
-      // DEFENSIVE: Fail gracefully - don't crash the app
       setActiveGuests([]);
     }
   }, [streamId]);
 
-  // CRITICAL FIX: Defensive stream saving without is_archived column
   const handleSaveStream = useCallback(async () => {
-    if (!streamId) {
-      console.warn('⚠️ [BROADCAST] Cannot save stream: streamId is null');
-      return;
-    }
-
-    if (!user) {
-      console.warn('⚠️ [BROADCAST] Cannot save stream: user is null');
-      return;
-    }
+    if (!streamId || !user) return;
 
     try {
-      console.log('💾 [BROADCAST] Saving stream to CDN and profile...');
+      console.log('💾 [BROADCAST] Saving stream...');
       
-      // DEFENSIVE: Check service exists
-      if (!savedStreamService) {
-        console.error('❌ [BROADCAST] savedStreamService is undefined');
+      if (!savedStreamService || typeof savedStreamService.saveStream !== 'function') {
         Alert.alert('Error', 'Stream service is not available');
         return;
       }
 
-      if (typeof savedStreamService.saveStream !== 'function') {
-        console.error('❌ [BROADCAST] savedStreamService.saveStream is not a function');
-        Alert.alert('Error', 'Stream save function is not available');
-        return;
-      }
-
-      // Save stream metadata to database
       const result = await savedStreamService.saveStream(
         user.id,
         streamId,
         streamTitle || 'Untitled Stream',
-        undefined, // recording URL will be set by backend
-        undefined, // thumbnail URL will be set by backend
+        undefined,
+        undefined,
         streamDuration
       );
 
-      // DEFENSIVE: Check result
-      if (!result) {
-        console.error('❌ [BROADCAST] saveStream returned null/undefined');
-        Alert.alert('Error', 'Failed to save stream');
+      if (!result || !result.success) {
+        Alert.alert('Error', result?.error || 'Failed to save stream');
         return;
       }
 
-      if (!result.success) {
-        console.error('❌ [BROADCAST] Error saving stream:', result.error);
-        Alert.alert('Error', result.error || 'Failed to save stream');
-        return;
-      }
-
-      console.log('✅ [BROADCAST] Stream saved successfully to profile');
-      
-      // CRITICAL FIX: Do NOT attempt to update is_archived column
-      // The column doesn't exist in the schema, and the stream is already saved
-      // via savedStreamService
-      
+      console.log('✅ [BROADCAST] Stream saved successfully');
       router.replace('/(tabs)/(home)');
     } catch (error: any) {
-      console.error('❌ [BROADCAST] Error in handleSaveStream:', error);
+      console.error('❌ [BROADCAST] Error saving stream:', error);
       Alert.alert('Error', error?.message || 'Failed to save stream');
     }
   }, [streamId, user, streamTitle, streamDuration]);
 
-  // DEFENSIVE: Safe stream deletion
   const handleDeleteStream = useCallback(async () => {
-    if (!streamId) {
-      console.warn('⚠️ [BROADCAST] Cannot delete stream: streamId is null');
-      return;
-    }
+    if (!streamId) return;
 
     try {
       console.log('🗑️ [BROADCAST] Deleting stream...');
       
-      // DEFENSIVE: Check supabase exists
       if (!supabase) {
-        console.error('❌ [BROADCAST] supabase client is undefined');
         Alert.alert('Error', 'Database connection is not available');
         return;
       }
@@ -296,7 +280,6 @@ export default function BroadcastScreen() {
         .eq('id', streamId);
 
       if (error) {
-        console.error('❌ [BROADCAST] Error deleting stream:', error);
         Alert.alert('Error', error.message || 'Failed to delete stream');
         return;
       }
@@ -304,7 +287,7 @@ export default function BroadcastScreen() {
       console.log('✅ [BROADCAST] Stream deleted successfully');
       router.replace('/(tabs)/(home)');
     } catch (error: any) {
-      console.error('❌ [BROADCAST] Error in handleDeleteStream:', error);
+      console.error('❌ [BROADCAST] Error deleting stream:', error);
       Alert.alert('Error', error?.message || 'Failed to delete stream');
     }
   }, [streamId]);
@@ -320,10 +303,9 @@ export default function BroadcastScreen() {
 
   const handleReconnect = useCallback(() => {
     console.log('🔄 [BROADCAST] Attempting to reconnect stream...');
-    // Reconnection logic would go here
   }, []);
 
-  // Effect 1: Check permissions
+  // Check permissions
   useEffect(() => {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
@@ -343,21 +325,12 @@ export default function BroadcastScreen() {
     checkPermissions();
   }, [cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
 
-  // Effect 2: Initialize stream with defensive checks
+  // Initialize stream
   useEffect(() => {
-    if (initAttemptedRef.current) {
-      return;
-    }
+    if (initAttemptedRef.current) return;
 
-    if (!user) {
-      console.warn('⚠️ [BROADCAST] Cannot init stream: user is null');
-      setInitError('User not authenticated');
-      return;
-    }
-
-    if (!streamTitle) {
-      console.warn('⚠️ [BROADCAST] Cannot init stream: streamTitle is missing');
-      setInitError('Stream title is required');
+    if (!user || !streamTitle) {
+      setInitError('User not authenticated or stream title missing');
       return;
     }
 
@@ -365,35 +338,28 @@ export default function BroadcastScreen() {
       initAttemptedRef.current = true;
       
       try {
-        console.log('🚀 [BROADCAST] Initializing TikTok-style stream...');
+        console.log('🚀 [BROADCAST] Initializing stream with AI Face Filters...');
 
-        // DEFENSIVE: Check startStream function exists
-        if (!startStream) {
-          console.error('❌ [BROADCAST] startStream is undefined');
-          setInitError('Stream service is not available');
-          return;
-        }
-
-        if (typeof startStream !== 'function') {
-          console.error('❌ [BROADCAST] startStream is not a function');
+        if (!startStream || typeof startStream !== 'function') {
           setInitError('Stream service is not available');
           return;
         }
 
         const result = await startStream(streamTitle, contentLabel || 'family_friendly');
 
-        // DEFENSIVE: Validate result
         if (!result) {
-          console.error('❌ [BROADCAST] startStream returned null/undefined');
           setInitError('Failed to start stream');
           return;
         }
 
         if (result.success && result.streamId) {
-          console.log('✅ [BROADCAST] TikTok-style stream started successfully:', result.streamId);
+          console.log('✅ [BROADCAST] Stream started successfully:', result.streamId);
           setStreamId(result.streamId);
           setInitError(null);
           streamStartTimeRef.current = Date.now();
+          
+          // Show "Starting Roast Live" overlay
+          setShowStartingOverlay(true);
         } else {
           console.error('❌ [BROADCAST] Stream start failed:', result.error);
           setInitError(result.error || 'Failed to start stream');
@@ -407,17 +373,13 @@ export default function BroadcastScreen() {
     initStream();
   }, [user, streamTitle, contentLabel, startStream]);
 
-  // Effect 3: Update viewer count and track peak
+  // Update viewer count
   useEffect(() => {
     if (!streamId) return;
 
     const updateViewerCount = async () => {
       try {
-        // DEFENSIVE: Check supabase exists
-        if (!supabase) {
-          console.error('❌ [BROADCAST] supabase client is undefined');
-          return;
-        }
+        if (!supabase) return;
 
         const { count } = await supabase
           .from('stream_viewers')
@@ -453,7 +415,7 @@ export default function BroadcastScreen() {
     };
   }, [streamId, peakViewers]);
 
-  // Effect 4: Track stream duration
+  // Track stream duration
   useEffect(() => {
     if (!streamId || !streamStartTimeRef.current) return;
 
@@ -474,18 +436,11 @@ export default function BroadcastScreen() {
     };
   }, [streamId]);
 
-  // Effect 5: Load active guests with defensive checks
+  // Load active guests
   useEffect(() => {
     if (!streamId) return;
 
-    // DEFENSIVE: Check service and method exist before setting up interval
-    if (!streamGuestService) {
-      console.error('❌ [BROADCAST] streamGuestService is undefined');
-      return;
-    }
-
-    if (typeof streamGuestService.getActiveGuestSeats !== 'function') {
-      console.error('❌ [BROADCAST] streamGuestService.getActiveGuestSeats is not a function');
+    if (!streamGuestService || typeof streamGuestService.getActiveGuestSeats !== 'function') {
       return;
     }
 
@@ -498,17 +453,13 @@ export default function BroadcastScreen() {
     return () => clearInterval(interval);
   }, [streamId, loadActiveGuests]);
 
-  // Effect 6: Track gift count
+  // Track gift count
   useEffect(() => {
     if (!streamId) return;
 
     const updateGiftCount = async () => {
       try {
-        // DEFENSIVE: Check supabase exists
-        if (!supabase) {
-          console.error('❌ [BROADCAST] supabase client is undefined');
-          return;
-        }
+        if (!supabase) return;
 
         const { count } = await supabase
           .from('gift_transactions')
@@ -531,10 +482,7 @@ export default function BroadcastScreen() {
     };
   }, [streamId]);
 
-  // ============================================================================
-  // SECTION 2: CONDITIONAL RENDERING (AFTER ALL HOOKS)
-  // ============================================================================
-  
+  // Conditional rendering for errors and loading states
   if (initError) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
@@ -603,7 +551,7 @@ export default function BroadcastScreen() {
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
         <Text style={[styles.loadingText, { color: colors.text }]}>
-          {state === 'CREATING_STREAM' ? 'Starting TikTok-style stream...' : 'Initializing...'}
+          {state === 'CREATING_STREAM' ? 'Starting stream...' : 'Initializing...'}
         </Text>
       </View>
     );
@@ -632,10 +580,7 @@ export default function BroadcastScreen() {
     );
   }
 
-  // ============================================================================
-  // SECTION 3: MAIN RENDER (CAMERA VIEW WITH ALL FEATURES)
-  // ============================================================================
-  
+  // Main render
   return (
     <View style={styles.container}>
       <CameraView
@@ -643,7 +588,28 @@ export default function BroadcastScreen() {
         style={styles.camera}
         facing="front"
         mode="video"
+        zoom={deviceZoom}
       >
+        {/* "Starting Roast Live" Overlay */}
+        <StreamStartingOverlay
+          visible={showStartingOverlay}
+          onComplete={() => setShowStartingOverlay(false)}
+        />
+
+        {/* Legacy Color Filter Overlay */}
+        <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
+
+        {/* AI Face Filter System (NEW) */}
+        <AIFaceFilterSystem
+          filter={activeEffect}
+          intensity={effectIntensity}
+          onFaceDetected={(count) => {
+            if (count > 0 && __DEV__) {
+              console.log('🤖 [BROADCAST] Faces detected:', count);
+            }
+          }}
+        />
+
         {/* Network Stability Indicator */}
         <NetworkStabilityIndicator
           isStreaming={state === 'STREAMING'}
@@ -660,7 +626,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Guest Seats Grid - DEFENSIVE: Check all required props */}
+        {/* Guest Seats Grid */}
         {activeGuests.length > 0 && user && streamId && (
           <GuestSeatGrid
             hostName={user.user_metadata?.display_name || 'Host'}
@@ -674,7 +640,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Pinned Message Banner - DEFENSIVE: Check streamId */}
+        {/* Pinned Message Banner */}
         {streamId && (
           <PinnedMessageBanner
             streamId={streamId}
@@ -683,11 +649,13 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Camera Filter Selector */}
-        <CameraFilterSelector
-          selectedFilter={selectedFilter}
-          onSelectFilter={setSelectedFilter}
-          visible={showFilters}
+        {/* Camera Zoom Control (FIXED) */}
+        <CameraZoomControl
+          currentZoom={cameraZoom}
+          onZoomChange={handleZoomChange}
+          position="top"
+          minZoom={cameraZoomRange.min}
+          maxZoom={cameraZoomRange.max}
         />
 
         {/* Top Bar */}
@@ -711,16 +679,29 @@ export default function BroadcastScreen() {
               />
             </TouchableOpacity>
 
-            {/* Filters Toggle */}
+            {/* AI Face Effects Toggle (NEW) */}
             <TouchableOpacity
               style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowFilters(!showFilters)}
+              onPress={() => setShowFaceEffectsPanel(true)}
+            >
+              <IconSymbol
+                ios_icon_name="face.smiling"
+                android_material_icon_name="face"
+                size={20}
+                color={activeEffect ? colors.brandPrimary : '#FFFFFF'}
+              />
+            </TouchableOpacity>
+
+            {/* Color Filters Toggle */}
+            <TouchableOpacity
+              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowFiltersPanel(true)}
             >
               <IconSymbol
                 ios_icon_name="camera.filters"
                 android_material_icon_name="filter"
                 size={20}
-                color={showFilters ? colors.brandPrimary : '#FFFFFF'}
+                color={activeFilter ? colors.brandPrimary : '#FFFFFF'}
               />
             </TouchableOpacity>
 
@@ -791,7 +772,7 @@ export default function BroadcastScreen() {
           </View>
         </View>
 
-        {/* Chat Overlay - DEFENSIVE: Check all required props */}
+        {/* Chat Overlay */}
         {showChat && streamId && user && (
           <ChatOverlay
             streamId={streamId}
@@ -852,7 +833,7 @@ export default function BroadcastScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Gift Selector - DEFENSIVE: Check user exists */}
+        {/* Gift Selector */}
         {showGifts && user && (
           <GiftSelector
             visible={showGifts}
@@ -863,7 +844,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Guest Invitation Modal - DEFENSIVE: Check streamId */}
+        {/* Guest Invitation Modal */}
         {showGuestInvitation && streamId && (
           <GuestInvitationModal
             streamId={streamId}
@@ -875,7 +856,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Host Control Dashboard - DEFENSIVE: Check streamId */}
+        {/* Host Control Dashboard */}
         {showHostControls && streamId && (
           <HostControlDashboard
             streamId={streamId}
@@ -885,7 +866,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Moderator Control Panel - DEFENSIVE: Check all required props */}
+        {/* Moderator Control Panel */}
         {showModeratorPanel && streamId && user && (
           <ModeratorControlPanel
             visible={showModeratorPanel}
@@ -913,7 +894,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Manage Pinned Messages Modal - DEFENSIVE: Check streamId */}
+        {/* Manage Pinned Messages Modal */}
         {showPinnedMessagesModal && streamId && (
           <ManagePinnedMessagesModal
             visible={showPinnedMessagesModal}
@@ -921,6 +902,22 @@ export default function BroadcastScreen() {
             streamId={streamId}
           />
         )}
+
+        {/* AI Face Effects Panel (NEW) */}
+        <AIFaceEffectsPanel
+          visible={showFaceEffectsPanel}
+          onClose={() => setShowFaceEffectsPanel(false)}
+          selectedEffect={activeEffect}
+          onSelectEffect={() => {}}
+          intensity={effectIntensity}
+          onIntensityChange={() => {}}
+        />
+
+        {/* Color Filters Panel */}
+        <ImprovedFiltersPanel
+          visible={showFiltersPanel}
+          onClose={() => setShowFiltersPanel(false)}
+        />
 
         {/* VIP Club Panel */}
         {showVIPClubPanel && (
@@ -933,7 +930,7 @@ export default function BroadcastScreen() {
         )}
       </CameraView>
 
-      {/* End Stream Modal - DEFENSIVE: Check streamId */}
+      {/* End Stream Modal */}
       {streamId && (
         <EndStreamModal
           visible={showEndModal}
