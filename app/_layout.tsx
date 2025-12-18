@@ -8,7 +8,6 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LiveStreamStateMachineProvider } from '@/contexts/LiveStreamStateMachine';
 import { StreamingProvider } from '@/contexts/StreamingContext';
 import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
-import { AIFaceEffectsProvider } from '@/contexts/AIFaceEffectsContext';
 import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
 import { VIPClubProvider } from '@/contexts/VIPClubContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
@@ -129,7 +128,7 @@ function RootLayoutContent() {
 /**
  * RootLayout
  * 
- * CRITICAL FIX: Correct provider hierarchy with EditableContext and AI Face Effects
+ * CRITICAL FIX: Correct provider hierarchy with EditableContext
  * 
  * Provider order (top → bottom):
  * 1. ErrorBoundary (outermost - catches all errors)
@@ -138,18 +137,17 @@ function RootLayoutContent() {
  * 4. AuthProvider (authentication state)
  * 5. LiveStreamStateMachineProvider (live stream state machine)
  * 6. StreamingProvider (streaming context)
- * 7. CameraEffectsProvider (camera filters/effects - legacy)
- * 8. AIFaceEffectsProvider (NEW - AI face detection and filters)
- * 9. ModeratorsProvider (moderator management)
- * 10. VIPClubProvider (VIP club features)
- * 11. WidgetProvider (widget state)
- * 12. RootLayoutContent (actual app content)
+ * 7. CameraEffectsProvider (camera filters/effects)
+ * 8. ModeratorsProvider (moderator management)
+ * 9. VIPClubProvider (VIP club features)
+ * 10. WidgetProvider (widget state)
+ * 11. RootLayoutContent (actual app content)
  * 
  * IMPORTANT: All providers MUST be mounted before any screen that uses them
  */
 function RootLayoutBase() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('🚀 [LAYOUT] RootLayout mounting with AI Face Effects...');
+  console.log('🚀 [LAYOUT] RootLayout mounting...');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return (
@@ -159,15 +157,13 @@ function RootLayoutBase() {
           <LiveStreamStateMachineProvider>
             <StreamingProvider>
               <CameraEffectsProvider>
-                <AIFaceEffectsProvider>
-                  <ModeratorsProvider>
-                    <VIPClubProvider>
-                      <WidgetProvider>
-                        <RootLayoutContent />
-                      </WidgetProvider>
-                    </VIPClubProvider>
-                  </ModeratorsProvider>
-                </AIFaceEffectsProvider>
+                <ModeratorsProvider>
+                  <VIPClubProvider>
+                    <WidgetProvider>
+                      <RootLayoutContent />
+                    </WidgetProvider>
+                  </VIPClubProvider>
+                </ModeratorsProvider>
               </CameraEffectsProvider>
             </StreamingProvider>
           </LiveStreamStateMachineProvider>

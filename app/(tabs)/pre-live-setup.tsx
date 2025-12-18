@@ -12,7 +12,6 @@ import {
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, Stack, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import * as ScreenOrientation from 'expo-screen-orientation';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
@@ -21,18 +20,16 @@ import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal'
 import CommunityGuidelinesModal from '@/components/CommunityGuidelinesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
-import { useAIFaceEffects } from '@/contexts/AIFaceEffectsContext';
+import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
-import AIFaceEffectsPanel from '@/components/AIFaceEffectsPanel';
+import ImprovedEffectsPanel from '@/components/ImprovedEffectsPanel';
 import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverlay';
-import AIFaceFilterSystem from '@/components/AIFaceFilterSystem';
-import CameraZoomControl, { ZoomLevel } from '@/components/CameraZoomControl';
+import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOverlay';
 import { BattleFormat, battleService } from '@/app/services/battleService';
-import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
@@ -40,21 +37,12 @@ export default function PreLiveSetupScreen() {
   
   const liveStreamState = useLiveStreamStateMachine();
   
-  // Legacy color filters
-  const { activeFilter, filterIntensity } = useCameraEffects();
-  
-  // NEW: AI Face Effects
-  const { activeEffect, effectIntensity } = useAIFaceEffects();
+  const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   
   const [facing, setFacing] = useState<CameraType>('front');
-
-  // CRITICAL FIX: Camera Zoom State with proper device zoom mapping
-  const [cameraZoom, setCameraZoom] = useState<ZoomLevel>(0.5);
-  const [deviceZoom, setDeviceZoom] = useState<number>(0);
-  const [cameraZoomRange, setCameraZoomRange] = useState({ min: 0, max: 1 });
 
   // Stream setup states
   const [streamTitle, setStreamTitle] = useState('');
@@ -64,7 +52,7 @@ export default function PreLiveSetupScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   // Panel visibility states
-  const [showFaceEffectsPanel, setShowFaceEffectsPanel] = useState(false);
+  const [showEffectsPanel, setShowEffectsPanel] = useState(false);
   const [showFiltersPanel, setShowFiltersPanel] = useState(false);
   const [showVIPClubPanel, setShowVIPClubPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -83,27 +71,6 @@ export default function PreLiveSetupScreen() {
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
-  const cameraRef = useRef<CameraView>(null);
-
-  // TIKTOK-STYLE: Lock orientation to portrait
-  useEffect(() => {
-    const lockOrientation = async () => {
-      try {
-        console.log('🔒 [PRE-LIVE] Locking orientation to portrait for TikTok-style setup');
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-      } catch (error) {
-        console.warn('⚠️ [PRE-LIVE] Failed to lock orientation:', error);
-      }
-    };
-
-    lockOrientation();
-
-    return () => {
-      ScreenOrientation.unlockAsync().catch((error) => {
-        console.warn('⚠️ [PRE-LIVE] Failed to unlock orientation:', error);
-      });
-    };
-  }, []);
 
   // CRITICAL: Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -153,32 +120,12 @@ export default function PreLiveSetupScreen() {
 
     requestPermissions();
 
-    console.log('📹 [PRE-LIVE] Entered TikTok-style pre-live setup with REAL AI Face Detection');
+    console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
 
     return () => {
       isMountedRef.current = false;
     };
   }, [user, cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
-
-  // CRITICAL FIX: Map UI zoom to device zoom properly
-  const calculateDeviceZoom = useCallback((uiZoom: ZoomLevel): number => {
-    const range = cameraZoomRange.max - cameraZoomRange.min;
-    const midpoint = cameraZoomRange.min + (range / 2);
-
-    switch (uiZoom) {
-      case 0.5:
-        // Wide angle - use minimum zoom (natural default view)
-        return cameraZoomRange.min;
-      case 1:
-        // Standard - use midpoint (true 1x baseline)
-        return midpoint;
-      case 2:
-        // Zoomed - use maximum or 2× midpoint (true 2× zoom)
-        return Math.min(cameraZoomRange.max, midpoint * 2);
-      default:
-        return midpoint;
-    }
-  }, [cameraZoomRange]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
@@ -198,18 +145,8 @@ export default function PreLiveSetupScreen() {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
-  const handleZoomChange = (zoom: ZoomLevel) => {
-    console.log('🔍 [PRE-LIVE] Camera zoom changed to:', zoom);
-    setCameraZoom(zoom);
-    
-    // Calculate and apply device zoom
-    const newDeviceZoom = calculateDeviceZoom(zoom);
-    setDeviceZoom(newDeviceZoom);
-    console.log(`📷 [PRE-LIVE] Device zoom: ${newDeviceZoom.toFixed(2)}`);
-  };
-
   const navigateToBroadcaster = useCallback(() => {
-    console.log('🚀 [PRE-LIVE] Navigating to TikTok-style broadcaster with REAL face detection');
+    console.log('🚀 [PRE-LIVE] Navigating to broadcaster screen');
     
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Cannot navigate - permissions not granted');
@@ -231,15 +168,14 @@ export default function PreLiveSetupScreen() {
         whoCanWatch,
         selectedModerators: JSON.stringify(selectedModerators),
         selectedVIPClub: selectedVIPClub || '',
-        cameraZoom: cameraZoom.toString(),
       },
     });
 
-    console.log('✅ [PRE-LIVE] Navigation initiated with zoom:', cameraZoom);
-  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, cameraZoom, cameraPermission, micPermission]);
+    console.log('✅ [PRE-LIVE] Navigation initiated successfully');
+  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, cameraPermission, micPermission]);
 
   const handleGoLive = useCallback(async () => {
-    console.log('🚀 [PRE-LIVE] Go LIVE button pressed (TikTok-style with REAL AI Face Detection)');
+    console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
 
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Permissions not granted');
@@ -353,7 +289,7 @@ export default function PreLiveSetupScreen() {
         await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
       }
 
-      console.log('✅ [PRE-LIVE] Validation passed - starting TikTok-style stream with REAL AI Face Detection');
+      console.log('✅ [PRE-LIVE] Validation passed');
 
       navigateToBroadcaster();
     } catch (error) {
@@ -463,29 +399,20 @@ export default function PreLiveSetupScreen() {
     );
   }
 
-  console.log('✅ [PRE-LIVE] Rendering TikTok-style camera with REAL AI Face Detection and Fixed Zoom');
+  console.log('✅ [PRE-LIVE] Rendering camera view');
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       
       <View style={styles.container}>
-        {/* CAMERA PREVIEW - TikTok-style 9:16 with CORRECTED ZOOM */}
-        <CameraView 
-          ref={cameraRef}
-          style={StyleSheet.absoluteFill} 
-          facing={facing}
-          zoom={deviceZoom}
-        />
+        {/* CAMERA PREVIEW BACKGROUND */}
+        <CameraView style={StyleSheet.absoluteFill} facing={facing} />
 
-        {/* COLOR FILTER OVERLAY (Legacy) */}
+        {/* CAMERA FILTER OVERLAY */}
         <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
 
-        {/* AI FACE FILTER SYSTEM (REAL FACE DETECTION) */}
-        <AIFaceFilterSystem 
-          filter={activeEffect} 
-          intensity={effectIntensity}
-          onFaceDetected={(count) => console.log('🤖 Faces detected:', count)}
-        />
+        {/* VISUAL EFFECTS OVERLAY */}
+        <ImprovedVisualEffectsOverlay effect={activeEffect} />
 
         {/* DARK OVERLAY */}
         <View style={styles.overlay} />
@@ -505,15 +432,6 @@ export default function PreLiveSetupScreen() {
             <AppLogo size={80} opacity={0.8} alignment="right" />
           </View>
         </View>
-
-        {/* CAMERA ZOOM CONTROL (FIXED CALIBRATION) */}
-        <CameraZoomControl
-          currentZoom={cameraZoom}
-          onZoomChange={handleZoomChange}
-          position="top"
-          minZoom={cameraZoomRange.min}
-          maxZoom={cameraZoomRange.max}
-        />
 
         {/* STREAM TITLE INPUT */}
         <View style={styles.titleContainer}>
@@ -579,16 +497,16 @@ export default function PreLiveSetupScreen() {
 
           <TouchableOpacity 
             style={styles.actionButton} 
-            onPress={() => setShowFaceEffectsPanel(true)}
+            onPress={() => setShowEffectsPanel(true)}
           >
             <IconSymbol
               ios_icon_name="face.smiling"
               android_material_icon_name="face"
               size={28}
-              color={activeEffect ? colors.brandPrimary : '#FFFFFF'}
+              color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
             />
             <Text style={styles.actionButtonText}>Face Effects</Text>
-            {activeEffect && <View style={styles.activeDot} />}
+            {hasActiveEffect() && <View style={styles.activeDot} />}
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -599,10 +517,10 @@ export default function PreLiveSetupScreen() {
               ios_icon_name="camera.filters"
               android_material_icon_name="filter"
               size={28}
-              color={activeFilter ? colors.brandPrimary : '#FFFFFF'}
+              color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
             />
             <Text style={styles.actionButtonText}>Filters</Text>
-            {activeFilter && <View style={styles.activeDot} />}
+            {hasActiveFilter() && <View style={styles.activeDot} />}
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -662,7 +580,7 @@ export default function PreLiveSetupScreen() {
                     ? 'CREATE BATTLE LOBBY' 
                     : practiceMode 
                       ? 'START PRACTICE' 
-                      : 'GO LIVE 📱'
+                      : 'GO LIVE'
               }
               onPress={handleGoLive}
               size="large"
@@ -684,13 +602,6 @@ export default function PreLiveSetupScreen() {
           </View>
         )}
 
-        {/* TIKTOK-STYLE FORMAT INDICATOR */}
-        <View style={styles.formatIndicator}>
-          <Text style={styles.formatText}>
-            📱 9:16 • 30fps • Portrait • Zoom {cameraZoom}x (Device: {deviceZoom.toFixed(2)})
-          </Text>
-        </View>
-
         {/* COMMUNITY GUIDELINES MODAL */}
         <CommunityGuidelinesModal
           visible={showCommunityGuidelinesModal}
@@ -709,23 +620,13 @@ export default function PreLiveSetupScreen() {
           onCancel={() => setShowContentLabelModal(false)}
         />
 
-        {/* AI FACE EFFECTS PANEL (REAL FACE DETECTION) */}
-        <AIFaceEffectsPanel
-          visible={showFaceEffectsPanel}
-          onClose={() => setShowFaceEffectsPanel(false)}
-          selectedEffect={activeEffect}
-          onSelectEffect={(effect) => {
-            const { setActiveEffect } = require('@/contexts/AIFaceEffectsContext');
-            // This will be handled by the context
-          }}
-          intensity={effectIntensity}
-          onIntensityChange={(intensity) => {
-            const { setEffectIntensity } = require('@/contexts/AIFaceEffectsContext');
-            // This will be handled by the context
-          }}
+        {/* FACE EFFECTS PANEL */}
+        <ImprovedEffectsPanel
+          visible={showEffectsPanel}
+          onClose={() => setShowEffectsPanel(false)}
         />
 
-        {/* FILTERS PANEL (Color filters) */}
+        {/* FILTERS PANEL */}
         <ImprovedFiltersPanel
           visible={showFiltersPanel}
           onClose={() => setShowFiltersPanel(false)}
@@ -808,7 +709,7 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 200 : 190,
+    top: Platform.OS === 'android' ? 140 : 130,
     left: 20,
     right: 20,
     zIndex: 10,
@@ -824,7 +725,7 @@ const styles = StyleSheet.create({
   },
   contentLabelDisplay: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 270 : 260,
+    top: Platform.OS === 'android' ? 210 : 200,
     left: 20,
     right: 20,
     flexDirection: 'row',
@@ -843,7 +744,7 @@ const styles = StyleSheet.create({
   },
   battleModeIndicator: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 340 : 330,
+    top: Platform.OS === 'android' ? 280 : 270,
     left: 20,
     right: 20,
     flexDirection: 'row',
@@ -943,22 +844,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  formatIndicator: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  formatText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.7)',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
   },
 });
