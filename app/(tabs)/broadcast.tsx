@@ -123,14 +123,23 @@ export default function BroadcastScreen() {
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const giftCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // FIX: Correct method name is getActiveGuestSeats, not getActiveGuests
   const loadActiveGuests = useCallback(async () => {
     if (!streamId) return;
 
     try {
-      const guests = await streamGuestService.getActiveGuests(streamId);
+      // Defensive check: ensure streamGuestService and method exist
+      if (!streamGuestService || typeof streamGuestService.getActiveGuestSeats !== 'function') {
+        console.error('[BROADCAST] streamGuestService.getActiveGuestSeats is not available');
+        return;
+      }
+
+      const guests = await streamGuestService.getActiveGuestSeats(streamId);
       setActiveGuests(guests);
     } catch (error) {
-      console.error('Error loading active guests:', error);
+      console.error('[BROADCAST] Error loading active guests:', error);
+      // Fail gracefully - don't crash the app
+      setActiveGuests([]);
     }
   }, [streamId]);
 
@@ -158,16 +167,9 @@ export default function BroadcastScreen() {
 
       console.log('✅ [BROADCAST] Stream saved successfully to profile');
       
-      // Mark stream as archived
-      const { error } = await supabase
-        .from('live_streams')
-        .update({ is_archived: true })
-        .eq('id', streamId);
-
-      if (error) {
-        console.error('❌ [BROADCAST] Error marking stream as archived:', error);
-      }
-
+      // FIX: Remove is_archived column usage - it doesn't exist in the schema
+      // The stream is already saved via savedStreamService, no need to mark as archived
+      
       router.replace('/(tabs)/(home)');
     } catch (error: any) {
       console.error('❌ [BROADCAST] Error in handleSaveStream:', error);
@@ -297,7 +299,7 @@ export default function BroadcastScreen() {
         
         setTotalViewers(totalCount || 0);
       } catch (error) {
-        console.error('Error fetching viewer count:', error);
+        console.error('[BROADCAST] Error fetching viewer count:', error);
       }
     };
 
@@ -332,9 +334,15 @@ export default function BroadcastScreen() {
     };
   }, [streamId]);
 
-  // Effect 5: Load active guests
+  // Effect 5: Load active guests with defensive checks
   useEffect(() => {
     if (!streamId) return;
+
+    // Defensive check before calling
+    if (!streamGuestService || typeof streamGuestService.getActiveGuestSeats !== 'function') {
+      console.error('[BROADCAST] streamGuestService.getActiveGuestSeats is not available');
+      return;
+    }
 
     loadActiveGuests();
 
@@ -358,7 +366,7 @@ export default function BroadcastScreen() {
 
         setGiftCount(count || 0);
       } catch (error) {
-        console.error('Error fetching gift count:', error);
+        console.error('[BROADCAST] Error fetching gift count:', error);
       }
     };
 
