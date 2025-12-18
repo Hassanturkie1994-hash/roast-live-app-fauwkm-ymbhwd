@@ -62,7 +62,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  */
 export default function BroadcastScreen() {
   // ============================================================================
-  // SECTION 1: ALL HOOKS (MUST BE CALLED UNCONDITIONALLY)
+  // SECTION 1: ALL HOOKS (MUST BE CALLED UNCONDITIONALLY AT TOP LEVEL)
   // ============================================================================
   
   useKeepAwake();
@@ -79,24 +79,12 @@ export default function BroadcastScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   
-  // DEFENSIVE: Wrap context usage in try-catch
-  let stateMachine;
-  let state = 'IDLE';
-  let startStream = null;
-  let endStream = null;
-  let stateMachineErrorState = null;
-  
-  try {
-    stateMachine = useLiveStreamStateMachine();
-    if (stateMachine) {
-      state = stateMachine.state || 'IDLE';
-      startStream = stateMachine.startStream;
-      endStream = stateMachine.endStream;
-      stateMachineErrorState = stateMachine.error;
-    }
-  } catch (error) {
-    console.error('❌ [BROADCAST] Error accessing LiveStreamStateMachine:', error);
-  }
+  // CRITICAL FIX: Call useLiveStreamStateMachine unconditionally at top level
+  const stateMachine = useLiveStreamStateMachine();
+  const state = stateMachine?.state || 'IDLE';
+  const startStream = stateMachine?.startStream || null;
+  const endStream = stateMachine?.endStream || null;
+  const stateMachineErrorState = stateMachine?.error || null;
   
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
