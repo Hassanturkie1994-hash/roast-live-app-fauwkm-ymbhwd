@@ -28,13 +28,11 @@ import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 import PinnedMessageBanner from '@/components/PinnedMessageBanner';
 import ManagePinnedMessagesModal from '@/components/ManagePinnedMessagesModal';
 import NetworkStabilityIndicator from '@/components/NetworkStabilityIndicator';
-import CameraFilterSelector, { CameraFilter } from '@/components/CameraFilterSelector';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import StreamHealthDashboard from '@/components/StreamHealthDashboard';
 import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
 import { supabase } from '@/app/integrations/supabase/client';
 import { savedStreamService } from '@/app/services/savedStreamService';
-import { cdnService } from '@/app/services/cdnService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -47,6 +45,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * - All data access uses optional chaining
  * - No assumptions about data existence
  * - Graceful fallbacks for all error cases
+ * - React Hooks called unconditionally at top level (FIXED)
  * 
  * RESTORED FEATURES:
  * 1. Moderator Panel - Manage moderators and banned users
@@ -55,10 +54,13 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * 4. Host Add Guests - Invite viewers to join as guests
  * 5. FPS Display - Real-time FPS monitoring
  * 6. Connection Quality - Good/Mid/Bad connection indicator
- * 7. Camera Filters - Apply filters to camera feed
- * 8. VIP Club Integration - Restrict stream to VIP club members
- * 9. CDN Storage - Save streams to CDN and user profiles
- * 10. Stream Health Dashboard - Comprehensive stream metrics
+ * 7. VIP Club Integration - Restrict stream to VIP club members
+ * 8. CDN Storage - Save streams to CDN and user profiles
+ * 9. Stream Health Dashboard - Comprehensive stream metrics
+ * 
+ * REMOVED FEATURES (per user request):
+ * - Camera Filters
+ * - Face Effects
  */
 export default function BroadcastScreen() {
   // ============================================================================
@@ -79,15 +81,17 @@ export default function BroadcastScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   
-  // CRITICAL FIX: Call useLiveStreamStateMachine unconditionally at top level
+  // CRITICAL FIX: Always call useLiveStreamStateMachine unconditionally
   const stateMachine = useLiveStreamStateMachine();
+  
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
+  
+  // Extract state machine values safely
   const state = stateMachine?.state || 'IDLE';
   const startStream = stateMachine?.startStream || null;
   const endStream = stateMachine?.endStream || null;
   const stateMachineErrorState = stateMachine?.error || null;
-  
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [micPermission, requestMicPermission] = useMicrophonePermissions();
   
   // UI State
   const [showChat, setShowChat] = useState(true);
@@ -99,7 +103,6 @@ export default function BroadcastScreen() {
   const [showModeratorPanel, setShowModeratorPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showPinnedMessagesModal, setShowPinnedMessagesModal] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [showVIPClubPanel, setShowVIPClubPanel] = useState(false);
   const [showStreamHealth, setShowStreamHealth] = useState(true);
   
@@ -117,9 +120,6 @@ export default function BroadcastScreen() {
   const [activeGuests, setActiveGuests] = useState<StreamGuestSeat[]>([]);
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
-  
-  // NEW: Filter State
-  const [selectedFilter, setSelectedFilter] = useState<CameraFilter>('none');
   
   // NEW: Settings State
   const [aboutLive, setAboutLive] = useState('');
@@ -233,10 +233,6 @@ export default function BroadcastScreen() {
       }
 
       console.log('✅ [BROADCAST] Stream saved successfully to profile');
-      
-      // CRITICAL FIX: Do NOT attempt to update is_archived column
-      // The column doesn't exist in the schema, and the stream is already saved
-      // via savedStreamService
       
       router.replace('/(tabs)/(home)');
     } catch (error: any) {
@@ -655,13 +651,6 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Camera Filter Selector */}
-        <CameraFilterSelector
-          selectedFilter={selectedFilter}
-          onSelectFilter={setSelectedFilter}
-          visible={showFilters}
-        />
-
         {/* Top Bar */}
         <View style={styles.topBar}>
           <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
@@ -680,19 +669,6 @@ export default function BroadcastScreen() {
                 android_material_icon_name="bar_chart"
                 size={20}
                 color={showStreamHealth ? colors.brandPrimary : '#FFFFFF'}
-              />
-            </TouchableOpacity>
-
-            {/* Filters Toggle */}
-            <TouchableOpacity
-              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowFilters(!showFilters)}
-            >
-              <IconSymbol
-                ios_icon_name="camera.filters"
-                android_material_icon_name="filter"
-                size={20}
-                color={showFilters ? colors.brandPrimary : '#FFFFFF'}
               />
             </TouchableOpacity>
 

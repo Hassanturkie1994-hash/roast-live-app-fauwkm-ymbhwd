@@ -20,15 +20,10 @@ import ContentLabelModal, { ContentLabel } from '@/components/ContentLabelModal'
 import CommunityGuidelinesModal from '@/components/CommunityGuidelinesModal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
-import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
-import ImprovedEffectsPanel from '@/components/ImprovedEffectsPanel';
-import ImprovedFiltersPanel from '@/components/ImprovedFiltersPanel';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import LiveSettingsPanel from '@/components/LiveSettingsPanel';
-import ImprovedCameraFilterOverlay from '@/components/ImprovedCameraFilterOverlay';
-import ImprovedVisualEffectsOverlay from '@/components/ImprovedVisualEffectsOverlay';
 import { BattleFormat, battleService } from '@/app/services/battleService';
 
 export default function PreLiveSetupScreen() {
@@ -36,8 +31,6 @@ export default function PreLiveSetupScreen() {
   const navigation = useNavigation();
   
   const liveStreamState = useLiveStreamStateMachine();
-  
-  const { activeFilter, activeEffect, filterIntensity, hasActiveFilter, hasActiveEffect } = useCameraEffects();
   
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -52,8 +45,6 @@ export default function PreLiveSetupScreen() {
   const [isLoading, setIsLoading] = useState(false);
 
   // Panel visibility states
-  const [showEffectsPanel, setShowEffectsPanel] = useState(false);
-  const [showFiltersPanel, setShowFiltersPanel] = useState(false);
   const [showVIPClubPanel, setShowVIPClubPanel] = useState(false);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
@@ -408,12 +399,6 @@ export default function PreLiveSetupScreen() {
         {/* CAMERA PREVIEW BACKGROUND */}
         <CameraView style={StyleSheet.absoluteFill} facing={facing} />
 
-        {/* CAMERA FILTER OVERLAY */}
-        <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
-
-        {/* VISUAL EFFECTS OVERLAY */}
-        <ImprovedVisualEffectsOverlay effect={activeEffect} />
-
         {/* DARK OVERLAY */}
         <View style={styles.overlay} />
 
@@ -493,34 +478,6 @@ export default function PreLiveSetupScreen() {
             />
             <Text style={styles.actionButtonText}>Content</Text>
             {contentLabel && <View style={styles.activeDot} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={() => setShowEffectsPanel(true)}
-          >
-            <IconSymbol
-              ios_icon_name="face.smiling"
-              android_material_icon_name="face"
-              size={28}
-              color={hasActiveEffect() ? colors.brandPrimary : '#FFFFFF'}
-            />
-            <Text style={styles.actionButtonText}>Face Effects</Text>
-            {hasActiveEffect() && <View style={styles.activeDot} />}
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.actionButton} 
-            onPress={() => setShowFiltersPanel(true)}
-          >
-            <IconSymbol
-              ios_icon_name="camera.filters"
-              android_material_icon_name="filter"
-              size={28}
-              color={hasActiveFilter() ? colors.brandPrimary : '#FFFFFF'}
-            />
-            <Text style={styles.actionButtonText}>Filters</Text>
-            {hasActiveFilter() && <View style={styles.activeDot} />}
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -618,18 +575,6 @@ export default function PreLiveSetupScreen() {
           visible={showContentLabelModal}
           onSelect={handleContentLabelSelected}
           onCancel={() => setShowContentLabelModal(false)}
-        />
-
-        {/* FACE EFFECTS PANEL */}
-        <ImprovedEffectsPanel
-          visible={showEffectsPanel}
-          onClose={() => setShowEffectsPanel(false)}
-        />
-
-        {/* FILTERS PANEL */}
-        <ImprovedFiltersPanel
-          visible={showFiltersPanel}
-          onClose={() => setShowFiltersPanel(false)}
         />
 
         {/* VIP CLUB PANEL */}

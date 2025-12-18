@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
-  TextInput,
+  FlatList,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -26,8 +26,6 @@ export default function VIPClubMembersModal({
   club,
   members,
 }: VIPClubMembersModalProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-
   const getVIPLevelColor = (level: number): string => {
     if (level >= 15) return '#FF1493'; // Hot Pink for top tier
     if (level >= 10) return '#9B59B6'; // Purple
@@ -42,44 +40,65 @@ export default function VIPClubMembersModal({
     return 'VIP';
   };
 
-  // Filter members based on search query
-  const filteredMembers = members.filter((member) => {
-    if (!searchQuery.trim()) return true;
-    
-    const query = searchQuery.toLowerCase();
-    const displayName = member.profiles?.display_name?.toLowerCase() || '';
-    const username = member.profiles?.username?.toLowerCase() || '';
-    
-    return displayName.includes(query) || username.includes(query);
-  });
+  const renderMemberItem = ({ item }: { item: VIPClubMember }) => {
+    const levelColor = getVIPLevelColor(item.vip_level);
+    const levelLabel = getVIPLevelLabel(item.vip_level);
+
+    return (
+      <View style={styles.memberCard}>
+        <View style={[styles.memberAvatar, { backgroundColor: levelColor }]}>
+          <Text style={styles.memberAvatarText}>
+            {item.profiles?.display_name?.charAt(0).toUpperCase() || 'V'}
+          </Text>
+        </View>
+
+        <View style={styles.memberDetails}>
+          <Text style={styles.memberName}>
+            {item.profiles?.display_name || 'VIP Member'}
+          </Text>
+          <View style={styles.memberMeta}>
+            <View style={[styles.levelBadge, { backgroundColor: levelColor }]}>
+              <IconSymbol
+                ios_icon_name="star.fill"
+                android_material_icon_name="workspace_premium"
+                size={12}
+                color="#FFFFFF"
+              />
+              <Text style={styles.levelBadgeText}>
+                Lvl {item.vip_level} • {levelLabel}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={[styles.vipBadge, { backgroundColor: club.badge_color || colors.brandPrimary }]}>
+          <IconSymbol
+            ios_icon_name="star.fill"
+            android_material_icon_name="workspace_premium"
+            size={16}
+            color="#FFFFFF"
+          />
+        </View>
+      </View>
+    );
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.modal}>
+        <View style={styles.panel}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <View 
-                style={[
-                  styles.clubBadge, 
-                  { backgroundColor: club.badge_color }
-                ]}
-              >
-                <IconSymbol
-                  ios_icon_name="star.fill"
-                  android_material_icon_name="workspace_premium"
-                  size={16}
-                  color="#FFFFFF"
-                />
-                <Text style={styles.clubBadgeText}>{club.badge_name}</Text>
-              </View>
-              <View>
-                <Text style={styles.title}>{club.club_name}</Text>
-                <Text style={styles.subtitle}>{members.length} Members</Text>
-              </View>
+              <IconSymbol
+                ios_icon_name="person.2.fill"
+                android_material_icon_name="people"
+                size={24}
+                color={colors.text}
+              />
+              <Text style={styles.title}>VIP Club Members</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+            <TouchableOpacity onPress={onClose}>
               <IconSymbol
                 ios_icon_name="xmark"
                 android_material_icon_name="close"
@@ -89,36 +108,29 @@ export default function VIPClubMembersModal({
             </TouchableOpacity>
           </View>
 
-          {/* Search Bar */}
-          <View style={styles.searchContainer}>
-            <IconSymbol
-              ios_icon_name="magnifyingglass"
-              android_material_icon_name="search"
-              size={20}
-              color={colors.textSecondary}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search members..."
-              placeholderTextColor={colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="cancel"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-            )}
+          {/* Club Info */}
+          <View style={styles.clubInfo}>
+            <View style={[styles.clubBadge, { backgroundColor: club.badge_color || colors.brandPrimary }]}>
+              <IconSymbol
+                ios_icon_name="star.fill"
+                android_material_icon_name="workspace_premium"
+                size={16}
+                color="#FFFFFF"
+              />
+              <Text style={styles.clubBadgeText}>{club.badge_name}</Text>
+            </View>
+            <Text style={styles.clubName}>{club.club_name}</Text>
+            <Text style={styles.memberCount}>{members.length} members</Text>
           </View>
 
           {/* Members List */}
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {filteredMembers.length === 0 ? (
+          <FlatList
+            data={members}
+            renderItem={renderMemberItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.membersList}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
               <View style={styles.emptyState}>
                 <IconSymbol
                   ios_icon_name="person.slash.fill"
@@ -126,95 +138,33 @@ export default function VIPClubMembersModal({
                   size={48}
                   color={colors.textSecondary}
                 />
-                <Text style={styles.emptyText}>
-                  {searchQuery ? 'No members found' : 'No members yet'}
-                </Text>
+                <Text style={styles.emptyText}>No members yet</Text>
               </View>
-            ) : (
-              <View style={styles.membersList}>
-                {filteredMembers.map((member, index) => (
-                  <React.Fragment key={member.id}>
-                    <View style={styles.memberCard}>
-                      {/* Avatar */}
-                      <View 
-                        style={[
-                          styles.memberAvatar, 
-                          { backgroundColor: getVIPLevelColor(member.vip_level) }
-                        ]}
-                      >
-                        <Text style={styles.memberAvatarText}>
-                          {member.profiles?.display_name?.charAt(0).toUpperCase() || 'V'}
-                        </Text>
-                      </View>
+            }
+          />
 
-                      {/* Member Info */}
-                      <View style={styles.memberInfo}>
-                        <Text style={styles.memberName}>
-                          {member.profiles?.display_name || 'VIP Member'}
-                        </Text>
-                        {member.profiles?.username && (
-                          <Text style={styles.memberUsername}>
-                            @{member.profiles.username}
-                          </Text>
-                        )}
-                        
-                        {/* VIP Level and Badge */}
-                        <View style={styles.memberBadgeContainer}>
-                          <View 
-                            style={[
-                              styles.memberLevelBadge, 
-                              { backgroundColor: getVIPLevelColor(member.vip_level) }
-                            ]}
-                          >
-                            <IconSymbol
-                              ios_icon_name="star.fill"
-                              android_material_icon_name="workspace_premium"
-                              size={12}
-                              color="#FFFFFF"
-                            />
-                            <Text style={styles.memberLevelText}>
-                              Level {member.vip_level}
-                            </Text>
-                          </View>
-                          <Text style={styles.memberLevelLabel}>
-                            {getVIPLevelLabel(member.vip_level)}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* VIP Badge (Club Badge) */}
-                      <View 
-                        style={[
-                          styles.vipBadge, 
-                          { backgroundColor: club.badge_color }
-                        ]}
-                      >
-                        <Text style={styles.vipBadgeText}>
-                          {club.badge_name}
-                        </Text>
-                        <Text style={styles.vipBadgeLevel}>
-                          {member.vip_level}
-                        </Text>
-                      </View>
-                    </View>
-                  </React.Fragment>
-                ))}
-              </View>
-            )}
-          </ScrollView>
-
-          {/* Footer Info */}
+          {/* Footer */}
           <View style={styles.footer}>
-            <View style={styles.footerInfo}>
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
-                size={16}
-                color={colors.brandPrimary}
-              />
-              <Text style={styles.footerText}>
-                Members are sorted by VIP level. Levels range from 1-20 based on support.
-              </Text>
+            <View style={styles.legendContainer}>
+              <Text style={styles.legendTitle}>VIP Levels:</Text>
+              <View style={styles.legendItems}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#FFD700' }]} />
+                  <Text style={styles.legendText}>1-4: VIP</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#3498DB' }]} />
+                  <Text style={styles.legendText}>5-9: Premium</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#9B59B6' }]} />
+                  <Text style={styles.legendText}>10-14: Elite</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: '#FF1493' }]} />
+                  <Text style={styles.legendText}>15-20: Legendary</Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -226,17 +176,14 @@ export default function VIPClubMembersModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
   },
-  modal: {
+  panel: {
     backgroundColor: colors.card,
-    borderRadius: 20,
-    width: '100%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     maxHeight: '90%',
-    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -250,69 +197,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    flex: 1,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  clubInfo: {
+    padding: 20,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   clubBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 14,
-    gap: 4,
+    borderRadius: 16,
+    gap: 6,
+    marginBottom: 8,
   },
   clubBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  title: {
+  clubName: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.text,
+    marginBottom: 4,
   },
-  subtitle: {
-    fontSize: 13,
+  memberCount: {
+    fontSize: 14,
     fontWeight: '500',
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.backgroundAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 20,
-    marginVertical: 16,
-    gap: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.text,
-  },
-  content: {
-    flex: 1,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 15,
-    fontWeight: '600',
     color: colors.textSecondary,
   },
   membersList: {
@@ -324,15 +243,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.backgroundAlt,
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
     gap: 12,
   },
   memberAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -341,78 +260,82 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  memberInfo: {
+  memberDetails: {
     flex: 1,
-    gap: 4,
+    gap: 6,
   },
   memberName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
   },
-  memberUsername: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.textSecondary,
-  },
-  memberBadgeContainer: {
+  memberMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 4,
   },
-  memberLevelBadge: {
+  levelBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
   },
-  memberLevelText: {
+  levelBadgeText: {
     fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
-  },
-  memberLevelLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textSecondary,
   },
   vipBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
-    minWidth: 50,
+    justifyContent: 'center',
   },
-  vipBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textTransform: 'uppercase',
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
   },
-  vipBadgeLevel: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    marginTop: 2,
+  emptyText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
   },
   footer: {
-    padding: 16,
+    padding: 20,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  footerInfo: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
+  legendContainer: {
+    gap: 12,
   },
-  footerText: {
-    flex: 1,
+  legendTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  legendItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
     fontSize: 12,
     fontWeight: '500',
     color: colors.textSecondary,
-    lineHeight: 18,
   },
 });
