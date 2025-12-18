@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -49,13 +49,7 @@ export default function CreatorVIPDashboard() {
   const [enableExclusiveEmojis, setEnableExclusiveEmojis] = useState(true);
   const [enableAnimatedBadges, setEnableAnimatedBadges] = useState(true);
 
-  useEffect(() => {
-    if (club) {
-      loadMembers();
-    }
-  }, [club]);
-
-  const loadMembers = async () => {
+  const loadMembers = useCallback(async () => {
     if (!club) return;
 
     setIsLoadingMembers(true);
@@ -67,7 +61,13 @@ export default function CreatorVIPDashboard() {
     } finally {
       setIsLoadingMembers(false);
     }
-  };
+  }, [club]);
+
+  useEffect(() => {
+    if (club) {
+      loadMembers();
+    }
+  }, [club, loadMembers]);
 
   const handleSendAnnouncement = () => {
     if (!club || !user) return;

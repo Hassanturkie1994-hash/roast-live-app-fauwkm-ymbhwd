@@ -33,7 +33,7 @@ export interface PlayingSoundInfo {
 
 class GiftSoundEngine {
   private activeSounds: Map<string, PlayingSoundInfo> = new Map();
-  private soundQueue: Array<{ soundId: string; tier: SoundTier }> = [];
+  private soundQueue: { soundId: string; tier: SoundTier }[] = [];
   private isProcessing: boolean = false;
   private streamAudioVolume: number = 1.0;
   private performanceFallback: boolean = false;
@@ -109,10 +109,6 @@ class GiftSoundEngine {
     apocalypse_sound: require('../assets/sounds/apocalypse_sound.mp3'),
     dragon_roar: require('../assets/sounds/dragon_roar.mp3'),
   };
-
-  constructor() {
-    // Initialization will be done explicitly
-  }
 
   /**
    * Initialize audio system
@@ -310,7 +306,7 @@ class GiftSoundEngine {
   /**
    * Cleanup
    */
-  public async cleanup(): void {
+  public async cleanup(): Promise<void> {
     await this.stopAllSounds();
     this.initialized = false;
     console.log('🗑️ [GiftSoundEngine] Cleaned up');

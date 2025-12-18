@@ -5,7 +5,7 @@
  * Displays creator's current level, XP progress, and unlocked perks.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { creatorLevelingService, CreatorLevel, CreatorPerk, CreatorUnlockedPerk } from '@/services/creatorLevelingService';
 
@@ -26,27 +26,7 @@ export const CreatorLevelDisplay: React.FC<CreatorLevelDisplayProps> = ({
   const [unlockedPerks, setUnlockedPerks] = useState<CreatorUnlockedPerk[]>([]);
   const [equippedPerks, setEquippedPerks] = useState<CreatorUnlockedPerk[]>([]);
 
-  useEffect(() => {
-    loadLevelData();
-    
-    // Subscribe to level updates
-    const unsubscribeLevel = creatorLevelingService.subscribeToLevelUpdates(creatorId, (updatedLevel) => {
-      setLevel(updatedLevel);
-    });
-
-    // Subscribe to perk unlocks
-    const unsubscribePerks = creatorLevelingService.subscribeToPerkUnlocks(creatorId, (perk) => {
-      console.log('🎉 New perk unlocked!', perk);
-      loadLevelData(); // Reload to get updated perks
-    });
-
-    return () => {
-      unsubscribeLevel();
-      unsubscribePerks();
-    };
-  }, [creatorId]);
-
-  const loadLevelData = async () => {
+  const loadLevelData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -73,7 +53,27 @@ export const CreatorLevelDisplay: React.FC<CreatorLevelDisplayProps> = ({
       console.error('Error loading level data:', error);
       setLoading(false);
     }
-  };
+  }, [creatorId, showPerks]);
+
+  useEffect(() => {
+    loadLevelData();
+    
+    // Subscribe to level updates
+    const unsubscribeLevel = creatorLevelingService.subscribeToLevelUpdates(creatorId, (updatedLevel) => {
+      setLevel(updatedLevel);
+    });
+
+    // Subscribe to perk unlocks
+    const unsubscribePerks = creatorLevelingService.subscribeToPerkUnlocks(creatorId, (perk) => {
+      console.log('🎉 New perk unlocked!', perk);
+      loadLevelData(); // Reload to get updated perks
+    });
+
+    return () => {
+      unsubscribeLevel();
+      unsubscribePerks();
+    };
+  }, [creatorId, loadLevelData]);
 
   const handleEquipPerk = async (perkId: string) => {
     const success = await creatorLevelingService.equipPerk(creatorId, perkId);

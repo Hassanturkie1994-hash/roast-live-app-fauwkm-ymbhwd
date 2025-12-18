@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -34,59 +34,83 @@ export default function CinematicGiftOverlay({
   const isMountedRef = useRef(true);
   const timelineRef = useRef<NodeJS.Timeout[]>([]);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    console.log('🎬 [CinematicGift] Starting:', gift.giftId);
-
-    // Start cinematic sequence
-    startCinematicSequence();
-
-    return () => {
-      isMountedRef.current = false;
-      // Clear all timeouts
-      timelineRef.current.forEach(clearTimeout);
-    };
-  }, []);
-
-  const startCinematicSequence = () => {
-    // Fade in fullscreen overlay
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
+  const executeZoom = useCallback((level: number, duration: number) => {
+    Animated.timing(zoomAnim, {
+      toValue: level,
+      duration: duration,
       useNativeDriver: true,
     }).start();
+  }, [zoomAnim]);
 
-    // Execute timeline if available
-    if (gift.cinematicTimeline && !useFallback) {
-      executeTimeline(gift.cinematicTimeline);
-    } else {
-      // Default cinematic sequence or fallback
-      executeDefaultSequence();
-    }
+  const executeFlash = useCallback((color: string, intensity: number) => {
+    Animated.sequence([
+      Animated.timing(flashAnim, {
+        toValue: intensity,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [flashAnim]);
 
-    // Schedule completion
-    const completionTimeout = setTimeout(() => {
-      if (isMountedRef.current) {
-        fadeOut();
-      }
-    }, gift.cinematicTimeline?.duration || 5000);
+  const executeFilter = useCallback((type: string, intensity: number) => {
+    Animated.timing(filterAnim, {
+      toValue: intensity,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, [filterAnim]);
+
+  const executeShake = useCallback((intensity: number, duration: number) => {
+    const shakeSequence = [];
+    const steps = Math.floor(duration / 50);
     
-    timelineRef.current.push(completionTimeout);
-  };
+    for (let i = 0; i < steps; i++) {
+      shakeSequence.push(
+        Animated.timing(shakeAnim, {
+          toValue: intensity * (i % 2 === 0 ? 1 : -1),
+          duration: 50,
+          useNativeDriver: true,
+        })
+      );
+    }
+    
+    shakeSequence.push(
+      Animated.timing(shakeAnim, {
+        toValue: 0,
+        duration: 50,
+        useNativeDriver: true,
+      })
+    );
+    
+    Animated.sequence(shakeSequence).start();
+  }, [shakeAnim]);
 
-  const executeTimeline = (timeline: CinematicTimeline) => {
-    timeline.keyframes.forEach((keyframe) => {
-      const timeout = setTimeout(() => {
-        if (isMountedRef.current) {
-          executeKeyframe(keyframe);
-        }
-      }, keyframe.time);
-      
-      timelineRef.current.push(timeout);
+  const executeText = useCallback((text: string, size: number, color: string) => {
+    setDisplayText(text);
+    
+    Animated.sequence([
+      Animated.timing(textOpacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1500),
+      Animated.timing(textOpacityAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setDisplayText('');
     });
-  };
+  }, [textOpacityAnim]);
 
-  const executeKeyframe = (keyframe: CinematicKeyframe) => {
+  const executeKeyframe = useCallback((keyframe: CinematicKeyframe) => {
     console.log('🎬 [CinematicGift] Executing keyframe:', keyframe.action);
     
     switch (keyframe.action) {
@@ -110,92 +134,28 @@ export default function CinematicGiftOverlay({
         console.log('🔊 [CinematicGift] Sound:', keyframe.params.sound);
         break;
     }
-  };
+  }, [executeZoom, executeFlash, executeFilter, executeShake, executeText]);
 
-  const executeZoom = (level: number, duration: number) => {
-    Animated.timing(zoomAnim, {
-      toValue: level,
-      duration: duration,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const executeFlash = (color: string, intensity: number) => {
-    Animated.sequence([
-      Animated.timing(flashAnim, {
-        toValue: intensity,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(flashAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  const executeFilter = (type: string, intensity: number) => {
-    Animated.timing(filterAnim, {
-      toValue: intensity,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const executeShake = (intensity: number, duration: number) => {
-    const shakeSequence = [];
-    const steps = Math.floor(duration / 50);
-    
-    for (let i = 0; i < steps; i++) {
-      shakeSequence.push(
-        Animated.timing(shakeAnim, {
-          toValue: intensity * (i % 2 === 0 ? 1 : -1),
-          duration: 50,
-          useNativeDriver: true,
-        })
-      );
-    }
-    
-    shakeSequence.push(
-      Animated.timing(shakeAnim, {
-        toValue: 0,
-        duration: 50,
-        useNativeDriver: true,
-      })
-    );
-    
-    Animated.sequence(shakeSequence).start();
-  };
-
-  const executeText = (text: string, size: number, color: string) => {
-    setDisplayText(text);
-    
-    Animated.sequence([
-      Animated.timing(textOpacityAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.delay(1500),
-      Animated.timing(textOpacityAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setDisplayText('');
+  const executeTimeline = useCallback((timeline: CinematicTimeline) => {
+    timeline.keyframes.forEach((keyframe) => {
+      const timeout = setTimeout(() => {
+        if (isMountedRef.current) {
+          executeKeyframe(keyframe);
+        }
+      }, keyframe.time);
+      
+      timelineRef.current.push(timeout);
     });
-  };
+  }, [executeKeyframe]);
 
-  const executeDefaultSequence = () => {
+  const executeDefaultSequence = useCallback(() => {
     // Default cinematic: zoom + shake + text
     setTimeout(() => executeZoom(1.5, 2000), 0);
     setTimeout(() => executeShake(15, 1000), 1000);
     setTimeout(() => executeText('ROASTED!', 72, '#FFD700'), 2000);
-  };
+  }, [executeZoom, executeShake, executeText]);
 
-  const fadeOut = () => {
+  const fadeOut = useCallback(() => {
     Animated.timing(fadeAnim, {
       toValue: 0,
       duration: 500,
@@ -206,7 +166,48 @@ export default function CinematicGiftOverlay({
         onComplete();
       }
     });
-  };
+  }, [fadeAnim, gift.giftId, onComplete]);
+
+  const startCinematicSequence = useCallback(() => {
+    // Fade in fullscreen overlay
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+
+    // Execute timeline if available
+    if (gift.cinematicTimeline && !useFallback) {
+      executeTimeline(gift.cinematicTimeline);
+    } else {
+      // Default cinematic sequence or fallback
+      executeDefaultSequence();
+    }
+
+    // Schedule completion
+    const completionTimeout = setTimeout(() => {
+      if (isMountedRef.current) {
+        fadeOut();
+      }
+    }, gift.cinematicTimeline?.duration || 5000);
+    
+    timelineRef.current.push(completionTimeout);
+  }, [fadeAnim, gift.cinematicTimeline, useFallback, executeTimeline, executeDefaultSequence, fadeOut]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    console.log('🎬 [CinematicGift] Starting:', gift.giftId);
+
+    // Start cinematic sequence
+    startCinematicSequence();
+
+    return () => {
+      isMountedRef.current = false;
+      // Clear all timeouts
+      const currentTimeouts = timelineRef.current;
+      currentTimeouts.forEach(clearTimeout);
+    };
+  }, [gift.giftId, startCinematicSequence]);
 
   return (
     <Animated.View

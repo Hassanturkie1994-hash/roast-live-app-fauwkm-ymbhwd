@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -35,11 +35,7 @@ export default function ViewerVIPPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [sekToNextLevel, setSekToNextLevel] = useState(0);
 
-  useEffect(() => {
-    loadVIPData();
-  }, [creatorId, user]);
-
-  const loadVIPData = async () => {
+  const loadVIPData = useCallback(async () => {
     if (!user || !creatorId) {
       setIsLoading(false);
       return;
@@ -67,7 +63,11 @@ export default function ViewerVIPPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [creatorId, user]);
+
+  useEffect(() => {
+    loadVIPData();
+  }, [loadVIPData]);
 
   const calculateLoyaltyStreak = (): number => {
     if (!membership) return 0;

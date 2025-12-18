@@ -15,7 +15,7 @@
  * - Rankings are opt-in by going live
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -52,19 +52,23 @@ export const CreatorBurnoutProtection: React.FC<CreatorBurnoutProtectionProps> =
 
   const [warningOpacity] = useState(new Animated.Value(0));
 
-  useEffect(() => {
-    loadBurnoutMetrics();
-    const interval = setInterval(loadBurnoutMetrics, 60000); // Update every minute
-    return () => clearInterval(interval);
-  }, [creatorId]);
+  const showWarning = useCallback(() => {
+    Animated.sequence([
+      Animated.timing(warningOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(5000),
+      Animated.timing(warningOpacity, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [warningOpacity]);
 
-  useEffect(() => {
-    if (metrics.cap_reached || metrics.suggested_cooldown_minutes > 0) {
-      showWarning();
-    }
-  }, [metrics.cap_reached, metrics.suggested_cooldown_minutes]);
-
-  const loadBurnoutMetrics = async () => {
+  const loadBurnoutMetrics = useCallback(async () => {
     try {
       // This would be calculated server-side in production
       // For now, we'll use placeholder logic
@@ -128,23 +132,19 @@ export const CreatorBurnoutProtection: React.FC<CreatorBurnoutProtectionProps> =
     } catch (error) {
       console.error('Error loading burnout metrics:', error);
     }
-  };
+  }, [creatorId, streamId]);
 
-  const showWarning = () => {
-    Animated.sequence([
-      Animated.timing(warningOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.delay(5000),
-      Animated.timing(warningOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
+  useEffect(() => {
+    loadBurnoutMetrics();
+    const interval = setInterval(loadBurnoutMetrics, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, [loadBurnoutMetrics]);
+
+  useEffect(() => {
+    if (metrics.cap_reached || metrics.suggested_cooldown_minutes > 0) {
+      showWarning();
+    }
+  }, [metrics.cap_reached, metrics.suggested_cooldown_minutes, showWarning]);
 
   return (
     <View style={styles.container}>

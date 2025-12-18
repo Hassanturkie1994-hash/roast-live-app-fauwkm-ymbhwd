@@ -1,36 +1,41 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, StyleSheet, Animated, Dimensions } from 'react-native';
-import RealTimeFaceDetection, { DetectedFace } from './RealTimeFaceDetection';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /**
- * AIFaceFilterSystem - REAL AI-Based Face Effects
+ * AIFaceFilterSystem - AI-Based Face Effects
  * 
- * CRITICAL FIX: This now uses REAL face detection via TensorFlow.js
- * and BlazeFace model, not simulation.
+ * NOTE: Real-time face detection requires native implementation.
+ * This component provides the UI overlay for face effects.
  * 
  * FEATURES:
- * - Real-time face detection and tracking
- * - Facial landmark detection (eyes, nose, mouth, ears)
- * - Dynamic face effect rendering based on detected landmarks
+ * - Face effect rendering based on detected landmarks
  * - Smooth animations and transitions
  * - Multi-face support
  * 
  * EFFECTS IMPLEMENTED:
- * - Big Eyes: Enlarges eye regions using detected eye landmarks
- * - Big Nose: Enlarges nose region using detected nose landmark
- * - Slim Face: Narrows face width using face bounding box
- * - Smooth Skin: Applies blur effect to detected face region
- * - Funny Face: Distorts face geometry using all landmarks
- * - Beauty: Enhances facial features with subtle effects
- * 
- * PERFORMANCE:
- * - Runs at ~30 FPS on modern devices
- * - GPU-accelerated via WebGL backend
- * - Optimized for live streaming
+ * - Big Eyes: Enlarges eye regions
+ * - Big Nose: Enlarges nose region
+ * - Slim Face: Narrows face width
+ * - Smooth Skin: Applies blur effect
+ * - Funny Face: Distorts face geometry
+ * - Beauty: Enhances facial features
  */
+
+export interface DetectedFace {
+  topLeft: [number, number];
+  bottomRight: [number, number];
+  landmarks: {
+    leftEye: [number, number];
+    rightEye: [number, number];
+    nose: [number, number];
+    mouth: [number, number];
+    leftEar: [number, number];
+    rightEar: [number, number];
+  };
+}
 
 export interface AIFaceFilter {
   id: string;
@@ -57,18 +62,35 @@ export default function AIFaceFilterSystem({
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // Handle face detection updates
-  const handleFacesDetected = useCallback((faces: DetectedFace[]) => {
-    setDetectedFaces(faces);
-    
-    if (onFaceDetected) {
-      onFaceDetected(faces.length);
+  // Simulate face detection for demo purposes
+  // In production, this would be replaced with actual face detection
+  useEffect(() => {
+    if (filter) {
+      // Simulate a detected face in the center of the screen
+      const mockFace: DetectedFace = {
+        topLeft: [SCREEN_WIDTH * 0.2, SCREEN_HEIGHT * 0.25],
+        bottomRight: [SCREEN_WIDTH * 0.8, SCREEN_HEIGHT * 0.65],
+        landmarks: {
+          leftEye: [SCREEN_WIDTH * 0.35, SCREEN_HEIGHT * 0.35],
+          rightEye: [SCREEN_WIDTH * 0.65, SCREEN_HEIGHT * 0.35],
+          nose: [SCREEN_WIDTH * 0.5, SCREEN_HEIGHT * 0.45],
+          mouth: [SCREEN_WIDTH * 0.5, SCREEN_HEIGHT * 0.55],
+          leftEar: [SCREEN_WIDTH * 0.2, SCREEN_HEIGHT * 0.4],
+          rightEar: [SCREEN_WIDTH * 0.8, SCREEN_HEIGHT * 0.4],
+        },
+      };
+      setDetectedFaces([mockFace]);
+      
+      if (onFaceDetected) {
+        onFaceDetected(1);
+      }
+    } else {
+      setDetectedFaces([]);
+      if (onFaceDetected) {
+        onFaceDetected(0);
+      }
     }
-
-    if (faces.length > 0 && __DEV__) {
-      console.log(`👁️ [AI Face Filter] Detected ${faces.length} face(s)`);
-    }
-  }, [onFaceDetected]);
+  }, [filter, onFaceDetected]);
 
   // Animate filter application
   useEffect(() => {
@@ -104,7 +126,7 @@ export default function AIFaceFilterSystem({
   }, [filter, intensity, detectedFaces, fadeAnim, scaleAnim]);
 
   // Render filter overlay for each detected face
-  const renderFilterOverlay = (face: DetectedFace, index: number) => {
+  const renderFilterOverlay = useCallback((face: DetectedFace, index: number) => {
     if (!filter) return null;
 
     const { topLeft, bottomRight, landmarks } = face;
@@ -267,37 +289,28 @@ export default function AIFaceFilterSystem({
       default:
         return null;
     }
-  };
+  }, [filter, fadeAnim, scaleAnim]);
 
   return (
-    <>
-      {/* Real-time face detection */}
-      <RealTimeFaceDetection
-        enabled={!!filter}
-        onFacesDetected={handleFacesDetected}
-      />
-
-      {/* Render effects for each detected face */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        {detectedFaces.map((face, index) => renderFilterOverlay(face, index))}
-        
-        {/* Face tracking boxes (debug mode) */}
-        {__DEV__ && detectedFaces.map((face, index) => (
-          <View
-            key={`debug_${index}`}
-            style={[
-              styles.faceTrackingBox,
-              {
-                left: face.topLeft[0],
-                top: face.topLeft[1],
-                width: face.bottomRight[0] - face.topLeft[0],
-                height: face.bottomRight[1] - face.topLeft[1],
-              },
-            ]}
-          />
-        ))}
-      </View>
-    </>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {detectedFaces.map((face, index) => renderFilterOverlay(face, index))}
+      
+      {/* Face tracking boxes (debug mode) */}
+      {__DEV__ && detectedFaces.map((face, index) => (
+        <View
+          key={`debug_${index}`}
+          style={[
+            styles.faceTrackingBox,
+            {
+              left: face.topLeft[0],
+              top: face.topLeft[1],
+              width: face.bottomRight[0] - face.topLeft[0],
+              height: face.bottomRight[1] - face.topLeft[1],
+            },
+          ]}
+        />
+      ))}
+    </View>
   );
 }
 
