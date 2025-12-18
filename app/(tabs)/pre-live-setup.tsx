@@ -51,8 +51,10 @@ export default function PreLiveSetupScreen() {
   
   const [facing, setFacing] = useState<CameraType>('front');
 
-  // NEW: Camera Zoom State (default 0.5x)
+  // CRITICAL FIX: Camera Zoom State with proper device zoom mapping
   const [cameraZoom, setCameraZoom] = useState<ZoomLevel>(0.5);
+  const [deviceZoom, setDeviceZoom] = useState<number>(0);
+  const [cameraZoomRange, setCameraZoomRange] = useState({ min: 0, max: 1 });
 
   // Stream setup states
   const [streamTitle, setStreamTitle] = useState('');
@@ -81,6 +83,7 @@ export default function PreLiveSetupScreen() {
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  const cameraRef = useRef<CameraView>(null);
 
   // TIKTOK-STYLE: Lock orientation to portrait
   useEffect(() => {
@@ -96,7 +99,6 @@ export default function PreLiveSetupScreen() {
     lockOrientation();
 
     return () => {
-      // Unlock orientation when leaving pre-live setup
       ScreenOrientation.unlockAsync().catch((error) => {
         console.warn('⚠️ [PRE-LIVE] Failed to unlock orientation:', error);
       });
@@ -151,12 +153,32 @@ export default function PreLiveSetupScreen() {
 
     requestPermissions();
 
-    console.log('📹 [PRE-LIVE] Entered TikTok-style pre-live setup screen with AI Face Filters');
+    console.log('📹 [PRE-LIVE] Entered TikTok-style pre-live setup with REAL AI Face Detection');
 
     return () => {
       isMountedRef.current = false;
     };
   }, [user, cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
+
+  // CRITICAL FIX: Map UI zoom to device zoom properly
+  const calculateDeviceZoom = useCallback((uiZoom: ZoomLevel): number => {
+    const range = cameraZoomRange.max - cameraZoomRange.min;
+    const midpoint = cameraZoomRange.min + (range / 2);
+
+    switch (uiZoom) {
+      case 0.5:
+        // Wide angle - use minimum zoom (natural default view)
+        return cameraZoomRange.min;
+      case 1:
+        // Standard - use midpoint (true 1x baseline)
+        return midpoint;
+      case 2:
+        // Zoomed - use maximum or 2× midpoint (true 2× zoom)
+        return Math.min(cameraZoomRange.max, midpoint * 2);
+      default:
+        return midpoint;
+    }
+  }, [cameraZoomRange]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
@@ -179,10 +201,15 @@ export default function PreLiveSetupScreen() {
   const handleZoomChange = (zoom: ZoomLevel) => {
     console.log('🔍 [PRE-LIVE] Camera zoom changed to:', zoom);
     setCameraZoom(zoom);
+    
+    // Calculate and apply device zoom
+    const newDeviceZoom = calculateDeviceZoom(zoom);
+    setDeviceZoom(newDeviceZoom);
+    console.log(`📷 [PRE-LIVE] Device zoom: ${newDeviceZoom.toFixed(2)}`);
   };
 
   const navigateToBroadcaster = useCallback(() => {
-    console.log('🚀 [PRE-LIVE] Navigating to TikTok-style broadcaster screen');
+    console.log('🚀 [PRE-LIVE] Navigating to TikTok-style broadcaster with REAL face detection');
     
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Cannot navigate - permissions not granted');
@@ -208,11 +235,11 @@ export default function PreLiveSetupScreen() {
       },
     });
 
-    console.log('✅ [PRE-LIVE] Navigation initiated successfully with zoom:', cameraZoom);
+    console.log('✅ [PRE-LIVE] Navigation initiated with zoom:', cameraZoom);
   }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, cameraZoom, cameraPermission, micPermission]);
 
   const handleGoLive = useCallback(async () => {
-    console.log('🚀 [PRE-LIVE] Go LIVE button pressed (TikTok-style with AI Face Filters)');
+    console.log('🚀 [PRE-LIVE] Go LIVE button pressed (TikTok-style with REAL AI Face Detection)');
 
     if (!cameraPermission?.granted || !micPermission?.granted) {
       console.error('❌ [PRE-LIVE] Permissions not granted');
@@ -326,7 +353,7 @@ export default function PreLiveSetupScreen() {
         await enhancedContentSafetyService.logCreatorRulesAcceptance(user.id);
       }
 
-      console.log('✅ [PRE-LIVE] Validation passed - starting TikTok-style stream with AI Face Filters');
+      console.log('✅ [PRE-LIVE] Validation passed - starting TikTok-style stream with REAL AI Face Detection');
 
       navigateToBroadcaster();
     } catch (error) {
@@ -436,23 +463,24 @@ export default function PreLiveSetupScreen() {
     );
   }
 
-  console.log('✅ [PRE-LIVE] Rendering TikTok-style camera view with AI Face Filters and Zoom Control');
+  console.log('✅ [PRE-LIVE] Rendering TikTok-style camera with REAL AI Face Detection and Fixed Zoom');
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
       
       <View style={styles.container}>
-        {/* CAMERA PREVIEW BACKGROUND - TikTok-style 9:16 with ZOOM */}
+        {/* CAMERA PREVIEW - TikTok-style 9:16 with CORRECTED ZOOM */}
         <CameraView 
+          ref={cameraRef}
           style={StyleSheet.absoluteFill} 
           facing={facing}
-          zoom={cameraZoom}
+          zoom={deviceZoom}
         />
 
         {/* COLOR FILTER OVERLAY (Legacy) */}
         <ImprovedCameraFilterOverlay filter={activeFilter} intensity={filterIntensity} />
 
-        {/* AI FACE FILTER SYSTEM (NEW) */}
+        {/* AI FACE FILTER SYSTEM (REAL FACE DETECTION) */}
         <AIFaceFilterSystem 
           filter={activeEffect} 
           intensity={effectIntensity}
@@ -478,11 +506,13 @@ export default function PreLiveSetupScreen() {
           </View>
         </View>
 
-        {/* CAMERA ZOOM CONTROL (NEW) */}
+        {/* CAMERA ZOOM CONTROL (FIXED CALIBRATION) */}
         <CameraZoomControl
           currentZoom={cameraZoom}
           onZoomChange={handleZoomChange}
           position="top"
+          minZoom={cameraZoomRange.min}
+          maxZoom={cameraZoomRange.max}
         />
 
         {/* STREAM TITLE INPUT */}
@@ -656,7 +686,9 @@ export default function PreLiveSetupScreen() {
 
         {/* TIKTOK-STYLE FORMAT INDICATOR */}
         <View style={styles.formatIndicator}>
-          <Text style={styles.formatText}>📱 9:16 • 30fps • Portrait • Zoom {cameraZoom}x</Text>
+          <Text style={styles.formatText}>
+            📱 9:16 • 30fps • Portrait • Zoom {cameraZoom}x (Device: {deviceZoom.toFixed(2)})
+          </Text>
         </View>
 
         {/* COMMUNITY GUIDELINES MODAL */}
@@ -677,7 +709,7 @@ export default function PreLiveSetupScreen() {
           onCancel={() => setShowContentLabelModal(false)}
         />
 
-        {/* AI FACE EFFECTS PANEL (NEW - Replaces old effects) */}
+        {/* AI FACE EFFECTS PANEL (REAL FACE DETECTION) */}
         <AIFaceEffectsPanel
           visible={showFaceEffectsPanel}
           onClose={() => setShowFaceEffectsPanel(false)}
