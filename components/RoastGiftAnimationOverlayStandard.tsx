@@ -14,6 +14,7 @@ interface RoastGiftAnimationOverlayStandardProps {
   senderName: string;
   priceSEK: number;
   tier: RoastGiftTier;
+  animationType: 'OVERLAY' | 'AR' | 'CINEMATIC';
   onAnimationComplete: () => void;
 }
 
@@ -24,6 +25,7 @@ export default function RoastGiftAnimationOverlayStandard({
   senderName,
   priceSEK,
   tier,
+  animationType,
   onAnimationComplete,
 }: RoastGiftAnimationOverlayStandardProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -53,7 +55,7 @@ export default function RoastGiftAnimationOverlayStandard({
 
   useEffect(() => {
     isMountedRef.current = true;
-    console.log('🔥 [RoastGift] Animation started:', { giftId, displayName, tier });
+    console.log('🔥 [RoastGift] Animation started:', { giftId, displayName, tier, animationType });
 
     return () => {
       isMountedRef.current = false;

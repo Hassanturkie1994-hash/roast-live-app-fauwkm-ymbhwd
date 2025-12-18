@@ -17,7 +17,7 @@ import LiveBadge from '@/components/LiveBadge';
 import FollowButton from '@/components/FollowButton';
 import RoastLiveLogo from '@/components/RoastLiveLogo';
 import ChatOverlay from '@/components/ChatOverlay';
-import GiftAnimationOverlay from '@/components/GiftAnimationOverlay';
+import RoastGiftAnimationOverlay from '@/components/RoastGiftAnimationOverlay';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { Tables } from '@/app/integrations/supabase/types';
@@ -26,13 +26,15 @@ type Stream = Tables<'streams'> & {
   users: Tables<'users'>;
 };
 
-interface GiftAnimation {
+interface RoastGiftAnimationData {
   id: string;
-  giftName: string;
-  giftEmoji: string;
-  senderUsername: string;
-  amount: number;
-  tier: 'A' | 'B' | 'C';
+  giftId: string;
+  displayName: string;
+  emoji: string;
+  senderName: string;
+  priceSEK: number;
+  tier: 'LOW' | 'MID' | 'HIGH' | 'ULTRA';
+  animationType: 'OVERLAY' | 'AR' | 'CINEMATIC';
 }
 
 export default function LivePlayerScreen() {
@@ -46,7 +48,7 @@ export default function LivePlayerScreen() {
   const [hasJoinedChannel, setHasJoinedChannel] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isStreamOffline, setIsStreamOffline] = useState(false);
-  const [giftAnimations, setGiftAnimations] = useState<GiftAnimation[]>([]);
+  const [giftAnimations, setGiftAnimations] = useState<RoastGiftAnimationData[]>([]);
   const [isViewerChannelSubscribed, setIsViewerChannelSubscribed] = useState(false);
   const [isGiftChannelSubscribed, setIsGiftChannelSubscribed] = useState(false);
   const channelRef = useRef<any>(null);
@@ -54,14 +56,12 @@ export default function LivePlayerScreen() {
   const playerRef = useRef<any>(null);
   const isMountedRef = useRef(true);
 
-  // Debug indicator
   const [debugVisible, setDebugVisible] = useState(true);
 
   useEffect(() => {
     isMountedRef.current = true;
     console.log('🎬 LivePlayerScreen mounted for stream:', streamId);
     
-    // Hide debug indicator after 5 seconds
     const debugTimer = setTimeout(() => {
       if (isMountedRef.current) {
         setDebugVisible(false);
@@ -74,11 +74,9 @@ export default function LivePlayerScreen() {
     };
   }, [streamId]);
 
-  // Validate playback URL before creating player
   const isValidPlaybackUrl = (url: string | null | undefined): boolean => {
     if (!url) return false;
     
-    // Check if URL is a valid HTTP/HTTPS URL
     try {
       const urlObj = new URL(url);
       return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
@@ -101,7 +99,6 @@ export default function LivePlayerScreen() {
         player.loop = false;
         player.staysActiveInBackground = false;
         
-        // Safely attempt to play
         if (player.play) {
           player.play();
         }
@@ -131,7 +128,6 @@ export default function LivePlayerScreen() {
       setIsLoading(false);
       setPlayerError('Unable to play the stream');
       
-      // Check if stream is actually offline
       if (stream) {
         checkStreamStatus(stream.id);
       }
@@ -209,14 +205,12 @@ export default function LivePlayerScreen() {
         setStream(data as Stream);
         setViewerCount(data.viewer_count || 0);
 
-        // Validate playback URL
         if (!isValidPlaybackUrl(data.playback_url)) {
           console.error('❌ Invalid playback URL:', data.playback_url);
           setPlayerError('Invalid stream URL');
           setIsLoading(false);
         }
 
-        // Check if stream is actually live
         if (data.status !== 'live') {
           setIsStreamOffline(true);
           setPlayerError('Stream is not live');
@@ -292,34 +286,36 @@ export default function LivePlayerScreen() {
       return;
     }
 
-    console.log('🔌 Subscribing to gift channel:', `stream:${streamId}:gifts`);
+    console.log('🔌 Subscribing to roast gift channel:', `roast_gifts:${streamId}`);
 
     const channel = supabase
-      .channel(`stream:${streamId}:gifts`)
+      .channel(`roast_gifts:${streamId}`)
       .on('broadcast', { event: 'gift_sent' }, (payload) => {
-        console.log('🎁 Gift received:', payload);
+        console.log('🎁 Roast gift received:', payload);
         
         if (!isMountedRef.current) return;
         
         const giftData = payload.payload;
         
-        const newAnimation: GiftAnimation = {
+        const newAnimation: RoastGiftAnimationData = {
           id: `${Date.now()}-${Math.random()}`,
-          giftName: giftData.gift_name,
-          giftEmoji: giftData.gift_emoji || '🎁',
-          senderUsername: giftData.sender_username,
-          amount: giftData.amount,
-          tier: giftData.tier || 'A',
+          giftId: giftData.giftId,
+          displayName: giftData.displayName,
+          emoji: giftData.emoji || '🎁',
+          senderName: giftData.senderName,
+          priceSEK: giftData.priceSEK,
+          tier: giftData.tier || 'LOW',
+          animationType: giftData.animationType || 'OVERLAY',
         };
         
         setGiftAnimations((prev) => [...prev, newAnimation]);
       })
       .subscribe((status) => {
-        console.log('📡 Gift channel subscription status:', status);
+        console.log('📡 Roast gift channel subscription status:', status);
         
         if (status === 'SUBSCRIBED' && isMountedRef.current) {
           setIsGiftChannelSubscribed(true);
-          console.log('✅ Successfully subscribed to gift channel');
+          console.log('✅ Successfully subscribed to roast gift channel');
         }
       });
 
@@ -351,7 +347,6 @@ export default function LivePlayerScreen() {
   }, [streamId, fetchStream]);
 
   useEffect(() => {
-    // ALWAYS subscribe to channels when stream is available, regardless of backend state
     if (stream && !hasJoinedChannel && isMountedRef.current) {
       console.log('🚀 Initializing Realtime channels for stream:', stream.id);
       joinViewerChannel();
@@ -477,7 +472,6 @@ export default function LivePlayerScreen() {
     fetchStream();
   };
 
-  // Show loading state
   if (!stream) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
@@ -487,7 +481,6 @@ export default function LivePlayerScreen() {
     );
   }
 
-  // Show error state if playback URL is invalid or stream is offline
   if (!stream.playback_url || !isValidPlaybackUrl(stream.playback_url) || isStreamOffline || playerError) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
@@ -529,7 +522,6 @@ export default function LivePlayerScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Video Layer - Background */}
       <VideoView
         style={styles.video}
         player={player}
@@ -539,7 +531,6 @@ export default function LivePlayerScreen() {
         nativeControls={false}
       />
 
-      {/* Loading Overlay */}
       {isLoading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={colors.brandPrimary || '#A40028'} />
@@ -547,9 +538,7 @@ export default function LivePlayerScreen() {
         </View>
       )}
 
-      {/* Overlay Layer - Above Video */}
       <View style={styles.overlay} pointerEvents="box-none">
-        {/* Debug indicator */}
         {debugVisible && (
           <View style={styles.debugIndicator}>
             <Text style={styles.debugText}>
@@ -612,7 +601,6 @@ export default function LivePlayerScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Chat Overlay - ALWAYS RENDERED */}
         <ChatOverlay streamId={streamId} isBroadcaster={false} streamDelay={0} />
 
         <View style={styles.bottomBar}>
@@ -628,15 +616,16 @@ export default function LivePlayerScreen() {
         </View>
       </View>
 
-      {/* Gift Animations - Highest Layer */}
       {giftAnimations.map((animation) => (
-        <GiftAnimationOverlay
+        <RoastGiftAnimationOverlay
           key={animation.id}
-          giftName={animation.giftName}
-          giftEmoji={animation.giftEmoji}
-          senderUsername={animation.senderUsername}
-          amount={animation.amount}
+          giftId={animation.giftId}
+          displayName={animation.displayName}
+          emoji={animation.emoji}
+          senderName={animation.senderName}
+          priceSEK={animation.priceSEK}
           tier={animation.tier}
+          animationType={animation.animationType}
           onAnimationComplete={() => handleAnimationComplete(animation.id)}
         />
       ))}

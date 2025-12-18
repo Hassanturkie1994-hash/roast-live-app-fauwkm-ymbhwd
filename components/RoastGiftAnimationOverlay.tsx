@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { RoastGift, isCinematicGift } from '@/constants/RoastGiftManifest';
+import { isCinematicGift } from '@/constants/RoastGiftManifest';
 import CinematicGiftOverlay from './CinematicGiftOverlay';
 import RoastGiftAnimationOverlayStandard from './RoastGiftAnimationOverlayStandard';
 
@@ -21,16 +21,16 @@ export default function RoastGiftAnimationOverlay(props: RoastGiftAnimationOverl
   
   // Check if cinematic
   if (isCinematicGift(animationType)) {
-    const gift: RoastGift = {
+    const gift = {
       giftId: props.giftId,
       displayName: props.displayName,
       priceSEK: props.priceSEK,
       tier: props.tier,
       animationType: props.animationType,
-      soundProfile: '', // Not needed for display
-      priority: 0, // Not needed for display
+      soundProfile: '',
+      priority: 0,
       emoji: props.emoji,
-      description: '', // Not needed for display
+      description: '',
     };
     
     return (

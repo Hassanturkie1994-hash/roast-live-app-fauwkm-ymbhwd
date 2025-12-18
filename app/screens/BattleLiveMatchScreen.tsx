@@ -18,7 +18,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { battleService, BattleLobby, BattleMatch, MatchDuration } from '@/app/services/battleService';
 import { supabase } from '@/app/integrations/supabase/client';
 import ChatOverlay from '@/components/ChatOverlay';
-import EnhancedGiftOverlay from '@/components/EnhancedGiftOverlay';
+import RoastGiftSelector from '@/components/RoastGiftSelector';
 
 export default function BattleLiveMatchScreen() {
   const { lobbyId } = useLocalSearchParams<{ lobbyId: string }>();
@@ -393,9 +393,9 @@ export default function BattleLiveMatchScreen() {
       <ChatOverlay streamId={match?.stream_id || lobby.id} />
 
       {showGiftOverlay && match && (
-        <EnhancedGiftOverlay
+        <RoastGiftSelector
           streamId={match.stream_id || lobby.id}
-          streamerId={lobby.host_id}
+          creatorId={lobby.host_id}
           onClose={() => setShowGiftOverlay(false)}
           onGiftSent={handleGiftSent}
         />

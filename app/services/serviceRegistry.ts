@@ -26,8 +26,7 @@ import { enhancedRecommendationService } from './enhancedRecommendationService';
 import { escalationService } from './escalationService';
 import { fanClubService } from './fanClubService';
 import { followService } from './followService';
-import { fetchGifts, purchaseGift, fetchGiftEvents } from './giftService';
-import { giftTransactionService } from './giftTransactionService';
+import { roastGiftService } from './roastGiftService';
 import { globalLeaderboardService } from './globalLeaderboardService';
 import { inboxService } from './inboxService';
 import { leaderboardService } from './leaderboardService';
@@ -115,12 +114,7 @@ export const ServiceRegistry = {
   savedStream: savedStreamService,
   
   // Gifts & Monetization
-  gift: {
-    fetch: fetchGifts,
-    purchase: purchaseGift,
-    fetchEvents: fetchGiftEvents,
-  },
-  giftTransaction: giftTransactionService,
+  roastGift: roastGiftService,
   wallet: walletService,
   walletTransaction: walletTransactionService,
   
@@ -251,7 +245,7 @@ export {
   escalationService,
   fanClubService,
   followService,
-  giftTransactionService,
+  roastGiftService,
   globalLeaderboardService,
   inboxService,
   leaderboardService,

@@ -46,10 +46,11 @@ interface RoastGiftAnimationData {
   senderName: string;
   priceSEK: number;
   tier: 'LOW' | 'MID' | 'HIGH' | 'ULTRA';
+  animationType: 'OVERLAY' | 'AR' | 'CINEMATIC';
 }
 
 /**
- * BroadcastScreen - Complete Feature Set with Roast Gift System
+ * BroadcastScreen - Complete Feature Set with Roast Gift System + VIP Integration
  * 
  * FEATURES:
  * 1. Moderator Panel - Manage moderators and banned users
@@ -61,13 +62,14 @@ interface RoastGiftAnimationData {
  * 7. VIP Club Integration - Restrict stream to VIP club members
  * 8. CDN Storage - Save streams to CDN and user profiles
  * 9. Stream Health Dashboard - Comprehensive stream metrics
- * 10. NEW ROAST GIFT SYSTEM - 45 roast-themed gifts with animations
+ * 10. Roast Gift System - 45 roast-themed gifts with animations
+ * 11. VIP Level Updates - Automatic VIP level progression from gifts
  */
 export default function BroadcastScreen() {
   useKeepAwake();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📺 [BROADCAST] Component rendering with ROAST GIFT SYSTEM');
+  console.log('📺 [BROADCAST] Component rendering with VIP INTEGRATION');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   const { streamTitle, contentLabel } = useLocalSearchParams<{
@@ -123,7 +125,7 @@ export default function BroadcastScreen() {
   const [selectedModerators, setSelectedModerators] = useState<string[]>([]);
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
   
-  // NEW: Roast Gift Animation State
+  // Roast Gift Animation State
   const [giftAnimations, setGiftAnimations] = useState<RoastGiftAnimationData[]>([]);
   
   const cameraRef = useRef<CameraView>(null);
@@ -290,7 +292,6 @@ export default function BroadcastScreen() {
     console.log('🔄 [BROADCAST] Attempting to reconnect stream...');
   }, []);
 
-  // NEW: Handle gift received from realtime
   const handleGiftReceived = useCallback((giftData: any) => {
     if (!isMountedRef.current) return;
     
@@ -304,12 +305,12 @@ export default function BroadcastScreen() {
       senderName: giftData.senderName,
       priceSEK: giftData.priceSEK,
       tier: giftData.tier,
+      animationType: giftData.animationType || 'OVERLAY',
     };
     
     setGiftAnimations((prev) => [...prev, newAnimation]);
   }, []);
 
-  // NEW: Handle gift animation complete
   const handleGiftAnimationComplete = useCallback((animationId: string) => {
     if (!isMountedRef.current) return;
     
@@ -356,7 +357,7 @@ export default function BroadcastScreen() {
       initAttemptedRef.current = true;
       
       try {
-        console.log('🚀 [BROADCAST] Initializing stream with ROAST GIFT SYSTEM...');
+        console.log('🚀 [BROADCAST] Initializing stream with VIP INTEGRATION...');
 
         if (!startStream) {
           console.error('❌ [BROADCAST] startStream is undefined');
@@ -482,7 +483,6 @@ export default function BroadcastScreen() {
     return () => clearInterval(interval);
   }, [streamId, loadActiveGuests]);
 
-  // NEW: Subscribe to roast gifts
   useEffect(() => {
     if (!streamId) return;
 
@@ -496,7 +496,6 @@ export default function BroadcastScreen() {
     };
   }, [streamId, handleGiftReceived]);
 
-  // Track roast gift count
   useEffect(() => {
     if (!streamId) return;
 
@@ -808,7 +807,6 @@ export default function BroadcastScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* NEW: Roast Gift Selector */}
         {showGifts && user && (
           <RoastGiftSelector
             visible={showGifts}
@@ -883,7 +881,6 @@ export default function BroadcastScreen() {
         )}
       </CameraView>
 
-      {/* NEW: Roast Gift Animations */}
       {giftAnimations.map((animation) => (
         <RoastGiftAnimationOverlay
           key={animation.id}
@@ -893,6 +890,7 @@ export default function BroadcastScreen() {
           senderName={animation.senderName}
           priceSEK={animation.priceSEK}
           tier={animation.tier}
+          animationType={animation.animationType}
           onAnimationComplete={() => handleGiftAnimationComplete(animation.id)}
         />
       ))}
