@@ -49,7 +49,7 @@ serve(async (req) => {
     const { data: season, error: seasonError } = await supabase
       .from('roast_ranking_seasons')
       .select('*')
-      .eq('status', 'active')
+      .eq('status', 'ACTIVE')
       .single();
 
     if (seasonError || !season) {

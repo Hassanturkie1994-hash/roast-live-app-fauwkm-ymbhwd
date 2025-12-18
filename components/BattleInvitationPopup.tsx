@@ -27,6 +27,13 @@ export default function BattleInvitationPopup({ visible, onClose }: BattleInvita
   const slideAnim = useRef(new Animated.Value(-100)).current;
   const channelRef = useRef<any>(null);
 
+  const fetchInvitations = useCallback(async () => {
+    if (!user) return;
+
+    const { invitations: data } = await battleService.getPendingInvitations(user.id);
+    setInvitations(data);
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
 
@@ -49,7 +56,7 @@ export default function BattleInvitationPopup({ visible, onClose }: BattleInvita
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [user]);
+  }, [user, fetchInvitations]);
 
   useEffect(() => {
     if (visible && invitations.length > 0) {
@@ -67,13 +74,6 @@ export default function BattleInvitationPopup({ visible, onClose }: BattleInvita
       }).start();
     }
   }, [visible, invitations, slideAnim]);
-
-  const fetchInvitations = async () => {
-    if (!user) return;
-
-    const { invitations: data } = await battleService.getPendingInvitations(user.id);
-    setInvitations(data);
-  };
 
   const handleAccept = async (invitationId: string) => {
     if (!user) return;

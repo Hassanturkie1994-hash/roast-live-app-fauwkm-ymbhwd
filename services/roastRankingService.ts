@@ -72,10 +72,11 @@ import { supabase } from '@/app/integrations/supabase/client';
 export interface RoastRankingSeason {
   id: string;
   season_number: number;
+  name: string | null;
   start_date: string;
   end_date: string;
   duration_days: number;
-  status: 'active' | 'completed' | 'upcoming';
+  status: 'ACTIVE' | 'ENDED';
   created_at: string;
 }
 
@@ -182,7 +183,7 @@ class RoastRankingService {
       const { data, error } = await supabase
         .from('roast_ranking_seasons')
         .select('*')
-        .eq('status', 'active')
+        .eq('status', 'ACTIVE')
         .single();
 
       if (error) {
@@ -740,8 +741,8 @@ class RoastRankingService {
       // End current season
       await supabase
         .from('roast_ranking_seasons')
-        .update({ status: 'completed' })
-        .eq('status', 'active');
+        .update({ status: 'ENDED' })
+        .eq('status', 'ACTIVE');
 
       // Get last season number
       const { data: lastSeason } = await supabase
@@ -762,10 +763,11 @@ class RoastRankingService {
         .from('roast_ranking_seasons')
         .insert({
           season_number: seasonNumber,
+          name: `Season ${seasonNumber}`,
           start_date: startDate.toISOString(),
           end_date: endDate.toISOString(),
           duration_days: durationDays,
-          status: 'active',
+          status: 'ACTIVE',
         })
         .select()
         .single();
@@ -814,7 +816,7 @@ class RoastRankingService {
       // Freeze rankings
       await supabase
         .from('roast_ranking_seasons')
-        .update({ status: 'completed' })
+        .update({ status: 'ENDED' })
         .eq('id', seasonId);
 
       // Get all ranking entries
