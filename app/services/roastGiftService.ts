@@ -32,9 +32,6 @@ class RoastGiftService {
   private initialized = false;
   private giftChannels: Map<string, any> = new Map();
 
-  /**
-   * Initialize the service
-   */
   public initialize(): void {
     if (this.initialized) return;
     
@@ -42,13 +39,9 @@ class RoastGiftService {
     this.initialized = true;
   }
 
-  /**
-   * Destroy the service
-   */
   public destroy(): void {
     console.log('🎁 [RoastGiftService] Destroying...');
     
-    // Unsubscribe from all channels
     this.giftChannels.forEach((channel) => {
       try {
         supabase.removeChannel(channel);
@@ -61,9 +54,6 @@ class RoastGiftService {
     this.initialized = false;
   }
 
-  /**
-   * Send a roast gift
-   */
   public async sendGift(
     giftId: string,
     senderId: string,
@@ -71,20 +61,16 @@ class RoastGiftService {
     streamId: string | null
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Get gift details
       const gift = getRoastGiftById(giftId);
       if (!gift) {
         return { success: false, error: 'Gift not found' };
       }
 
-      // Anti-abuse: Detect self-gifting (LOGGED, NOT ENFORCED)
       await vipLevelService.detectSelfGifting(senderId, creatorId, gift.priceSEK);
 
-      // Check if in battle
       const battleContext = battleGiftService.getBattleContext();
       if (battleContext?.isInBattle) {
-        // Route through battle gift service
-        const receiverTeam = this.determineReceiverTeam(creatorId, battleContext);
+        const receiverTeam = this.determineReceiverTeamForGift(creatorId, battleContext);
         const { allowed, behavior } = await battleGiftService.routeGift(
           giftId,
           senderId,
@@ -99,7 +85,6 @@ class RoastGiftService {
         console.log('🎮 [RoastGiftService] Battle gift behavior:', behavior);
       }
 
-      // Create transaction
       const { data: transaction, error: transactionError } = await supabase
         .from('roast_gift_transactions')
         .insert({
@@ -118,29 +103,23 @@ class RoastGiftService {
         return { success: false, error: 'Transaction failed' };
       }
 
-      // Play sound
       await giftSoundEngine.playSound(gift.soundProfile, gift.tier);
 
-      // Update creator stats
-      await this.updateCreatorStats(creatorId, streamId, gift.priceSEK);
+      await this.updateCreatorStatsForGift(creatorId, streamId, gift.priceSEK);
 
-      // Update ranking stats
       await roastRankingService.updateCreatorStats(creatorId, {
         giftsReceivedSek: gift.priceSEK,
         uniqueRoaster: senderId,
       });
 
-      // NEW: Update VIP level if sender is a VIP member
-      await this.updateVIPLevelIfMember(senderId, creatorId, gift.priceSEK);
+      await this.updateVIPLevelForMember(senderId, creatorId, gift.priceSEK);
 
-      // Anti-abuse: Detect VIP farming (LOGGED, NOT ENFORCED)
-      const club = await this.getCreatorClub(creatorId);
+      const club = await this.getCreatorVIPClub(creatorId);
       if (club) {
         await vipLevelService.detectVIPFarming(club.id, senderId, gift.priceSEK);
       }
 
-      // Trigger gift animation via realtime
-      await this.broadcastGiftAnimation(giftId, senderId, creatorId, streamId, gift);
+      await this.broadcastGiftAnimationToStream(giftId, senderId, creatorId, streamId, gift);
 
       console.log('✅ [RoastGiftService] Gift sent successfully');
       return { success: true };
@@ -150,10 +129,7 @@ class RoastGiftService {
     }
   }
 
-  /**
-   * Get creator's VIP club
-   */
-  private async getCreatorClub(creatorId: string): Promise<{ id: string } | null> {
+  private async getCreatorVIPClub(creatorId: string): Promise<{ id: string } | null> {
     try {
       const { data, error } = await supabase
         .from('vip_clubs')
@@ -173,19 +149,15 @@ class RoastGiftService {
     }
   }
 
-  /**
-   * Update VIP level if sender is a member
-   */
-  private async updateVIPLevelIfMember(
+  private async updateVIPLevelForMember(
     senderId: string,
     creatorId: string,
     giftAmountSEK: number
   ): Promise<void> {
     try {
-      const club = await this.getCreatorClub(creatorId);
+      const club = await this.getCreatorVIPClub(creatorId);
       if (!club) return;
 
-      // Check if sender is a VIP member
       const { data: member, error } = await supabase
         .from('vip_club_members')
         .select('id')
@@ -195,11 +167,9 @@ class RoastGiftService {
         .single();
 
       if (error || !member) {
-        // Not a VIP member, skip
         return;
       }
 
-      // Update VIP level
       const result = await vipLevelService.updateVIPLevelAfterGift(
         club.id,
         senderId,
@@ -209,7 +179,6 @@ class RoastGiftService {
       if (result.leveledUp) {
         console.log(`🎉 [RoastGiftService] VIP member leveled up to ${result.newLevel}`);
         
-        // Broadcast level up event
         const levelUpChannel = supabase.channel(`vip_level_up:${club.id}`);
         await levelUpChannel.send({
           type: 'broadcast',
@@ -226,28 +195,19 @@ class RoastGiftService {
     }
   }
 
-  /**
-   * Determine receiver team in battle
-   */
-  private determineReceiverTeam(
+  private determineReceiverTeamForGift(
     creatorId: string,
     battleContext: any
   ): 'team_a' | 'team_b' {
-    // This would need to check which team the creator is on
-    // For now, default to team_a
     return 'team_a';
   }
 
-  /**
-   * Update creator stats
-   */
-  private async updateCreatorStats(
+  private async updateCreatorStatsForGift(
     creatorId: string,
     streamId: string | null,
     amountSek: number
   ): Promise<void> {
     try {
-      // Get or create stats entry
       const { data: stats, error: fetchError } = await supabase
         .from('creator_roast_stats')
         .select('*')
@@ -261,7 +221,6 @@ class RoastGiftService {
       }
 
       if (!stats) {
-        // Create new stats entry
         await supabase.from('creator_roast_stats').insert({
           creator_id: creatorId,
           stream_id: streamId,
@@ -269,7 +228,6 @@ class RoastGiftService {
           total_gifts: 1,
         });
       } else {
-        // Update existing stats
         await supabase
           .from('creator_roast_stats')
           .update({
@@ -286,10 +244,7 @@ class RoastGiftService {
     }
   }
 
-  /**
-   * Broadcast gift animation via realtime
-   */
-  private async broadcastGiftAnimation(
+  private async broadcastGiftAnimationToStream(
     giftId: string,
     senderId: string,
     creatorId: string,
@@ -299,7 +254,6 @@ class RoastGiftService {
     if (!streamId) return;
 
     try {
-      // Get sender info
       const { data: senderProfile } = await supabase
         .from('profiles')
         .select('display_name, username')
@@ -328,9 +282,6 @@ class RoastGiftService {
     }
   }
 
-  /**
-   * Subscribe to gifts for a stream
-   */
   public subscribeToGifts(
     streamId: string,
     callback: (giftData: any) => void
@@ -361,9 +312,6 @@ class RoastGiftService {
     };
   }
 
-  /**
-   * Get creator earnings summary
-   */
   public async getCreatorEarnings(
     creatorId: string,
     streamId?: string
@@ -392,8 +340,8 @@ class RoastGiftService {
 
       const totalEarnedSek = data.reduce((sum, stat) => sum + stat.total_earned_sek, 0);
       const totalGifts = data.reduce((sum, stat) => sum + stat.total_gifts, 0);
-      const platformCut = Math.floor(totalEarnedSek * 0.3); // 30%
-      const creatorPayout = Math.floor(totalEarnedSek * 0.7); // 70%
+      const platformCut = Math.floor(totalEarnedSek * 0.3);
+      const creatorPayout = Math.floor(totalEarnedSek * 0.7);
 
       return {
         totalEarnedSek,
@@ -407,9 +355,6 @@ class RoastGiftService {
     }
   }
 
-  /**
-   * Get top roasters for a stream
-   */
   public async getTopRoasters(
     streamId: string,
     limit: number = 3
@@ -426,7 +371,6 @@ class RoastGiftService {
         return [];
       }
 
-      // Aggregate by sender
       const roasterMap = new Map<string, { username: string; totalSek: number }>();
       for (const transaction of data) {
         const existing = roasterMap.get(transaction.sender_id);
@@ -440,7 +384,6 @@ class RoastGiftService {
         }
       }
 
-      // Sort and limit
       const topRoasters = Array.from(roasterMap.entries())
         .map(([userId, data]) => ({ userId, ...data }))
         .sort((a, b) => b.totalSek - a.totalSek)
@@ -453,9 +396,6 @@ class RoastGiftService {
     }
   }
 
-  /**
-   * Get most brutal gift for a stream
-   */
   public async getMostBrutalGift(streamId: string): Promise<{
     giftId: string;
     giftName: string;
@@ -493,5 +433,4 @@ class RoastGiftService {
   }
 }
 
-// Export singleton instance
 export const roastGiftService = new RoastGiftService();

@@ -7,7 +7,7 @@ import {
   FlatList,
   ActivityIndicator,
   TouchableOpacity,
-} from 'react';
+} from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { unifiedVIPClubService, VIPClubMember } from '@/app/services/unifiedVIPClubService';
