@@ -29,6 +29,15 @@ interface ChatOverlayProps {
   hostName?: string;
 }
 
+/**
+ * ChatOverlay - Fully Defensive Component
+ * 
+ * STABILITY FIXES APPLIED:
+ * - All user data access uses optional chaining
+ * - All message data validated before rendering
+ * - Graceful fallbacks for missing data
+ * - No assumptions about data shape
+ */
 export default function ChatOverlay({ 
   streamId, 
   isBroadcaster = false,
@@ -48,7 +57,13 @@ export default function ChatOverlay({
 
   const [debugVisible, setDebugVisible] = useState(true);
 
+  // DEFENSIVE: Validate streamId
   useEffect(() => {
+    if (!streamId) {
+      console.error('❌ [ChatOverlay] streamId is required');
+      return;
+    }
+
     isMountedRef.current = true;
     console.log('🎨 ChatOverlay mounted for stream:', streamId);
     
@@ -65,11 +80,20 @@ export default function ChatOverlay({
   }, [streamId]);
 
   const fetchRecentMessages = useCallback(async () => {
-    if (!streamId || !isMountedRef.current) return;
+    if (!streamId || !isMountedRef.current) {
+      console.warn('⚠️ [ChatOverlay] Cannot fetch messages: missing streamId or unmounted');
+      return;
+    }
 
     try {
       console.log('📥 Fetching recent messages for stream:', streamId);
       
+      // DEFENSIVE: Check supabase exists
+      if (!supabase) {
+        console.error('❌ [ChatOverlay] supabase client is undefined');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('chat_messages')
         .select('*, users(*)')
@@ -82,10 +106,33 @@ export default function ChatOverlay({
         return;
       }
 
-      console.log(`✅ Loaded ${data?.length || 0} recent messages`);
+      // DEFENSIVE: Validate messages array
+      if (!Array.isArray(data)) {
+        console.warn('⚠️ [ChatOverlay] Messages data is not an array');
+        return;
+      }
+
+      // DEFENSIVE: Filter out invalid messages
+      const validMessages = data.filter((msg: any) => {
+        if (!msg) {
+          console.warn('⚠️ [ChatOverlay] Filtered out null message');
+          return false;
+        }
+        if (!msg.users) {
+          console.warn('⚠️ [ChatOverlay] Filtered out message with no user:', msg.id);
+          return false;
+        }
+        if (!msg.message) {
+          console.warn('⚠️ [ChatOverlay] Filtered out message with no text:', msg.id);
+          return false;
+        }
+        return true;
+      });
+
+      console.log(`✅ Loaded ${validMessages.length} valid messages (filtered ${data.length - validMessages.length})`);
       
       if (isMountedRef.current) {
-        setMessages(data as ChatMessage[]);
+        setMessages(validMessages as ChatMessage[]);
       }
     } catch (error) {
       console.error('❌ Error in fetchRecentMessages:', error);
@@ -98,62 +145,84 @@ export default function ChatOverlay({
       return;
     }
 
+    // DEFENSIVE: Check supabase exists
+    if (!supabase) {
+      console.error('❌ [ChatOverlay] supabase client is undefined');
+      return;
+    }
+
     console.log('🔌 Subscribing to chat channel:', `stream:${streamId}:chat`);
 
-    const channel = supabase
-      .channel(`stream:${streamId}:chat`)
-      .on('broadcast', { event: 'new_message' }, (payload) => {
-        console.log('💬 New chat message received via broadcast:', payload);
-        
-        if (!isMountedRef.current) return;
-        
-        const newMessage = payload.payload as ChatMessage;
-        
-        if (!isBroadcaster && streamDelay > 0) {
-          setTimeout(() => {
-            if (isMountedRef.current) {
-              setMessages((prev) => [...prev, newMessage]);
-              
-              Animated.sequence([
-                Animated.timing(fadeAnim, {
-                  toValue: 0.5,
-                  duration: 100,
-                  useNativeDriver: true,
-                }),
-                Animated.timing(fadeAnim, {
-                  toValue: 1,
-                  duration: 200,
-                  useNativeDriver: true,
-                }),
-              ]).start();
-            }
-          }, streamDelay * 1000);
-        } else {
-          setMessages((prev) => [...prev, newMessage]);
+    try {
+      const channel = supabase
+        .channel(`stream:${streamId}:chat`)
+        .on('broadcast', { event: 'new_message' }, (payload) => {
+          console.log('💬 New chat message received via broadcast:', payload);
           
-          Animated.sequence([
-            Animated.timing(fadeAnim, {
-              toValue: 0.5,
-              duration: 100,
-              useNativeDriver: true,
-            }),
-            Animated.timing(fadeAnim, {
-              toValue: 1,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start();
-        }
-      })
-      .subscribe((status) => {
-        console.log('📡 Chat channel subscription status:', status);
-        if (status === 'SUBSCRIBED' && isMountedRef.current) {
-          setIsSubscribed(true);
-          console.log('✅ Successfully subscribed to chat channel');
-        }
-      });
+          if (!isMountedRef.current) return;
+          
+          // DEFENSIVE: Validate payload
+          if (!payload || !payload.payload) {
+            console.warn('⚠️ [ChatOverlay] Invalid message payload');
+            return;
+          }
 
-    channelRef.current = channel;
+          const newMessage = payload.payload as ChatMessage;
+          
+          // DEFENSIVE: Validate message has required fields
+          if (!newMessage.users || !newMessage.message) {
+            console.warn('⚠️ [ChatOverlay] Message missing required fields');
+            return;
+          }
+          
+          if (!isBroadcaster && streamDelay > 0) {
+            setTimeout(() => {
+              if (isMountedRef.current) {
+                setMessages((prev) => [...prev, newMessage]);
+                
+                Animated.sequence([
+                  Animated.timing(fadeAnim, {
+                    toValue: 0.5,
+                    duration: 100,
+                    useNativeDriver: true,
+                  }),
+                  Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: true,
+                  }),
+                ]).start();
+              }
+            }, streamDelay * 1000);
+          } else {
+            setMessages((prev) => [...prev, newMessage]);
+            
+            Animated.sequence([
+              Animated.timing(fadeAnim, {
+                toValue: 0.5,
+                duration: 100,
+                useNativeDriver: true,
+              }),
+              Animated.timing(fadeAnim, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+            ]).start();
+          }
+        })
+        .subscribe((status) => {
+          console.log('📡 Chat channel subscription status:', status);
+          if (status === 'SUBSCRIBED' && isMountedRef.current) {
+            setIsSubscribed(true);
+            console.log('✅ Successfully subscribed to chat channel');
+          }
+        });
+
+      channelRef.current = channel;
+    } catch (error) {
+      console.error('❌ [ChatOverlay] Error subscribing to chat:', error);
+    }
   }, [streamId, isBroadcaster, streamDelay, fadeAnim]);
 
   useEffect(() => {
@@ -162,8 +231,12 @@ export default function ChatOverlay({
 
     return () => {
       console.log('🔌 Unsubscribing from chat channel');
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      if (channelRef.current && supabase) {
+        try {
+          supabase.removeChannel(channelRef.current);
+        } catch (error) {
+          console.error('❌ Error removing channel:', error);
+        }
         channelRef.current = null;
       }
       if (isMountedRef.current) {
@@ -181,7 +254,21 @@ export default function ChatOverlay({
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!messageText.trim() || !user || !isMountedRef.current) return;
+    if (!messageText.trim() || !user || !isMountedRef.current) {
+      console.warn('⚠️ [ChatOverlay] Cannot send message: missing data or unmounted');
+      return;
+    }
+
+    if (!streamId) {
+      console.error('❌ [ChatOverlay] Cannot send message: streamId is missing');
+      return;
+    }
+
+    // DEFENSIVE: Check supabase exists
+    if (!supabase) {
+      console.error('❌ [ChatOverlay] supabase client is undefined');
+      return;
+    }
 
     const trimmedMessage = messageText.trim();
     
@@ -203,15 +290,25 @@ export default function ChatOverlay({
         return;
       }
 
+      // DEFENSIVE: Validate new message
+      if (!newMessage) {
+        console.error('❌ [ChatOverlay] No message returned from insert');
+        return;
+      }
+
       console.log('✅ Message saved to database');
 
       if (channelRef.current && newMessage && isMountedRef.current) {
-        await channelRef.current.send({
-          type: 'broadcast',
-          event: 'new_message',
-          payload: newMessage,
-        });
-        console.log('📡 Message broadcasted to all viewers');
+        try {
+          await channelRef.current.send({
+            type: 'broadcast',
+            event: 'new_message',
+            payload: newMessage,
+          });
+          console.log('📡 Message broadcasted to all viewers');
+        } catch (broadcastError) {
+          console.error('❌ Error broadcasting message:', broadcastError);
+        }
       }
 
       if (isMountedRef.current) {
@@ -223,11 +320,28 @@ export default function ChatOverlay({
   };
 
   const renderMessage = (msg: ChatMessage, index: number) => {
+    // DEFENSIVE: Validate message data
+    if (!msg) {
+      console.warn('⚠️ [ChatOverlay] Skipping render: null message');
+      return null;
+    }
+
+    if (!msg.users) {
+      console.warn('⚠️ [ChatOverlay] Skipping render: message has no user');
+      return null;
+    }
+
+    if (!msg.message) {
+      console.warn('⚠️ [ChatOverlay] Skipping render: message has no text');
+      return null;
+    }
+
     const isHost = msg.user_id === hostId;
+    const displayName = msg.users.display_name || 'Unknown User';
     
     return (
       <Animated.View
-        key={index}
+        key={`msg-${msg.id || index}`}
         style={[
           styles.chatMessage,
           index === messages.length - 1 && { opacity: fadeAnim },
@@ -235,7 +349,7 @@ export default function ChatOverlay({
       >
         <Text style={styles.chatUsername}>
           <Text style={isHost ? styles.hostUsername : undefined}>
-            {msg.users.display_name}
+            {displayName}
           </Text>
           {isHost && <Text style={styles.hostLabel}> - Host</Text>}
           :
@@ -244,6 +358,12 @@ export default function ChatOverlay({
       </Animated.View>
     );
   };
+
+  // DEFENSIVE: Don't render if streamId is missing
+  if (!streamId) {
+    console.error('❌ [ChatOverlay] Cannot render: streamId is missing');
+    return null;
+  }
 
   if (isBroadcaster) {
     return (

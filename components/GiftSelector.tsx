@@ -27,6 +27,15 @@ interface GiftSelectorProps {
   onGiftSent?: (giftEvent: any) => void;
 }
 
+/**
+ * GiftSelector - Fully Defensive Component
+ * 
+ * STABILITY FIXES APPLIED:
+ * - All user data validated before operations
+ * - All gift data validated before rendering
+ * - Graceful fallbacks for missing data
+ * - No assumptions about data shape
+ */
 export default function GiftSelector({
   visible,
   onClose,
@@ -43,6 +52,16 @@ export default function GiftSelector({
   const [walletBalance, setWalletBalance] = useState(0);
   const [selectedTier, setSelectedTier] = useState<GiftTier | 'ALL'>('ALL');
 
+  // DEFENSIVE: Validate required props
+  useEffect(() => {
+    if (!receiverId) {
+      console.error('❌ [GiftSelector] receiverId is required');
+    }
+    if (!receiverName) {
+      console.warn('⚠️ [GiftSelector] receiverName is missing');
+    }
+  }, [receiverId, receiverName]);
+
   useEffect(() => {
     if (visible) {
       loadData();
@@ -50,33 +69,120 @@ export default function GiftSelector({
   }, [visible]);
 
   const loadData = async () => {
-    if (!user) return;
+    if (!user) {
+      console.warn('⚠️ [GiftSelector] Cannot load data: user is null');
+      setLoading(false);
+      return;
+    }
+
+    if (!user.id) {
+      console.error('❌ [GiftSelector] Cannot load data: user.id is missing');
+      setLoading(false);
+      return;
+    }
 
     try {
-      const [giftsResult, walletResult] = await Promise.all([
-        fetchGifts(),
-        supabase.from('wallet').select('balance').eq('user_id', user.id).single(),
-      ]);
-
-      if (giftsResult.data) {
-        setGifts(giftsResult.data);
+      // DEFENSIVE: Check supabase exists
+      if (!supabase) {
+        console.error('❌ [GiftSelector] supabase client is undefined');
+        setLoading(false);
+        return;
       }
 
-      if (walletResult.data) {
-        setWalletBalance(parseFloat(walletResult.data.balance));
+      // DEFENSIVE: Wrap fetchGifts in try-catch
+      let giftsResult;
+      try {
+        giftsResult = await fetchGifts();
+      } catch (giftsError) {
+        console.error('❌ [GiftSelector] Error fetching gifts:', giftsError);
+        giftsResult = { data: [] };
+      }
+
+      // DEFENSIVE: Validate gifts data
+      if (giftsResult.data && Array.isArray(giftsResult.data)) {
+        // Filter out invalid gifts
+        const validGifts = giftsResult.data.filter((gift: any) => {
+          if (!gift) {
+            console.warn('⚠️ [GiftSelector] Filtered out null gift');
+            return false;
+          }
+          if (!gift.id) {
+            console.warn('⚠️ [GiftSelector] Filtered out gift with no id');
+            return false;
+          }
+          if (typeof gift.price_sek !== 'number') {
+            console.warn('⚠️ [GiftSelector] Filtered out gift with invalid price:', gift.id);
+            return false;
+          }
+          return true;
+        });
+        setGifts(validGifts);
       } else {
-        await supabase.from('wallet').insert({ user_id: user.id, balance: 0 });
+        console.warn('⚠️ [GiftSelector] Gifts data is not an array');
+        setGifts([]);
+      }
+
+      // DEFENSIVE: Fetch wallet with error handling
+      try {
+        const walletResult = await supabase
+          .from('wallet')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single();
+
+        if (walletResult.data) {
+          const balance = parseFloat(walletResult.data.balance);
+          setWalletBalance(isNaN(balance) ? 0 : balance);
+        } else {
+          // Create wallet if it doesn't exist
+          try {
+            await supabase.from('wallet').insert({ user_id: user.id, balance: 0 });
+            setWalletBalance(0);
+          } catch (insertError) {
+            console.error('❌ [GiftSelector] Error creating wallet:', insertError);
+            setWalletBalance(0);
+          }
+        }
+      } catch (walletError) {
+        console.error('❌ [GiftSelector] Error fetching wallet:', walletError);
         setWalletBalance(0);
       }
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('❌ [GiftSelector] Error in loadData:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const handlePurchase = async () => {
-    if (!user || !selectedGift) return;
+    if (!user) {
+      console.warn('⚠️ [GiftSelector] Cannot purchase: user is null');
+      Alert.alert('Error', 'You must be logged in to send gifts');
+      return;
+    }
+
+    if (!user.id) {
+      console.error('❌ [GiftSelector] Cannot purchase: user.id is missing');
+      Alert.alert('Error', 'User ID is missing');
+      return;
+    }
+
+    if (!selectedGift) {
+      console.warn('⚠️ [GiftSelector] Cannot purchase: no gift selected');
+      return;
+    }
+
+    if (!selectedGift.id) {
+      console.error('❌ [GiftSelector] Cannot purchase: gift.id is missing');
+      Alert.alert('Error', 'Invalid gift selected');
+      return;
+    }
+
+    if (!receiverId) {
+      console.error('❌ [GiftSelector] Cannot purchase: receiverId is missing');
+      Alert.alert('Error', 'Receiver ID is missing');
+      return;
+    }
 
     if (walletBalance < selectedGift.price_sek) {
       Alert.alert(
@@ -106,21 +212,33 @@ export default function GiftSelector({
         livestreamId
       );
 
+      // DEFENSIVE: Validate result
+      if (!result) {
+        console.error('❌ [GiftSelector] purchaseGift returned null/undefined');
+        Alert.alert('Error', 'Failed to purchase gift');
+        setPurchasing(false);
+        return;
+      }
+
       if (result.success && result.giftEvent) {
         // Broadcast gift with emoji and tier
         const giftEventData = {
           ...result.giftEvent,
-          gift_emoji: selectedGift.emoji_icon,
-          tier: selectedGift.tier,
+          gift_emoji: selectedGift.emoji_icon || '🎁',
+          tier: selectedGift.tier || 'A',
         };
 
-        if (onGiftSent) {
-          onGiftSent(giftEventData);
+        if (onGiftSent && typeof onGiftSent === 'function') {
+          try {
+            onGiftSent(giftEventData);
+          } catch (callbackError) {
+            console.error('❌ [GiftSelector] Error in onGiftSent callback:', callbackError);
+          }
         }
 
         Alert.alert(
           'Gift Sent! 🎁',
-          `You sent ${selectedGift.emoji_icon} ${selectedGift.name} to ${receiverName}!`,
+          `You sent ${selectedGift.emoji_icon || '🎁'} ${selectedGift.name || 'a gift'} to ${receiverName || 'the receiver'}!`,
           [
             {
               text: 'OK',
@@ -132,26 +250,35 @@ export default function GiftSelector({
           ]
         );
 
-        const { data } = await supabase
-          .from('wallet')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single();
-        if (data) {
-          setWalletBalance(parseFloat(data.balance));
+        // DEFENSIVE: Update wallet balance with error handling
+        try {
+          if (supabase) {
+            const { data } = await supabase
+              .from('wallet')
+              .select('balance')
+              .eq('user_id', user.id)
+              .single();
+            
+            if (data) {
+              const balance = parseFloat(data.balance);
+              setWalletBalance(isNaN(balance) ? 0 : balance);
+            }
+          }
+        } catch (balanceError) {
+          console.error('❌ [GiftSelector] Error updating balance:', balanceError);
         }
       } else {
         Alert.alert('Error', result.error || 'Failed to purchase gift');
       }
     } catch (error) {
-      console.error('Error purchasing gift:', error);
+      console.error('❌ [GiftSelector] Error purchasing gift:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setPurchasing(false);
     }
   };
 
-  const getTierColor = (tier: GiftTier) => {
+  const getTierColor = (tier: GiftTier | null | undefined): string => {
     switch (tier) {
       case 'C':
         return '#FFD700';
@@ -164,7 +291,7 @@ export default function GiftSelector({
     }
   };
 
-  const getTierLabel = (tier: GiftTier) => {
+  const getTierLabel = (tier: GiftTier | null | undefined): string => {
     switch (tier) {
       case 'C':
         return 'PREMIUM';
@@ -173,13 +300,13 @@ export default function GiftSelector({
       case 'A':
         return 'CHEAP';
       default:
-        return '';
+        return 'BASIC';
     }
   };
 
   const filteredGifts = selectedTier === 'ALL' 
     ? gifts 
-    : gifts.filter(g => g.tier === selectedTier);
+    : gifts.filter(g => g && g.tier === selectedTier);
 
   return (
     <Modal
@@ -198,7 +325,7 @@ export default function GiftSelector({
           <View style={styles.header}>
             <View>
               <Text style={styles.headerTitle}>Send Gift</Text>
-              <Text style={styles.headerSubtitle}>to {receiverName}</Text>
+              <Text style={styles.headerSubtitle}>to {receiverName || 'Unknown'}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <IconSymbol
@@ -234,7 +361,7 @@ export default function GiftSelector({
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tierFilterContent}>
               {(['ALL', 'A', 'B', 'C'] as const).map((tier) => (
                 <TouchableOpacity
-                  key={tier}
+                  key={`tier-${tier}`}
                   style={[
                     styles.tierButton,
                     selectedTier === tier && styles.tierButtonActive,
@@ -268,12 +395,17 @@ export default function GiftSelector({
             >
               <View style={styles.giftsGrid}>
                 {filteredGifts.map((gift) => {
-                  const isDisabled = walletBalance < gift.price_sek;
+                  // DEFENSIVE: Validate gift data
+                  if (!gift || !gift.id) {
+                    return null;
+                  }
+
+                  const isDisabled = walletBalance < (gift.price_sek || 0);
                   const tierColor = getTierColor(gift.tier);
                   
                   return (
                     <TouchableOpacity
-                      key={gift.id}
+                      key={`gift-${gift.id}`}
                       style={[
                         styles.giftCard,
                         selectedGift?.id === gift.id && styles.giftCardSelected,
@@ -289,11 +421,11 @@ export default function GiftSelector({
                       </View>
                       
                       <View style={styles.giftEmojiContainer}>
-                        <Text style={styles.giftEmoji}>{gift.emoji_icon}</Text>
+                        <Text style={styles.giftEmoji}>{gift.emoji_icon || '🎁'}</Text>
                       </View>
                       
                       <Text style={styles.giftName} numberOfLines={2}>
-                        {gift.name}
+                        {gift.name || 'Gift'}
                       </Text>
                       
                       <Text
@@ -303,7 +435,7 @@ export default function GiftSelector({
                           isDisabled && styles.giftPriceDisabled,
                         ]}
                       >
-                        {gift.price_sek} kr
+                        {(gift.price_sek || 0).toFixed(2)} kr
                       </Text>
                       
                       {selectedGift?.id === gift.id && (
@@ -327,11 +459,11 @@ export default function GiftSelector({
             <View style={styles.footer}>
               <View style={styles.selectedGiftInfo}>
                 <View style={styles.selectedGiftLeft}>
-                  <Text style={styles.selectedGiftEmoji}>{selectedGift.emoji_icon}</Text>
+                  <Text style={styles.selectedGiftEmoji}>{selectedGift.emoji_icon || '🎁'}</Text>
                   <View>
-                    <Text style={styles.selectedGiftName}>{selectedGift.name}</Text>
+                    <Text style={styles.selectedGiftName}>{selectedGift.name || 'Gift'}</Text>
                     <Text style={styles.selectedGiftDesc} numberOfLines={1}>
-                      {selectedGift.description}
+                      {selectedGift.description || 'A special gift'}
                     </Text>
                   </View>
                 </View>
@@ -341,7 +473,7 @@ export default function GiftSelector({
                     { color: getTierColor(selectedGift.tier) },
                   ]}
                 >
-                  {selectedGift.price_sek} kr
+                  {(selectedGift.price_sek || 0).toFixed(2)} kr
                 </Text>
               </View>
               <View style={styles.footerButton}>

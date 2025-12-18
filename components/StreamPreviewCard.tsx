@@ -12,38 +12,89 @@ interface StreamPreviewCardProps {
   onPress: () => void;
 }
 
+/**
+ * StreamPreviewCard - Fully Defensive Component
+ * 
+ * STABILITY FIXES APPLIED:
+ * - Multiple layers of null/undefined checks
+ * - Safe fallbacks for all data access
+ * - No assumptions about data shape
+ * - Graceful degradation when data is missing
+ * - Console warnings for debugging
+ */
 export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCardProps) {
-  // CRITICAL: Guard against undefined/null stream
+  // CRITICAL LAYER 1: Guard against null/undefined stream
   if (!stream) {
-    console.warn('⚠️ StreamPreviewCard: stream is null/undefined');
+    console.warn('⚠️ [StreamPreviewCard] stream is null/undefined - rendering nothing');
     return null;
   }
 
-  // CRITICAL: Guard against undefined/null stream.user
+  // CRITICAL LAYER 2: Validate stream has required ID
+  if (!stream.id) {
+    console.warn('⚠️ [StreamPreviewCard] stream.id is missing - rendering nothing');
+    return null;
+  }
+
+  // CRITICAL LAYER 3: Guard against null/undefined stream.user
   if (!stream.user) {
-    console.warn('⚠️ StreamPreviewCard: stream.user is null/undefined for stream:', stream.id);
+    console.warn('⚠️ [StreamPreviewCard] stream.user is null/undefined for stream:', stream.id);
     return null;
   }
 
-  // Extract safe values with fallbacks
-  const thumbnailUrl = stream.thumbnail_url || 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&h=600&fit=crop';
-  const title = stream.title || 'Untitled Stream';
-  const viewerCount = stream.viewer_count ?? 0;
-  const isLive = stream.is_live ?? false;
-  const broadcasterId = stream.broadcaster_id || stream.user.id;
+  // CRITICAL LAYER 4: Validate user has required ID
+  if (!stream.user.id) {
+    console.warn('⚠️ [StreamPreviewCard] stream.user.id is missing for stream:', stream.id);
+    return null;
+  }
+
+  // DEFENSIVE: Extract safe values with multiple fallback layers
+  const thumbnailUrl = stream.thumbnail_url || 
+                       stream.playback_url || 
+                       'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&h=600&fit=crop';
   
-  // Safe user data extraction
-  const userAvatar = stream.user.avatar || null;
-  const displayName = stream.user.display_name || stream.user.username || 'Unknown';
-  const verifiedStatus = stream.user.verified_status ?? false;
+  const title = stream.title || 'Untitled Stream';
+  const viewerCount = typeof stream.viewer_count === 'number' ? stream.viewer_count : 0;
+  const isLive = stream.is_live === true || stream.status === 'live';
+  const broadcasterId = stream.broadcaster_id || stream.user.id || '';
+  
+  // DEFENSIVE: Safe user data extraction with multiple fallbacks
+  const userAvatar = stream.user.avatar || 
+                     stream.user.avatar_url || 
+                     null;
+  
+  const displayName = stream.user.display_name || 
+                      stream.user.username || 
+                      'Unknown';
+  
+  const verifiedStatus = stream.user.verified_status === true;
+
+  // DEFENSIVE: Validate onPress is a function
+  const handlePress = () => {
+    if (typeof onPress === 'function') {
+      try {
+        onPress();
+      } catch (error) {
+        console.error('❌ [StreamPreviewCard] Error in onPress handler:', error);
+      }
+    } else {
+      console.warn('⚠️ [StreamPreviewCard] onPress is not a function');
+    }
+  };
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity 
+      style={styles.card} 
+      onPress={handlePress} 
+      activeOpacity={0.8}
+    >
       <View style={styles.thumbnailContainer}>
         <Image
           source={{ uri: thumbnailUrl }}
           style={styles.thumbnail}
           resizeMode="cover"
+          onError={(error) => {
+            console.warn('⚠️ [StreamPreviewCard] Image load error:', error.nativeEvent.error);
+          }}
         />
         <View style={styles.overlay}>
           <View style={styles.topRow}>
@@ -68,6 +119,9 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
               source={{ uri: userAvatar }}
               style={styles.avatar}
               resizeMode="cover"
+              onError={(error) => {
+                console.warn('⚠️ [StreamPreviewCard] Avatar load error:', error.nativeEvent.error);
+              }}
             />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>

@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Switch,
-} from 'react';
+} from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -18,6 +18,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { unifiedVIPClubService, VIPClub, VIPClubMember } from '@/app/services/unifiedVIPClubService';
 import GradientButton from '@/components/GradientButton';
 
+/**
+ * CreatorClubSetupScreen - Fully Defensive Component
+ * 
+ * STABILITY FIXES APPLIED:
+ * - All service calls wrapped in try-catch
+ * - All data access uses optional chaining
+ * - Defensive checks for service existence
+ * - Graceful fallbacks for all error cases
+ * - No assumptions about async data
+ */
 export default function CreatorClubSetupScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -34,27 +44,75 @@ export default function CreatorClubSetupScreen() {
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
 
+  // DEFENSIVE: Safe club data loading with comprehensive error handling
   const loadClubData = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      console.warn('⚠️ [CreatorClubSetup] Cannot load club: user is null');
+      setLoading(false);
+      return;
+    }
+
+    if (!user.id) {
+      console.warn('⚠️ [CreatorClubSetup] Cannot load club: user.id is missing');
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
-      const club = await unifiedVIPClubService.getVIPClubByCreator(user.id);
-      if (club) {
-        setExistingClub(club);
-        setClubName(club.club_name);
-        setBadgeName(club.badge_name);
-        setBadgeColor(club.badge_color);
-        setMonthlyPrice(club.monthly_price_sek.toString());
-        setDescription(club.description || '');
-        setIsActive(club.is_active);
+      // DEFENSIVE: Check service exists
+      if (!unifiedVIPClubService) {
+        console.error('❌ [CreatorClubSetup] unifiedVIPClubService is undefined');
+        setLoading(false);
+        return;
+      }
 
-        // Load members
-        const clubMembers = await unifiedVIPClubService.getVIPClubMembers(club.id);
-        setMembers(clubMembers);
+      if (typeof unifiedVIPClubService.getVIPClubByCreator !== 'function') {
+        console.error('❌ [CreatorClubSetup] getVIPClubByCreator is not a function');
+        setLoading(false);
+        return;
+      }
+
+      const club = await unifiedVIPClubService.getVIPClubByCreator(user.id);
+      
+      // DEFENSIVE: Validate club data
+      if (club && typeof club === 'object') {
+        setExistingClub(club);
+        setClubName(club.club_name || '');
+        setBadgeName(club.badge_name || '');
+        setBadgeColor(club.badge_color || '#FF1493');
+        setMonthlyPrice(club.monthly_price_sek?.toString() || '30.00');
+        setDescription(club.description || '');
+        setIsActive(club.is_active ?? true);
+
+        // DEFENSIVE: Load members with error handling
+        try {
+          if (typeof unifiedVIPClubService.getVIPClubMembers !== 'function') {
+            console.error('❌ [CreatorClubSetup] getVIPClubMembers is not a function');
+            setMembers([]);
+          } else {
+            const clubMembers = await unifiedVIPClubService.getVIPClubMembers(club.id);
+            
+            // DEFENSIVE: Validate members is an array
+            if (Array.isArray(clubMembers)) {
+              setMembers(clubMembers);
+            } else {
+              console.warn('⚠️ [CreatorClubSetup] getVIPClubMembers returned non-array');
+              setMembers([]);
+            }
+          }
+        } catch (memberError) {
+          console.error('❌ [CreatorClubSetup] Error loading members:', memberError);
+          setMembers([]);
+        }
+      } else {
+        setExistingClub(null);
+        setMembers([]);
       }
     } catch (error) {
-      console.error('Error loading club data:', error);
+      console.error('❌ [CreatorClubSetup] Error loading club data:', error);
+      setExistingClub(null);
+      setMembers([]);
     } finally {
       setLoading(false);
     }
@@ -64,8 +122,19 @@ export default function CreatorClubSetupScreen() {
     loadClubData();
   }, [loadClubData]);
 
+  // DEFENSIVE: Safe save handler with comprehensive validation
   const handleSave = async () => {
-    if (!user) return;
+    if (!user) {
+      console.warn('⚠️ [CreatorClubSetup] Cannot save: user is null');
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
+    if (!user.id) {
+      console.warn('⚠️ [CreatorClubSetup] Cannot save: user.id is missing');
+      Alert.alert('Error', 'User ID is missing');
+      return;
+    }
 
     // Validation
     if (!clubName.trim()) {
@@ -96,7 +165,23 @@ export default function CreatorClubSetupScreen() {
 
     setSaving(true);
     try {
+      // DEFENSIVE: Check service exists
+      if (!unifiedVIPClubService) {
+        console.error('❌ [CreatorClubSetup] unifiedVIPClubService is undefined');
+        Alert.alert('Error', 'VIP Club service is not available');
+        setSaving(false);
+        return;
+      }
+
       if (existingClub) {
+        // DEFENSIVE: Check update method exists
+        if (typeof unifiedVIPClubService.updateVIPClub !== 'function') {
+          console.error('❌ [CreatorClubSetup] updateVIPClub is not a function');
+          Alert.alert('Error', 'Update function is not available');
+          setSaving(false);
+          return;
+        }
+
         // Update existing club
         const result = await unifiedVIPClubService.updateVIPClub(existingClub.id, {
           club_name: clubName.trim(),
@@ -107,6 +192,14 @@ export default function CreatorClubSetupScreen() {
           is_active: isActive,
         });
 
+        // DEFENSIVE: Validate result
+        if (!result) {
+          console.error('❌ [CreatorClubSetup] updateVIPClub returned null/undefined');
+          Alert.alert('Error', 'Failed to update club');
+          setSaving(false);
+          return;
+        }
+
         if (result.success) {
           Alert.alert('Success', 'Your VIP Club has been updated!');
           loadClubData();
@@ -114,6 +207,14 @@ export default function CreatorClubSetupScreen() {
           Alert.alert('Error', result.error || 'Failed to update club');
         }
       } else {
+        // DEFENSIVE: Check create method exists
+        if (typeof unifiedVIPClubService.createVIPClub !== 'function') {
+          console.error('❌ [CreatorClubSetup] createVIPClub is not a function');
+          Alert.alert('Error', 'Create function is not available');
+          setSaving(false);
+          return;
+        }
+
         // Create new club
         const result = await unifiedVIPClubService.createVIPClub(
           user.id,
@@ -124,6 +225,14 @@ export default function CreatorClubSetupScreen() {
           description.trim() || undefined
         );
 
+        // DEFENSIVE: Validate result
+        if (!result) {
+          console.error('❌ [CreatorClubSetup] createVIPClub returned null/undefined');
+          Alert.alert('Error', 'Failed to create club');
+          setSaving(false);
+          return;
+        }
+
         if (result.success) {
           Alert.alert('Success', 'Your VIP Club has been created!');
           loadClubData();
@@ -131,25 +240,29 @@ export default function CreatorClubSetupScreen() {
           Alert.alert('Error', result.error || 'Failed to create club');
         }
       }
-    } catch (error) {
-      console.error('Error saving club:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+    } catch (error: any) {
+      console.error('❌ [CreatorClubSetup] Error saving club:', error);
+      Alert.alert('Error', error?.message || 'An unexpected error occurred');
     } finally {
       setSaving(false);
     }
   };
 
-  const getVIPLevelColor = (level: number): string => {
-    if (level >= 15) return '#FF1493'; // Hot Pink for top tier
-    if (level >= 10) return '#9B59B6'; // Purple
-    if (level >= 5) return '#3498DB'; // Blue
+  // DEFENSIVE: Safe VIP level color calculation
+  const getVIPLevelColor = (level: number | null | undefined): string => {
+    const safeLevel = typeof level === 'number' ? level : 0;
+    if (safeLevel >= 15) return '#FF1493'; // Hot Pink for top tier
+    if (safeLevel >= 10) return '#9B59B6'; // Purple
+    if (safeLevel >= 5) return '#3498DB'; // Blue
     return '#FFD700'; // Gold for entry level
   };
 
-  const getVIPLevelLabel = (level: number): string => {
-    if (level >= 15) return 'LEGENDARY';
-    if (level >= 10) return 'ELITE';
-    if (level >= 5) return 'PREMIUM';
+  // DEFENSIVE: Safe VIP level label calculation
+  const getVIPLevelLabel = (level: number | null | undefined): string => {
+    const safeLevel = typeof level === 'number' ? level : 0;
+    if (safeLevel >= 15) return 'LEGENDARY';
+    if (safeLevel >= 10) return 'ELITE';
+    if (safeLevel >= 5) return 'PREMIUM';
     return 'VIP';
   };
 
@@ -373,8 +486,8 @@ export default function CreatorClubSetupScreen() {
           </View>
         )}
 
-        {/* VIP Members List */}
-        {existingClub && members.length > 0 && (
+        {/* VIP Members List - DEFENSIVE: Check members is array and has items */}
+        {existingClub && Array.isArray(members) && members.length > 0 && (
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.text }]}>
               VIP Members ({members.length})
@@ -383,53 +496,60 @@ export default function CreatorClubSetupScreen() {
               Members earn levels (1-20) based on their support
             </Text>
             <View style={styles.membersList}>
-              {members.map((member) => (
-                <View key={member.id} style={[styles.memberCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
-                  <View style={styles.memberInfo}>
-                    <View 
-                      style={[
-                        styles.memberAvatar, 
-                        { backgroundColor: getVIPLevelColor(member.vip_level) }
-                      ]}
-                    >
-                      <Text style={styles.memberAvatarText}>
-                        {member.display_name?.charAt(0).toUpperCase() || 'V'}
-                      </Text>
-                    </View>
-                    <View style={styles.memberDetails}>
-                      <Text style={[styles.memberName, { color: colors.text }]}>
-                        {member.display_name || 'VIP Member'}
-                      </Text>
-                      <View style={styles.memberLevelContainer}>
-                        <View 
-                          style={[
-                            styles.memberLevelBadge, 
-                            { backgroundColor: getVIPLevelColor(member.vip_level) }
-                          ]}
-                        >
-                          <IconSymbol
-                            ios_icon_name="star.fill"
-                            android_material_icon_name="workspace_premium"
-                            size={12}
-                            color="#FFFFFF"
-                          />
-                          <Text style={styles.memberLevelText}>
-                            Level {member.vip_level}
-                          </Text>
-                        </View>
-                        <Text style={[styles.memberLevelLabel, { color: colors.textSecondary }]}>
-                          {getVIPLevelLabel(member.vip_level)}
+              {members.map((member) => {
+                // DEFENSIVE: Validate member object
+                if (!member || !member.id) {
+                  return null;
+                }
+
+                return (
+                  <View key={member.id} style={[styles.memberCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+                    <View style={styles.memberInfo}>
+                      <View 
+                        style={[
+                          styles.memberAvatar, 
+                          { backgroundColor: getVIPLevelColor(member.vip_level) }
+                        ]}
+                      >
+                        <Text style={styles.memberAvatarText}>
+                          {member.display_name?.charAt(0).toUpperCase() || 'V'}
                         </Text>
                       </View>
+                      <View style={styles.memberDetails}>
+                        <Text style={[styles.memberName, { color: colors.text }]}>
+                          {member.display_name || 'VIP Member'}
+                        </Text>
+                        <View style={styles.memberLevelContainer}>
+                          <View 
+                            style={[
+                              styles.memberLevelBadge, 
+                              { backgroundColor: getVIPLevelColor(member.vip_level) }
+                            ]}
+                          >
+                            <IconSymbol
+                              ios_icon_name="star.fill"
+                              android_material_icon_name="workspace_premium"
+                              size={12}
+                              color="#FFFFFF"
+                            />
+                            <Text style={styles.memberLevelText}>
+                              Level {member.vip_level ?? 1}
+                            </Text>
+                          </View>
+                          <Text style={[styles.memberLevelLabel, { color: colors.textSecondary }]}>
+                            {getVIPLevelLabel(member.vip_level)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={styles.memberStats}>
+                      <Text style={[styles.memberStatText, { color: colors.textSecondary }]}>
+                        {member.total_gifted_sek ?? 0} SEK gifted
+                      </Text>
                     </View>
                   </View>
-                  <View style={styles.memberStats}>
-                    <Text style={[styles.memberStatText, { color: colors.textSecondary }]}>
-                      {member.total_gifted_sek} SEK gifted
-                    </Text>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </View>
         )}

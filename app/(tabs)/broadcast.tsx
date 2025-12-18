@@ -39,7 +39,14 @@ import { cdnService } from '@/app/services/cdnService';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /**
- * BroadcastScreen - Complete Feature Set
+ * BroadcastScreen - Complete Feature Set with Full Defensive Programming
+ * 
+ * STABILITY FIXES APPLIED:
+ * - All service method calls have existence checks
+ * - All async operations wrapped in try-catch
+ * - All data access uses optional chaining
+ * - No assumptions about data existence
+ * - Graceful fallbacks for all error cases
  * 
  * RESTORED FEATURES:
  * 1. Moderator Panel - Manage moderators and banned users
@@ -61,7 +68,7 @@ export default function BroadcastScreen() {
   useKeepAwake();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📺 [BROADCAST] Component rendering with ALL FEATURES');
+  console.log('📺 [BROADCAST] Component rendering with ALL FEATURES + STABILITY FIXES');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   const { streamTitle, contentLabel } = useLocalSearchParams<{
@@ -71,8 +78,25 @@ export default function BroadcastScreen() {
   
   const { user } = useAuth();
   const { colors } = useTheme();
-  const stateMachine = useLiveStreamStateMachine();
-  const { state, startStream, endStream, error: stateMachineErrorState } = stateMachine;
+  
+  // DEFENSIVE: Wrap context usage in try-catch
+  let stateMachine;
+  let state = 'IDLE';
+  let startStream = null;
+  let endStream = null;
+  let stateMachineErrorState = null;
+  
+  try {
+    stateMachine = useLiveStreamStateMachine();
+    if (stateMachine) {
+      state = stateMachine.state || 'IDLE';
+      startStream = stateMachine.startStream;
+      endStream = stateMachine.endStream;
+      stateMachineErrorState = stateMachine.error;
+    }
+  } catch (error) {
+    console.error('❌ [BROADCAST] Error accessing LiveStreamStateMachine:', error);
+  }
   
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -123,32 +147,80 @@ export default function BroadcastScreen() {
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const giftCountIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // FIX: Correct method name is getActiveGuestSeats, not getActiveGuests
+  // CRITICAL FIX: Defensive guest loading with proper method name and null checks
   const loadActiveGuests = useCallback(async () => {
-    if (!streamId) return;
+    if (!streamId) {
+      console.log('⚠️ [BROADCAST] Cannot load guests: streamId is null');
+      return;
+    }
 
     try {
-      // Defensive check: ensure streamGuestService and method exist
-      if (!streamGuestService || typeof streamGuestService.getActiveGuestSeats !== 'function') {
-        console.error('[BROADCAST] streamGuestService.getActiveGuestSeats is not available');
+      // DEFENSIVE: Check service and method exist
+      if (!streamGuestService) {
+        console.error('❌ [BROADCAST] streamGuestService is undefined');
+        setActiveGuests([]);
         return;
       }
 
+      if (typeof streamGuestService.getActiveGuestSeats !== 'function') {
+        console.error('❌ [BROADCAST] streamGuestService.getActiveGuestSeats is not a function');
+        setActiveGuests([]);
+        return;
+      }
+
+      // DEFENSIVE: Call with try-catch
       const guests = await streamGuestService.getActiveGuestSeats(streamId);
+      
+      // DEFENSIVE: Validate response
+      if (!guests) {
+        console.warn('⚠️ [BROADCAST] getActiveGuestSeats returned null/undefined');
+        setActiveGuests([]);
+        return;
+      }
+
+      if (!Array.isArray(guests)) {
+        console.warn('⚠️ [BROADCAST] getActiveGuestSeats returned non-array:', typeof guests);
+        setActiveGuests([]);
+        return;
+      }
+
       setActiveGuests(guests);
+      console.log('✅ [BROADCAST] Loaded', guests.length, 'active guests');
     } catch (error) {
-      console.error('[BROADCAST] Error loading active guests:', error);
-      // Fail gracefully - don't crash the app
+      console.error('❌ [BROADCAST] Error loading active guests:', error);
+      // DEFENSIVE: Fail gracefully - don't crash the app
       setActiveGuests([]);
     }
   }, [streamId]);
 
+  // CRITICAL FIX: Defensive stream saving without is_archived column
   const handleSaveStream = useCallback(async () => {
-    if (!streamId || !user) return;
+    if (!streamId) {
+      console.warn('⚠️ [BROADCAST] Cannot save stream: streamId is null');
+      return;
+    }
+
+    if (!user) {
+      console.warn('⚠️ [BROADCAST] Cannot save stream: user is null');
+      return;
+    }
 
     try {
       console.log('💾 [BROADCAST] Saving stream to CDN and profile...');
       
+      // DEFENSIVE: Check service exists
+      if (!savedStreamService) {
+        console.error('❌ [BROADCAST] savedStreamService is undefined');
+        Alert.alert('Error', 'Stream service is not available');
+        return;
+      }
+
+      if (typeof savedStreamService.saveStream !== 'function') {
+        console.error('❌ [BROADCAST] savedStreamService.saveStream is not a function');
+        Alert.alert('Error', 'Stream save function is not available');
+        return;
+      }
+
       // Save stream metadata to database
       const result = await savedStreamService.saveStream(
         user.id,
@@ -159,30 +231,49 @@ export default function BroadcastScreen() {
         streamDuration
       );
 
+      // DEFENSIVE: Check result
+      if (!result) {
+        console.error('❌ [BROADCAST] saveStream returned null/undefined');
+        Alert.alert('Error', 'Failed to save stream');
+        return;
+      }
+
       if (!result.success) {
         console.error('❌ [BROADCAST] Error saving stream:', result.error);
-        Alert.alert('Error', 'Failed to save stream');
+        Alert.alert('Error', result.error || 'Failed to save stream');
         return;
       }
 
       console.log('✅ [BROADCAST] Stream saved successfully to profile');
       
-      // FIX: Remove is_archived column usage - it doesn't exist in the schema
-      // The stream is already saved via savedStreamService, no need to mark as archived
+      // CRITICAL FIX: Do NOT attempt to update is_archived column
+      // The column doesn't exist in the schema, and the stream is already saved
+      // via savedStreamService
       
       router.replace('/(tabs)/(home)');
     } catch (error: any) {
       console.error('❌ [BROADCAST] Error in handleSaveStream:', error);
-      Alert.alert('Error', error.message || 'Failed to save stream');
+      Alert.alert('Error', error?.message || 'Failed to save stream');
     }
   }, [streamId, user, streamTitle, streamDuration]);
 
+  // DEFENSIVE: Safe stream deletion
   const handleDeleteStream = useCallback(async () => {
-    if (!streamId) return;
+    if (!streamId) {
+      console.warn('⚠️ [BROADCAST] Cannot delete stream: streamId is null');
+      return;
+    }
 
     try {
       console.log('🗑️ [BROADCAST] Deleting stream...');
       
+      // DEFENSIVE: Check supabase exists
+      if (!supabase) {
+        console.error('❌ [BROADCAST] supabase client is undefined');
+        Alert.alert('Error', 'Database connection is not available');
+        return;
+      }
+
       const { error } = await supabase
         .from('live_streams')
         .delete()
@@ -190,7 +281,7 @@ export default function BroadcastScreen() {
 
       if (error) {
         console.error('❌ [BROADCAST] Error deleting stream:', error);
-        Alert.alert('Error', 'Failed to delete stream');
+        Alert.alert('Error', error.message || 'Failed to delete stream');
         return;
       }
 
@@ -198,7 +289,7 @@ export default function BroadcastScreen() {
       router.replace('/(tabs)/(home)');
     } catch (error: any) {
       console.error('❌ [BROADCAST] Error in handleDeleteStream:', error);
-      Alert.alert('Error', error.message || 'Failed to delete stream');
+      Alert.alert('Error', error?.message || 'Failed to delete stream');
     }
   }, [streamId]);
 
@@ -221,25 +312,36 @@ export default function BroadcastScreen() {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
       
-      if (!cameraPermission?.granted) {
-        await requestCameraPermission();
-      }
-      if (!micPermission?.granted) {
-        await requestMicPermission();
+      try {
+        if (!cameraPermission?.granted && requestCameraPermission) {
+          await requestCameraPermission();
+        }
+        if (!micPermission?.granted && requestMicPermission) {
+          await requestMicPermission();
+        }
+      } catch (error) {
+        console.error('❌ [BROADCAST] Error checking permissions:', error);
       }
     };
 
     checkPermissions();
   }, [cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
 
-  // Effect 2: Initialize stream
+  // Effect 2: Initialize stream with defensive checks
   useEffect(() => {
     if (initAttemptedRef.current) {
       return;
     }
 
-    if (!user || !streamTitle) {
-      setInitError('Missing stream information');
+    if (!user) {
+      console.warn('⚠️ [BROADCAST] Cannot init stream: user is null');
+      setInitError('User not authenticated');
+      return;
+    }
+
+    if (!streamTitle) {
+      console.warn('⚠️ [BROADCAST] Cannot init stream: streamTitle is missing');
+      setInitError('Stream title is required');
       return;
     }
 
@@ -249,12 +351,27 @@ export default function BroadcastScreen() {
       try {
         console.log('🚀 [BROADCAST] Initializing stream with ALL FEATURES...');
 
-        if (!startStream || typeof startStream !== 'function') {
+        // DEFENSIVE: Check startStream function exists
+        if (!startStream) {
+          console.error('❌ [BROADCAST] startStream is undefined');
+          setInitError('Stream service is not available');
+          return;
+        }
+
+        if (typeof startStream !== 'function') {
+          console.error('❌ [BROADCAST] startStream is not a function');
           setInitError('Stream service is not available');
           return;
         }
 
         const result = await startStream(streamTitle, contentLabel || 'family_friendly');
+
+        // DEFENSIVE: Validate result
+        if (!result) {
+          console.error('❌ [BROADCAST] startStream returned null/undefined');
+          setInitError('Failed to start stream');
+          return;
+        }
 
         if (result.success && result.streamId) {
           console.log('✅ [BROADCAST] Stream started successfully:', result.streamId);
@@ -262,11 +379,12 @@ export default function BroadcastScreen() {
           setInitError(null);
           streamStartTimeRef.current = Date.now();
         } else {
+          console.error('❌ [BROADCAST] Stream start failed:', result.error);
           setInitError(result.error || 'Failed to start stream');
         }
       } catch (error: any) {
         console.error('❌ [BROADCAST] Error in initStream:', error);
-        setInitError(error.message || 'Failed to initialize stream');
+        setInitError(error?.message || 'Failed to initialize stream');
       }
     };
 
@@ -279,13 +397,19 @@ export default function BroadcastScreen() {
 
     const updateViewerCount = async () => {
       try {
+        // DEFENSIVE: Check supabase exists
+        if (!supabase) {
+          console.error('❌ [BROADCAST] supabase client is undefined');
+          return;
+        }
+
         const { count } = await supabase
           .from('stream_viewers')
           .select('*', { count: 'exact', head: true })
           .eq('stream_id', streamId)
           .is('left_at', null);
 
-        const currentCount = count || 0;
+        const currentCount = count ?? 0;
         setViewerCount(currentCount);
         
         if (currentCount > peakViewers) {
@@ -297,9 +421,9 @@ export default function BroadcastScreen() {
           .select('*', { count: 'exact', head: true })
           .eq('stream_id', streamId);
         
-        setTotalViewers(totalCount || 0);
+        setTotalViewers(totalCount ?? 0);
       } catch (error) {
-        console.error('[BROADCAST] Error fetching viewer count:', error);
+        console.error('❌ [BROADCAST] Error fetching viewer count:', error);
       }
     };
 
@@ -338,9 +462,14 @@ export default function BroadcastScreen() {
   useEffect(() => {
     if (!streamId) return;
 
-    // Defensive check before calling
-    if (!streamGuestService || typeof streamGuestService.getActiveGuestSeats !== 'function') {
-      console.error('[BROADCAST] streamGuestService.getActiveGuestSeats is not available');
+    // DEFENSIVE: Check service and method exist before setting up interval
+    if (!streamGuestService) {
+      console.error('❌ [BROADCAST] streamGuestService is undefined');
+      return;
+    }
+
+    if (typeof streamGuestService.getActiveGuestSeats !== 'function') {
+      console.error('❌ [BROADCAST] streamGuestService.getActiveGuestSeats is not a function');
       return;
     }
 
@@ -359,14 +488,20 @@ export default function BroadcastScreen() {
 
     const updateGiftCount = async () => {
       try {
+        // DEFENSIVE: Check supabase exists
+        if (!supabase) {
+          console.error('❌ [BROADCAST] supabase client is undefined');
+          return;
+        }
+
         const { count } = await supabase
           .from('gift_transactions')
           .select('*', { count: 'exact', head: true })
           .eq('livestream_id', streamId);
 
-        setGiftCount(count || 0);
+        setGiftCount(count ?? 0);
       } catch (error) {
-        console.error('[BROADCAST] Error fetching gift count:', error);
+        console.error('❌ [BROADCAST] Error fetching gift count:', error);
       }
     };
 
@@ -433,8 +568,12 @@ export default function BroadcastScreen() {
         <TouchableOpacity
           style={[styles.permissionButton, { backgroundColor: colors.brandPrimary }]}
           onPress={async () => {
-            await requestCameraPermission();
-            await requestMicPermission();
+            try {
+              if (requestCameraPermission) await requestCameraPermission();
+              if (requestMicPermission) await requestMicPermission();
+            } catch (error) {
+              console.error('❌ [BROADCAST] Error requesting permissions:', error);
+            }
           }}
         >
           <Text style={styles.permissionButtonText}>Grant Permissions</Text>
@@ -505,7 +644,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Guest Seats Grid */}
+        {/* Guest Seats Grid - DEFENSIVE: Check all required props */}
         {activeGuests.length > 0 && user && streamId && (
           <GuestSeatGrid
             hostName={user.user_metadata?.display_name || 'Host'}
@@ -519,7 +658,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Pinned Message Banner */}
+        {/* Pinned Message Banner - DEFENSIVE: Check streamId */}
         {streamId && (
           <PinnedMessageBanner
             streamId={streamId}
@@ -636,7 +775,7 @@ export default function BroadcastScreen() {
           </View>
         </View>
 
-        {/* Chat Overlay */}
+        {/* Chat Overlay - DEFENSIVE: Check all required props */}
         {showChat && streamId && user && (
           <ChatOverlay
             streamId={streamId}
@@ -697,7 +836,7 @@ export default function BroadcastScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Gift Selector */}
+        {/* Gift Selector - DEFENSIVE: Check user exists */}
         {showGifts && user && (
           <GiftSelector
             visible={showGifts}
@@ -708,7 +847,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Guest Invitation Modal */}
+        {/* Guest Invitation Modal - DEFENSIVE: Check streamId */}
         {showGuestInvitation && streamId && (
           <GuestInvitationModal
             streamId={streamId}
@@ -720,7 +859,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Host Control Dashboard */}
+        {/* Host Control Dashboard - DEFENSIVE: Check streamId */}
         {showHostControls && streamId && (
           <HostControlDashboard
             streamId={streamId}
@@ -730,7 +869,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Moderator Control Panel */}
+        {/* Moderator Control Panel - DEFENSIVE: Check all required props */}
         {showModeratorPanel && streamId && user && (
           <ModeratorControlPanel
             visible={showModeratorPanel}
@@ -758,7 +897,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Manage Pinned Messages Modal */}
+        {/* Manage Pinned Messages Modal - DEFENSIVE: Check streamId */}
         {showPinnedMessagesModal && streamId && (
           <ManagePinnedMessagesModal
             visible={showPinnedMessagesModal}
@@ -778,7 +917,7 @@ export default function BroadcastScreen() {
         )}
       </CameraView>
 
-      {/* End Stream Modal */}
+      {/* End Stream Modal - DEFENSIVE: Check streamId */}
       {streamId && (
         <EndStreamModal
           visible={showEndModal}
