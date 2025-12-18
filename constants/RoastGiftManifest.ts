@@ -1,6 +1,6 @@
 
 /**
- * Roast Gift Manifest
+ * Roast Gift Manifest with Cinematic Support
  * 
  * Complete definition of 45 roast-themed gifts for the live streaming app.
  * Gifts are designed for roast battles, drama, and disrespect humor.
@@ -15,10 +15,29 @@
  * - All animations and sounds are rendered locally
  * - No video data is transmitted
  * - Gifts must work during live streams without frame drops
+ * 
+ * Cinematic Gifts:
+ * - Fullscreen takeover
+ * - Camera animation (virtual)
+ * - UI lock during playback
+ * - Loud, dramatic audio
+ * - Cannot be skipped
+ * - Timeline-based animation playback
  */
 
 export type RoastGiftTier = 'LOW' | 'MID' | 'HIGH' | 'ULTRA';
 export type RoastAnimationType = 'OVERLAY' | 'AR' | 'CINEMATIC';
+
+export interface CinematicTimeline {
+  duration: number; // milliseconds
+  keyframes: CinematicKeyframe[];
+}
+
+export interface CinematicKeyframe {
+  time: number; // milliseconds
+  action: 'zoom' | 'flash' | 'filter' | 'shake' | 'text' | 'sound';
+  params: Record<string, any>;
+}
 
 export interface RoastGift {
   giftId: string;
@@ -30,7 +49,60 @@ export interface RoastGift {
   priority: number;
   emoji: string;
   description: string;
+  cinematicTimeline?: CinematicTimeline;
 }
+
+/**
+ * Cinematic Timeline Definitions
+ */
+export const CINEMATIC_TIMELINES: Record<string, CinematicTimeline> = {
+  roast_execution: {
+    duration: 5000,
+    keyframes: [
+      { time: 0, action: 'sound', params: { sound: 'siren', volume: 1.0 } },
+      { time: 0, action: 'flash', params: { color: '#FF0000', intensity: 0.8 } },
+      { time: 500, action: 'zoom', params: { level: 1.5, duration: 2000 } },
+      { time: 1000, action: 'flash', params: { color: '#FF0000', intensity: 0.6 } },
+      { time: 1500, action: 'sound', params: { sound: 'crowd_chant', volume: 0.8 } },
+      { time: 2000, action: 'flash', params: { color: '#FF0000', intensity: 0.4 } },
+      { time: 2500, action: 'text', params: { text: 'ROASTED!', size: 72, color: '#FFD700' } },
+      { time: 3000, action: 'shake', params: { intensity: 10, duration: 500 } },
+    ],
+  },
+  funeral_music: {
+    duration: 5000,
+    keyframes: [
+      { time: 0, action: 'sound', params: { sound: 'church_bell', volume: 1.0 } },
+      { time: 0, action: 'filter', params: { type: 'grayscale', intensity: 1.0 } },
+      { time: 500, action: 'zoom', params: { level: 0.8, duration: 2000 } },
+      { time: 1000, action: 'sound', params: { sound: 'funeral_march', volume: 0.6 } },
+      { time: 2000, action: 'text', params: { text: 'R.I.P.', size: 64, color: '#FFFFFF' } },
+      { time: 3000, action: 'sound', params: { sound: 'church_bell', volume: 0.8 } },
+    ],
+  },
+  crowd_riot: {
+    duration: 5000,
+    keyframes: [
+      { time: 0, action: 'sound', params: { sound: 'riot_chaos', volume: 1.0 } },
+      { time: 0, action: 'shake', params: { intensity: 15, duration: 5000 } },
+      { time: 500, action: 'flash', params: { color: '#FFA500', intensity: 0.7 } },
+      { time: 1000, action: 'zoom', params: { level: 1.3, duration: 1000 } },
+      { time: 2000, action: 'text', params: { text: 'CHAOS!', size: 80, color: '#FF0000' } },
+      { time: 3000, action: 'flash', params: { color: '#FFA500', intensity: 0.5 } },
+    ],
+  },
+  you_are_done: {
+    duration: 5000,
+    keyframes: [
+      { time: 0, action: 'sound', params: { sound: 'game_over', volume: 1.0 } },
+      { time: 0, action: 'filter', params: { type: 'red_tint', intensity: 0.6 } },
+      { time: 500, action: 'zoom', params: { level: 2.0, duration: 2000 } },
+      { time: 1500, action: 'text', params: { text: "YOU'RE DONE", size: 72, color: '#FF0000' } },
+      { time: 2500, action: 'shake', params: { intensity: 20, duration: 1000 } },
+      { time: 3500, action: 'flash', params: { color: '#000000', intensity: 1.0 } },
+    ],
+  },
+};
 
 /**
  * Complete Roast Gift Catalog - 45 Gifts
@@ -357,7 +429,7 @@ export const ROAST_GIFT_MANIFEST: RoastGift[] = [
   },
 
   // ============================================================================
-  // ULTRA TIER - BATTLE DISRUPTORS (700-1500 SEK)
+  // ULTRA TIER - BATTLE DISRUPTORS (700-1500 SEK) - CINEMATIC
   // ============================================================================
   {
     giftId: 'screen_shake',
@@ -449,7 +521,7 @@ export const ROAST_GIFT_MANIFEST: RoastGift[] = [
   },
 
   // ============================================================================
-  // ULTRA TIER - NUCLEAR MOMENTS (2000-4000 SEK)
+  // ULTRA TIER - NUCLEAR MOMENTS (2000-4000 SEK) - CINEMATIC
   // ============================================================================
   {
     giftId: 'funeral_music',
@@ -461,6 +533,7 @@ export const ROAST_GIFT_MANIFEST: RoastGift[] = [
     priority: 5,
     emoji: '⚰️',
     description: 'Play funeral music',
+    cinematicTimeline: CINEMATIC_TIMELINES.funeral_music,
   },
   {
     giftId: 'crowd_riot',
@@ -472,6 +545,7 @@ export const ROAST_GIFT_MANIFEST: RoastGift[] = [
     priority: 5,
     emoji: '🔥',
     description: 'Start a riot',
+    cinematicTimeline: CINEMATIC_TIMELINES.crowd_riot,
   },
   {
     giftId: 'roast_execution',
@@ -483,6 +557,7 @@ export const ROAST_GIFT_MANIFEST: RoastGift[] = [
     priority: 5,
     emoji: '⚔️',
     description: 'Execute the roast',
+    cinematicTimeline: CINEMATIC_TIMELINES.roast_execution,
   },
   {
     giftId: 'you_are_done',
@@ -494,6 +569,7 @@ export const ROAST_GIFT_MANIFEST: RoastGift[] = [
     priority: 5,
     emoji: '🚫',
     description: 'Game over',
+    cinematicTimeline: CINEMATIC_TIMELINES.you_are_done,
   },
   {
     giftId: 'roast_apocalypse',
@@ -624,7 +700,7 @@ export function getRoastGiftAnimationDuration(tier: RoastGiftTier): number {
     case 'HIGH':
       return 2000; // 2 seconds
     case 'ULTRA':
-      return 3000; // 3 seconds
+      return 5000; // 5 seconds (cinematic)
     default:
       return 1000;
   }
@@ -642,4 +718,11 @@ export function canBatchRoastGift(tier: RoastGiftTier): boolean {
  */
 export function doesRoastGiftBlock(tier: RoastGiftTier): boolean {
   return tier === 'ULTRA';
+}
+
+/**
+ * Check if gift is cinematic
+ */
+export function isCinematicGift(animationType: RoastAnimationType): boolean {
+  return animationType === 'CINEMATIC';
 }
