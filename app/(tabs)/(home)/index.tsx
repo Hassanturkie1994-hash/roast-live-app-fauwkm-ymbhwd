@@ -188,7 +188,21 @@ export default function HomeScreen() {
             return [];
           }
 
-          return normalizeStreams((data || []) as RawStreamData[]);
+          // Normalize streams with defensive checks
+          const normalized = normalizeStreams((data || []) as RawStreamData[]);
+          
+          // Filter out any streams with invalid data
+          return normalized.filter(stream => {
+            if (!stream) {
+              console.warn('⚠️ Filtered out null stream');
+              return false;
+            }
+            if (!stream.user) {
+              console.warn('⚠️ Filtered out stream with null user:', stream.id);
+              return false;
+            }
+            return true;
+          });
         },
         30000
       );
@@ -222,24 +236,43 @@ export default function HomeScreen() {
         return;
       }
 
-      const normalized = (data || []).map((saved: any) => {
-        const stream = saved.streams;
-        return {
-          id: stream.id,
-          title: saved.title || stream.title,
-          broadcaster: {
-            id: stream.users?.id || stream.broadcaster_id,
-            username: stream.users?.display_name || 'Unknown',
-            avatar: stream.users?.avatar || null,
-            verified: stream.users?.verified_status || false,
-          },
-          viewerCount: stream.viewer_count || 0,
-          thumbnailUrl: saved.thumbnail_url || null,
-          status: stream.status,
-          startedAt: stream.started_at,
-          contentLabel: stream.content_label,
-        };
-      });
+      const normalized = (data || [])
+        .map((saved: any) => {
+          const stream = saved.streams;
+          
+          // Guard against missing stream or user data
+          if (!stream) {
+            console.warn('⚠️ Saved stream has no stream data');
+            return null;
+          }
+
+          const userData = stream.users;
+          if (!userData) {
+            console.warn('⚠️ Stream has no user data:', stream.id);
+            return null;
+          }
+
+          return {
+            id: stream.id,
+            title: saved.title || stream.title || 'Untitled Stream',
+            thumbnail_url: saved.thumbnail_url || stream.playback_url || 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&h=600&fit=crop',
+            viewer_count: stream.viewer_count ?? 0,
+            is_live: stream.status === 'live',
+            user: {
+              id: userData.id || stream.broadcaster_id,
+              username: userData.display_name || 'Unknown',
+              display_name: userData.display_name || 'Unknown',
+              avatar: userData.avatar || null,
+              verified_status: userData.verified_status ?? false,
+            },
+            start_time: stream.started_at || stream.created_at || new Date().toISOString(),
+            broadcaster_id: stream.broadcaster_id,
+            status: stream.status,
+            cloudflare_stream_id: stream.cloudflare_stream_id,
+            playback_url: stream.playback_url,
+          };
+        })
+        .filter((stream): stream is NormalizedStream => stream !== null);
 
       setSavedStreams(normalized);
     } catch (error) {
@@ -351,6 +384,13 @@ export default function HomeScreen() {
   }, [searchQuery, searchContentType]);
 
   const handleStreamPress = useCallback((stream: NormalizedStream) => {
+    // Guard against invalid stream data
+    if (!stream || !stream.id) {
+      console.error('❌ Cannot navigate: invalid stream data');
+      Alert.alert('Error', 'Unable to open stream');
+      return;
+    }
+
     router.push({
       pathname: '/live-player',
       params: { streamId: stream.id },
@@ -515,13 +555,15 @@ export default function HomeScreen() {
 
   const filteredContent = useMemo(() => {
     if (showLiveOnly) {
-      return streams.filter(s => s.status === 'live');
+      return streams.filter(s => s && s.status === 'live');
     }
     
     const mixed: any[] = [];
     
     savedStreams.forEach(stream => {
-      mixed.push({ type: 'stream', data: stream });
+      if (stream && stream.user) {
+        mixed.push({ type: 'stream', data: stream });
+      }
     });
     
     posts.forEach(post => {
@@ -534,6 +576,13 @@ export default function HomeScreen() {
   const renderItem = useCallback(({ item }: { item: any }) => {
     if (showLiveOnly || item.type === 'stream') {
       const stream = showLiveOnly ? item : item.data;
+      
+      // CRITICAL: Guard against invalid stream data before rendering
+      if (!stream || !stream.user) {
+        console.warn('⚠️ Skipping render: invalid stream data');
+        return null;
+      }
+      
       return (
         <StreamPreviewCard
           stream={stream}
@@ -553,9 +602,9 @@ export default function HomeScreen() {
 
   const keyExtractor = useCallback((item: any, index: number) => {
     if (showLiveOnly) {
-      return item.id;
+      return item?.id || `stream-${index}`;
     }
-    return `${item.type}-${item.data.id}-${index}`;
+    return `${item.type}-${item.data?.id || index}-${index}`;
   }, [showLiveOnly]);
 
   const ListHeaderComponent = useMemo(() => <StoriesBar />, []);

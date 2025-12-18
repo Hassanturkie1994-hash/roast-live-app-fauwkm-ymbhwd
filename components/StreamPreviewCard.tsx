@@ -8,22 +8,46 @@ import PremiumBadge from '@/components/PremiumBadge';
 import { NormalizedStream } from '@/utils/streamNormalizer';
 
 interface StreamPreviewCardProps {
-  stream: NormalizedStream;
+  stream: NormalizedStream | null | undefined;
   onPress: () => void;
 }
 
 export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCardProps) {
+  // CRITICAL: Guard against undefined/null stream
+  if (!stream) {
+    console.warn('⚠️ StreamPreviewCard: stream is null/undefined');
+    return null;
+  }
+
+  // CRITICAL: Guard against undefined/null stream.user
+  if (!stream.user) {
+    console.warn('⚠️ StreamPreviewCard: stream.user is null/undefined for stream:', stream.id);
+    return null;
+  }
+
+  // Extract safe values with fallbacks
+  const thumbnailUrl = stream.thumbnail_url || 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&h=600&fit=crop';
+  const title = stream.title || 'Untitled Stream';
+  const viewerCount = stream.viewer_count ?? 0;
+  const isLive = stream.is_live ?? false;
+  const broadcasterId = stream.broadcaster_id || stream.user.id;
+  
+  // Safe user data extraction
+  const userAvatar = stream.user.avatar || null;
+  const displayName = stream.user.display_name || stream.user.username || 'Unknown';
+  const verifiedStatus = stream.user.verified_status ?? false;
+
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
       <View style={styles.thumbnailContainer}>
         <Image
-          source={{ uri: stream.thumbnail_url }}
+          source={{ uri: thumbnailUrl }}
           style={styles.thumbnail}
           resizeMode="cover"
         />
         <View style={styles.overlay}>
           <View style={styles.topRow}>
-            {stream.is_live && <LiveBadge size="small" />}
+            {isLive && <LiveBadge size="small" />}
             <View style={styles.viewerBadge}>
               <IconSymbol
                 ios_icon_name="eye.fill"
@@ -31,7 +55,7 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
                 size={12}
                 color="#FFFFFF"
               />
-              <Text style={styles.viewerCount}>{stream.viewer_count}</Text>
+              <Text style={styles.viewerCount}>{viewerCount}</Text>
             </View>
           </View>
         </View>
@@ -39,9 +63,9 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
 
       <View style={styles.info}>
         <View style={styles.avatarContainer}>
-          {stream.user.avatar ? (
+          {userAvatar ? (
             <Image
-              source={{ uri: stream.user.avatar }}
+              source={{ uri: userAvatar }}
               style={styles.avatar}
               resizeMode="cover"
             />
@@ -59,13 +83,13 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
 
         <View style={styles.textInfo}>
           <Text style={styles.title} numberOfLines={2}>
-            {stream.title}
+            {title}
           </Text>
           <View style={styles.broadcasterRow}>
             <Text style={styles.broadcasterName} numberOfLines={1}>
-              {stream.user.display_name}
+              {displayName}
             </Text>
-            {stream.user.verified_status && (
+            {verifiedStatus && (
               <IconSymbol
                 ios_icon_name="checkmark.seal.fill"
                 android_material_icon_name="verified"
@@ -73,7 +97,7 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
                 color={colors.brandPrimary}
               />
             )}
-            <PremiumBadge userId={stream.broadcaster_id} size="small" />
+            {broadcasterId && <PremiumBadge userId={broadcasterId} size="small" />}
           </View>
         </View>
       </View>
