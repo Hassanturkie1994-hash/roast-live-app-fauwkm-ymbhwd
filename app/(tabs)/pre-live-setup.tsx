@@ -8,6 +8,7 @@ import {
   TextInput,
   Platform,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, Stack, useNavigation } from 'expo-router';
@@ -22,9 +23,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
-import VIPClubPanel from '@/components/VIPClubPanel';
-import LiveSettingsPanel from '@/components/LiveSettingsPanel';
 import { BattleFormat, battleService } from '@/app/services/battleService';
+
+// NEW: Import modular bottom-sheet panels
+import FiltersEffectsBottomSheet from '@/components/FiltersEffectsBottomSheet';
+import StreamSettingsBottomSheet from '@/components/StreamSettingsBottomSheet';
+import BattleSetupBottomSheet from '@/components/BattleSetupBottomSheet';
+import VIPClubBottomSheet from '@/components/VIPClubBottomSheet';
+import ModeratorPanelBottomSheet from '@/components/ModeratorPanelBottomSheet';
+
+// NEW: Import camera effects context
+import { useCameraEffects } from '@/contexts/CameraEffectsContext';
+import { useAIFaceEffects } from '@/contexts/AIFaceEffectsContext';
 
 export default function PreLiveSetupScreen() {
   const { user } = useAuth();
@@ -44,12 +54,21 @@ export default function PreLiveSetupScreen() {
   const [showCommunityGuidelinesModal, setShowCommunityGuidelinesModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Panel visibility states
-  const [showVIPClubPanel, setShowVIPClubPanel] = useState(false);
-  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  // NEW: Bottom sheet visibility states
+  const [showFiltersEffects, setShowFiltersEffects] = useState(false);
+  const [showStreamSettings, setShowStreamSettings] = useState(false);
+  const [showBattleSetup, setShowBattleSetup] = useState(false);
+  const [showVIPClub, setShowVIPClub] = useState(false);
+  const [showModeratorPanel, setShowModeratorPanel] = useState(false);
 
-  // Settings states (passed to LiveSettingsPanel)
-  const [aboutLive, setAboutLive] = useState('');
+  // Stream settings states
+  const [chatEnabled, setChatEnabled] = useState(true);
+  const [giftsEnabled, setGiftsEnabled] = useState(true);
+  const [battlesEnabled, setBattlesEnabled] = useState(true);
+  const [vipClubEnabled, setVipClubEnabled] = useState(false);
+  const [rankingsEnabled, setRankingsEnabled] = useState(true);
+  const [seasonTrackingEnabled, setSeasonTrackingEnabled] = useState(true);
+  const [moderationToolsEnabled, setModerationToolsEnabled] = useState(true);
   const [practiceMode, setPracticeMode] = useState(false);
   const [whoCanWatch, setWhoCanWatch] = useState<'public' | 'followers' | 'vip_club'>('public');
   const [selectedModerators, setSelectedModerators] = useState<string[]>([]);
@@ -57,9 +76,14 @@ export default function PreLiveSetupScreen() {
   // Battle mode states
   const [streamMode, setStreamMode] = useState<'solo' | 'battle'>('solo');
   const [battleFormat, setBattleFormat] = useState<BattleFormat | null>(null);
+  const [battleRanked, setBattleRanked] = useState(false);
 
   // VIP Club state
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
+
+  // NEW: Camera effects context
+  const { activeFilter, activeEffect, hasAnyActive } = useCameraEffects();
+  const { activeEffect: activeFaceEffect } = useAIFaceEffects();
 
   const isMountedRef = useRef(true);
 
@@ -154,16 +178,38 @@ export default function PreLiveSetupScreen() {
       params: {
         streamTitle,
         contentLabel: contentLabel || 'family_friendly',
-        aboutLive,
         practiceMode: practiceMode.toString(),
         whoCanWatch,
         selectedModerators: JSON.stringify(selectedModerators),
         selectedVIPClub: selectedVIPClub || '',
+        chatEnabled: chatEnabled.toString(),
+        giftsEnabled: giftsEnabled.toString(),
+        battlesEnabled: battlesEnabled.toString(),
+        vipClubEnabled: vipClubEnabled.toString(),
+        rankingsEnabled: rankingsEnabled.toString(),
+        seasonTrackingEnabled: seasonTrackingEnabled.toString(),
+        moderationToolsEnabled: moderationToolsEnabled.toString(),
       },
     });
 
     console.log('✅ [PRE-LIVE] Navigation initiated successfully');
-  }, [streamTitle, contentLabel, aboutLive, practiceMode, whoCanWatch, selectedModerators, selectedVIPClub, cameraPermission, micPermission]);
+  }, [
+    streamTitle,
+    contentLabel,
+    practiceMode,
+    whoCanWatch,
+    selectedModerators,
+    selectedVIPClub,
+    chatEnabled,
+    giftsEnabled,
+    battlesEnabled,
+    vipClubEnabled,
+    rankingsEnabled,
+    seasonTrackingEnabled,
+    moderationToolsEnabled,
+    cameraPermission,
+    micPermission,
+  ]);
 
   const handleGoLive = useCallback(async () => {
     console.log('🚀 [PRE-LIVE] Go LIVE button pressed');
@@ -206,8 +252,8 @@ export default function PreLiveSetupScreen() {
     // Battle mode validation
     if (streamMode === 'battle') {
       if (!battleFormat) {
-        Alert.alert('Error', 'Please select a battle format in Settings');
-        setShowSettingsPanel(true);
+        Alert.alert('Error', 'Please select a battle format in Battle Setup');
+        setShowBattleSetup(true);
         return;
       }
 
@@ -291,7 +337,19 @@ export default function PreLiveSetupScreen() {
         setIsLoading(false);
       }
     }
-  }, [streamTitle, contentLabel, user, practiceMode, streamMode, battleFormat, navigateToBroadcaster, cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
+  }, [
+    streamTitle,
+    contentLabel,
+    user,
+    practiceMode,
+    streamMode,
+    battleFormat,
+    navigateToBroadcaster,
+    cameraPermission,
+    micPermission,
+    requestCameraPermission,
+    requestMicPermission,
+  ]);
 
   const handleContentLabelSelected = (label: ContentLabel) => {
     console.log('🏷️ [PRE-LIVE] Content label selected:', label);
@@ -451,74 +509,175 @@ export default function PreLiveSetupScreen() {
           </TouchableOpacity>
         )}
 
-        {/* STREAM MODE INDICATOR */}
-        {streamMode === 'battle' && battleFormat && (
-          <View style={styles.battleModeIndicator}>
-            <IconSymbol
-              ios_icon_name="flame.fill"
-              android_material_icon_name="whatshot"
-              size={16}
-              color="#FF6B00"
-            />
-            <Text style={styles.battleModeText}>🎮 Battle Mode: {battleFormat.toUpperCase()}</Text>
-          </View>
-        )}
+        {/* ACTIVE FEATURES INDICATORS */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.indicatorsContainer}
+          contentContainerStyle={styles.indicatorsContent}
+        >
+          {streamMode === 'battle' && battleFormat && (
+            <View style={styles.indicator}>
+              <IconSymbol
+                ios_icon_name="flame.fill"
+                android_material_icon_name="whatshot"
+                size={14}
+                color="#FF6B00"
+              />
+              <Text style={styles.indicatorText}>
+                Battle: {battleFormat.toUpperCase()} {battleRanked ? '(Ranked)' : '(Casual)'}
+              </Text>
+            </View>
+          )}
+          
+          {selectedVIPClub && (
+            <View style={[styles.indicator, styles.indicatorVIP]}>
+              <IconSymbol
+                ios_icon_name="star.circle.fill"
+                android_material_icon_name="workspace_premium"
+                size={14}
+                color="#FFD700"
+              />
+              <Text style={[styles.indicatorText, styles.indicatorTextVIP]}>VIP Club Only</Text>
+            </View>
+          )}
 
-        {/* VIP CLUB INDICATOR */}
-        {selectedVIPClub && (
-          <View style={styles.vipClubIndicator}>
-            <IconSymbol
-              ios_icon_name="star.circle.fill"
-              android_material_icon_name="workspace_premium"
-              size={16}
-              color="#FFD700"
-            />
-            <Text style={styles.vipClubText}>💎 VIP Club Enabled</Text>
-          </View>
-        )}
+          {(activeFilter || activeEffect || activeFaceEffect) && (
+            <View style={[styles.indicator, styles.indicatorFilter]}>
+              <IconSymbol
+                ios_icon_name="camera.filters"
+                android_material_icon_name="filter"
+                size={14}
+                color="#4A90E2"
+              />
+              <Text style={styles.indicatorText}>
+                {activeFilter && 'Filter'}
+                {activeFilter && (activeEffect || activeFaceEffect) && ' + '}
+                {activeEffect && 'Effect'}
+                {activeFaceEffect && 'Face Effect'}
+              </Text>
+            </View>
+          )}
 
-        {/* BOTTOM ACTION BAR */}
-        <View style={styles.bottomBar}>
+          {selectedModerators.length > 0 && (
+            <View style={[styles.indicator, styles.indicatorMod]}>
+              <IconSymbol
+                ios_icon_name="shield.fill"
+                android_material_icon_name="shield"
+                size={14}
+                color="#00E676"
+              />
+              <Text style={styles.indicatorText}>{selectedModerators.length} Moderators</Text>
+            </View>
+          )}
+
+          {practiceMode && streamMode === 'solo' && (
+            <View style={[styles.indicator, styles.indicatorPractice]}>
+              <IconSymbol
+                ios_icon_name="eye.slash.fill"
+                android_material_icon_name="visibility_off"
+                size={14}
+                color="#FFA500"
+              />
+              <Text style={styles.indicatorText}>Practice Mode</Text>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* MODULAR ACTION BUTTONS (TikTok-Style) */}
+        <View style={styles.actionBar}>
           <TouchableOpacity 
             style={styles.actionButton} 
-            onPress={() => setShowContentLabelModal(true)}
+            onPress={() => setShowFiltersEffects(true)}
           >
-            <IconSymbol
-              ios_icon_name="tag.fill"
-              android_material_icon_name="label"
-              size={28}
-              color={contentLabel ? colors.brandPrimary : '#FFFFFF'}
-            />
-            <Text style={styles.actionButtonText}>Content</Text>
-            {contentLabel && <View style={styles.activeDot} />}
+            <View style={[
+              styles.actionIconContainer,
+              (activeFilter || activeEffect || activeFaceEffect) && styles.actionIconContainerActive
+            ]}>
+              <IconSymbol
+                ios_icon_name="camera.filters"
+                android_material_icon_name="filter"
+                size={24}
+                color="#FFFFFF"
+              />
+            </View>
+            <Text style={styles.actionButtonText}>Filters</Text>
+            {(activeFilter || activeEffect || activeFaceEffect) && <View style={styles.activeDot} />}
           </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.actionButton} 
-            onPress={() => setShowVIPClubPanel(true)}
+            onPress={() => setShowStreamSettings(true)}
           >
-            <IconSymbol
-              ios_icon_name="star.circle.fill"
-              android_material_icon_name="workspace_premium"
-              size={28}
-              color="#FFD700"
-            />
+            <View style={styles.actionIconContainer}>
+              <IconSymbol
+                ios_icon_name="gearshape.fill"
+                android_material_icon_name="settings"
+                size={24}
+                color="#FFFFFF"
+              />
+            </View>
+            <Text style={styles.actionButtonText}>Settings</Text>
+            {(practiceMode || !chatEnabled || !giftsEnabled) && <View style={styles.activeDot} />}
+          </TouchableOpacity>
+
+          {battlesEnabled && (
+            <TouchableOpacity 
+              style={styles.actionButton} 
+              onPress={() => setShowBattleSetup(true)}
+            >
+              <View style={[
+                styles.actionIconContainer,
+                streamMode === 'battle' && styles.actionIconContainerActive
+              ]}>
+                <IconSymbol
+                  ios_icon_name="flame.fill"
+                  android_material_icon_name="whatshot"
+                  size={24}
+                  color="#FF6B00"
+                />
+              </View>
+              <Text style={styles.actionButtonText}>Battle</Text>
+              {streamMode === 'battle' && <View style={styles.activeDot} />}
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => setShowVIPClub(true)}
+          >
+            <View style={[
+              styles.actionIconContainer,
+              selectedVIPClub && styles.actionIconContainerActive
+            ]}>
+              <IconSymbol
+                ios_icon_name="star.circle.fill"
+                android_material_icon_name="workspace_premium"
+                size={24}
+                color="#FFD700"
+              />
+            </View>
             <Text style={styles.actionButtonText}>VIP Club</Text>
             {selectedVIPClub && <View style={styles.activeDot} />}
           </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.actionButton} 
-            onPress={() => setShowSettingsPanel(true)}
+            onPress={() => setShowModeratorPanel(true)}
           >
-            <IconSymbol
-              ios_icon_name="gearshape.fill"
-              android_material_icon_name="settings"
-              size={28}
-              color="#FFFFFF"
-            />
-            <Text style={styles.actionButtonText}>Settings</Text>
-            {(selectedModerators.length > 0 || practiceMode || streamMode === 'battle') && <View style={styles.activeDot} />}
+            <View style={[
+              styles.actionIconContainer,
+              selectedModerators.length > 0 && styles.actionIconContainerActive
+            ]}>
+              <IconSymbol
+                ios_icon_name="shield.fill"
+                android_material_icon_name="shield"
+                size={24}
+                color="#00E676"
+              />
+            </View>
+            <Text style={styles.actionButtonText}>Moderators</Text>
+            {selectedModerators.length > 0 && <View style={styles.activeDot} />}
           </TouchableOpacity>
         </View>
 
@@ -559,19 +718,6 @@ export default function PreLiveSetupScreen() {
           )}
         </View>
 
-        {/* PRACTICE MODE INDICATOR */}
-        {practiceMode && streamMode === 'solo' && (
-          <View style={styles.practiceModeIndicator}>
-            <IconSymbol
-              ios_icon_name="eye.slash.fill"
-              android_material_icon_name="visibility_off"
-              size={16}
-              color="#FFA500"
-            />
-            <Text style={styles.practiceModeText}>Practice Mode Enabled</Text>
-          </View>
-        )}
-
         {/* COMMUNITY GUIDELINES MODAL */}
         <CommunityGuidelinesModal
           visible={showCommunityGuidelinesModal}
@@ -590,30 +736,58 @@ export default function PreLiveSetupScreen() {
           onCancel={() => setShowContentLabelModal(false)}
         />
 
-        {/* VIP CLUB PANEL */}
-        <VIPClubPanel
-          visible={showVIPClubPanel}
-          onClose={() => setShowVIPClubPanel(false)}
-          selectedClub={selectedVIPClub}
-          onSelectClub={setSelectedVIPClub}
+        {/* NEW: MODULAR BOTTOM SHEETS */}
+        <FiltersEffectsBottomSheet
+          visible={showFiltersEffects}
+          onClose={() => setShowFiltersEffects(false)}
         />
 
-        {/* SETTINGS PANEL */}
-        <LiveSettingsPanel
-          visible={showSettingsPanel}
-          onClose={() => setShowSettingsPanel(false)}
-          aboutLive={aboutLive}
-          setAboutLive={setAboutLive}
+        <StreamSettingsBottomSheet
+          visible={showStreamSettings}
+          onClose={() => setShowStreamSettings(false)}
+          chatEnabled={chatEnabled}
+          setChatEnabled={setChatEnabled}
+          giftsEnabled={giftsEnabled}
+          setGiftsEnabled={setGiftsEnabled}
+          battlesEnabled={battlesEnabled}
+          setBattlesEnabled={setBattlesEnabled}
+          vipClubEnabled={vipClubEnabled}
+          setVipClubEnabled={setVipClubEnabled}
+          rankingsEnabled={rankingsEnabled}
+          setRankingsEnabled={setRankingsEnabled}
+          seasonTrackingEnabled={seasonTrackingEnabled}
+          setSeasonTrackingEnabled={setSeasonTrackingEnabled}
+          moderationToolsEnabled={moderationToolsEnabled}
+          setModerationToolsEnabled={setModerationToolsEnabled}
           practiceMode={practiceMode}
           setPracticeMode={setPracticeMode}
           whoCanWatch={whoCanWatch}
           setWhoCanWatch={setWhoCanWatch}
-          selectedModerators={selectedModerators}
-          setSelectedModerators={setSelectedModerators}
+        />
+
+        <BattleSetupBottomSheet
+          visible={showBattleSetup}
+          onClose={() => setShowBattleSetup(false)}
           streamMode={streamMode}
           setStreamMode={setStreamMode}
           battleFormat={battleFormat}
           setBattleFormat={setBattleFormat}
+          battleRanked={battleRanked}
+          setBattleRanked={setBattleRanked}
+        />
+
+        <VIPClubBottomSheet
+          visible={showVIPClub}
+          onClose={() => setShowVIPClub(false)}
+          selectedClub={selectedVIPClub}
+          onSelectClub={setSelectedVIPClub}
+        />
+
+        <ModeratorPanelBottomSheet
+          visible={showModeratorPanel}
+          onClose={() => setShowModeratorPanel(false)}
+          selectedModerators={selectedModerators}
+          setSelectedModerators={setSelectedModerators}
         />
       </View>
     </>
@@ -700,54 +874,54 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  battleModeIndicator: {
+  indicatorsContainer: {
     position: 'absolute',
     top: Platform.OS === 'android' ? 280 : 270,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 107, 0, 0.9)',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    gap: 8,
+    left: 0,
+    right: 0,
     zIndex: 10,
   },
-  battleModeText: {
-    fontSize: 13,
+  indicatorsContent: {
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  indicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 0, 0.9)',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  indicatorVIP: {
+    backgroundColor: 'rgba(255, 215, 0, 0.9)',
+  },
+  indicatorFilter: {
+    backgroundColor: 'rgba(74, 144, 226, 0.9)',
+  },
+  indicatorMod: {
+    backgroundColor: 'rgba(0, 230, 118, 0.9)',
+  },
+  indicatorPractice: {
+    backgroundColor: 'rgba(255, 165, 0, 0.9)',
+  },
+  indicatorText: {
+    fontSize: 12,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  vipClubIndicator: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 350 : 340,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 215, 0, 0.9)',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    gap: 8,
-    zIndex: 10,
-  },
-  vipClubText: {
-    fontSize: 13,
-    fontWeight: '700',
+  indicatorTextVIP: {
     color: '#000000',
   },
-  bottomBar: {
+  actionBar: {
     position: 'absolute',
     bottom: 180,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: 20,
+    paddingHorizontal: 10,
     zIndex: 10,
   },
   actionButton: {
@@ -755,20 +929,34 @@ const styles = StyleSheet.create({
     gap: 6,
     position: 'relative',
   },
+  actionIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  actionIconContainerActive: {
+    backgroundColor: 'rgba(164, 0, 40, 0.8)',
+    borderColor: colors.brandPrimary,
+  },
   actionButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   activeDot: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    top: -2,
+    right: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: '#00FF00',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: '#FFFFFF',
   },
   flipButton: {
@@ -782,6 +970,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   goLiveContainer: {
     position: 'absolute',
@@ -800,26 +990,6 @@ const styles = StyleSheet.create({
   },
   selectLabelText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  practiceModeIndicator: {
-    position: 'absolute',
-    bottom: 60,
-    left: 20,
-    right: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 165, 0, 0.9)',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    gap: 8,
-    zIndex: 10,
-  },
-  practiceModeText: {
-    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
