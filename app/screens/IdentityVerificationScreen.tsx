@@ -92,7 +92,7 @@ export default function IdentityVerificationScreen() {
 
   useEffect(() => {
     loadExistingVerification();
-  }, [loadExistingVerification]);
+  }, []);
 
   const handlePickDocument = async () => {
     try {
@@ -499,7 +499,7 @@ export default function IdentityVerificationScreen() {
                 color={documentType === 'drivers_license' ? colors.brandPrimary : colors.textSecondary}
               />
               <Text style={[styles.documentTypeText, { color: documentType === 'drivers_license' ? colors.brandPrimary : colors.text }]}>
-                Driver's License
+                Driver&apos;s License
               </Text>
             </TouchableOpacity>
           </View>

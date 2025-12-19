@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -26,9 +27,14 @@ import { postService } from '@/app/services/postService';
  * - Stores media in Supabase Storage
  * - Persists metadata in database
  * - Media retrievable on all devices
+ * 
+ * FIXED: screenWidth is not defined
+ * - Now uses useWindowDimensions() hook
+ * - Reactive layout that responds to orientation changes
  */
 export default function CreatePostScreen() {
   const { user } = useAuth();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
   const [caption, setCaption] = useState('');
   const [mediaUri, setMediaUri] = useState<string | null>(null);
@@ -261,127 +267,6 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     marginTop: 20,
-  },
-  permissionContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-    gap: 20,
-  },
-  camera: {
-    flex: 1,
-    width: screenWidth,
-    height: screenHeight,
-  },
-  cameraOverlay: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    justifyContent: 'space-between',
-  },
-  topControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingHorizontal: 20,
-  },
-  controlButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingBottom: 40,
-    paddingHorizontal: 20,
-  },
-  galleryButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  captureButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 4,
-    borderColor: colors.text,
-  },
-  captureButtonInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.text,
-  },
-  flipButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewContainer: {
-    flex: 1,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 60,
-    paddingBottom: 16,
-    backgroundColor: colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  previewImage: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: colors.backgroundAlt,
-  },
-  actionButtons: {
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    backgroundColor: colors.background,
-    gap: 16,
-  },
-  actionButtonContainer: {
-    gap: 8,
-  },
-  actionHint: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  feedButton: {
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 25,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  feedButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
