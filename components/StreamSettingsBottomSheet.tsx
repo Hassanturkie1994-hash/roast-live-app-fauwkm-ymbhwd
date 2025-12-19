@@ -36,6 +36,14 @@ interface StreamSettingsBottomSheetProps {
   setWhoCanWatch: (value: 'public' | 'followers' | 'vip_club') => void;
 }
 
+/**
+ * Stream Settings Bottom Sheet
+ * 
+ * SIMPLIFIED: Removed toggles for Rankings, Season Tracking, VIP Club Features, 
+ * Moderation Tools, Gifts, and Chat (these are always enabled).
+ * 
+ * KEPT: Practice Mode and Audience selection
+ */
 export default function StreamSettingsBottomSheet({
   visible,
   onClose,
@@ -153,169 +161,80 @@ export default function StreamSettingsBottomSheet({
               </View>
             </View>
 
-            {/* Feature Toggles */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Features</Text>
-
-              <View style={styles.settingCard}>
-                <View style={styles.settingIcon}>
+            {/* Always Enabled Features Info */}
+            <View style={styles.alwaysEnabledSection}>
+              <Text style={styles.alwaysEnabledTitle}>Always Enabled Features</Text>
+              <Text style={styles.alwaysEnabledDescription}>
+                The following features are always active during your streams:
+              </Text>
+              
+              <View style={styles.featuresList}>
+                <View style={styles.featureItem}>
                   <IconSymbol
-                    ios_icon_name="message.fill"
-                    android_material_icon_name="chat"
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check_circle"
                     size={20}
-                    color={colors.brandPrimary}
+                    color="#00C853"
                   />
+                  <Text style={styles.featureText}>Chat & Messaging</Text>
                 </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingName}>Enable Chat</Text>
-                  <Text style={styles.settingDescription}>
-                    Allow viewers to send messages
-                  </Text>
+                <View style={styles.featureItem}>
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check_circle"
+                    size={20}
+                    color="#00C853"
+                  />
+                  <Text style={styles.featureText}>Gifts & Effects</Text>
                 </View>
-                <Switch
-                  value={chatEnabled}
-                  onValueChange={setChatEnabled}
-                  trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                  thumbColor="#FFFFFF"
-                />
+                <View style={styles.featureItem}>
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check_circle"
+                    size={20}
+                    color="#00C853"
+                  />
+                  <Text style={styles.featureText}>Rankings & Leaderboards</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check_circle"
+                    size={20}
+                    color="#00C853"
+                  />
+                  <Text style={styles.featureText}>Season Tracking</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check_circle"
+                    size={20}
+                    color="#00C853"
+                  />
+                  <Text style={styles.featureText}>VIP Club Features</Text>
+                </View>
+                <View style={styles.featureItem}>
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check_circle"
+                    size={20}
+                    color="#00C853"
+                  />
+                  <Text style={styles.featureText}>Moderation Tools</Text>
+                </View>
               </View>
 
-              <View style={styles.settingCard}>
-                <View style={styles.settingIcon}>
-                  <IconSymbol
-                    ios_icon_name="gift.fill"
-                    android_material_icon_name="card_giftcard"
-                    size={20}
-                    color={colors.brandPrimary}
-                  />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingName}>Enable Gifts</Text>
-                  <Text style={styles.settingDescription}>
-                    Allow viewers to send gifts
-                  </Text>
-                </View>
-                <Switch
-                  value={giftsEnabled}
-                  onValueChange={setGiftsEnabled}
-                  trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                  thumbColor="#FFFFFF"
+              <View style={styles.noteBox}>
+                <IconSymbol
+                  ios_icon_name="info.circle"
+                  android_material_icon_name="info_outline"
+                  size={16}
+                  color={colors.textSecondary}
                 />
-              </View>
-
-              <View style={styles.settingCard}>
-                <View style={styles.settingIcon}>
-                  <IconSymbol
-                    ios_icon_name="flame.fill"
-                    android_material_icon_name="whatshot"
-                    size={20}
-                    color="#FF6B00"
-                  />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingName}>Enable Battles</Text>
-                  <Text style={styles.settingDescription}>
-                    Allow battle mode streaming
-                  </Text>
-                </View>
-                <Switch
-                  value={battlesEnabled}
-                  onValueChange={setBattlesEnabled}
-                  trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.settingCard}>
-                <View style={styles.settingIcon}>
-                  <IconSymbol
-                    ios_icon_name="star.circle.fill"
-                    android_material_icon_name="workspace_premium"
-                    size={20}
-                    color="#FFD700"
-                  />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingName}>Enable VIP Club</Text>
-                  <Text style={styles.settingDescription}>
-                    Show VIP Club features
-                  </Text>
-                </View>
-                <Switch
-                  value={vipClubEnabled}
-                  onValueChange={setVipClubEnabled}
-                  trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.settingCard}>
-                <View style={styles.settingIcon}>
-                  <IconSymbol
-                    ios_icon_name="chart.bar.fill"
-                    android_material_icon_name="leaderboard"
-                    size={20}
-                    color={colors.brandPrimary}
-                  />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingName}>Enable Rankings</Text>
-                  <Text style={styles.settingDescription}>
-                    Show leaderboard and rankings
-                  </Text>
-                </View>
-                <Switch
-                  value={rankingsEnabled}
-                  onValueChange={setRankingsEnabled}
-                  trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.settingCard}>
-                <View style={styles.settingIcon}>
-                  <IconSymbol
-                    ios_icon_name="calendar.badge.clock"
-                    android_material_icon_name="event"
-                    size={20}
-                    color={colors.brandPrimary}
-                  />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingName}>Enable Season Tracking</Text>
-                  <Text style={styles.settingDescription}>
-                    Track seasonal progress
-                  </Text>
-                </View>
-                <Switch
-                  value={seasonTrackingEnabled}
-                  onValueChange={setSeasonTrackingEnabled}
-                  trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.settingCard}>
-                <View style={styles.settingIcon}>
-                  <IconSymbol
-                    ios_icon_name="shield.fill"
-                    android_material_icon_name="shield"
-                    size={20}
-                    color="#00E676"
-                  />
-                </View>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingName}>Enable Moderation Tools</Text>
-                  <Text style={styles.settingDescription}>
-                    Show moderation controls
-                  </Text>
-                </View>
-                <Switch
-                  value={moderationToolsEnabled}
-                  onValueChange={setModerationToolsEnabled}
-                  trackColor={{ false: colors.border, true: colors.brandPrimary }}
-                  thumbColor="#FFFFFF"
-                />
+                <Text style={styles.noteText}>
+                  You can pause chat during your stream from the Stream Dashboard
+                </Text>
               </View>
             </View>
           </ScrollView>
@@ -374,7 +293,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 14,
-    marginBottom: 10,
     gap: 12,
   },
   settingIcon: {
@@ -448,6 +366,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: colors.textSecondary,
+  },
+  alwaysEnabledSection: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  },
+  alwaysEnabledTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  alwaysEnabledDescription: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  featuresList: {
+    gap: 10,
+    marginTop: 8,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  featureText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  noteBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.card,
+    borderRadius: 8,
+    padding: 10,
+    gap: 8,
+    marginTop: 8,
+  },
+  noteText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
   footer: {
     padding: 20,

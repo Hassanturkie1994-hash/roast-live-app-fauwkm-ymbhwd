@@ -42,6 +42,13 @@ export default function BattleSetupBottomSheet({
   battleRanked,
   setBattleRanked,
 }: BattleSetupBottomSheetProps) {
+  // Always set to ranked when battle mode is enabled
+  React.useEffect(() => {
+    if (streamMode === 'battle') {
+      setBattleRanked(true);
+    }
+  }, [streamMode, setBattleRanked]);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -135,45 +142,19 @@ export default function BattleSetupBottomSheet({
                   </View>
                 </View>
 
-                {/* Ranked / Casual Toggle */}
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Battle Type</Text>
-                  <View style={styles.typeToggle}>
-                    <TouchableOpacity
-                      style={[styles.typeButton, !battleRanked && styles.typeButtonActive]}
-                      onPress={() => setBattleRanked(false)}
-                    >
-                      <IconSymbol
-                        ios_icon_name="gamecontroller.fill"
-                        android_material_icon_name="sports_esports"
-                        size={20}
-                        color={!battleRanked ? '#FFFFFF' : colors.text}
-                      />
-                      <Text style={[styles.typeButtonText, !battleRanked && styles.typeButtonTextActive]}>
-                        Casual
-                      </Text>
-                      <Text style={styles.typeButtonDescription}>
-                        For fun, no rank impact
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.typeButton, battleRanked && styles.typeButtonActive]}
-                      onPress={() => setBattleRanked(true)}
-                    >
-                      <IconSymbol
-                        ios_icon_name="trophy.fill"
-                        android_material_icon_name="emoji_events"
-                        size={20}
-                        color={battleRanked ? '#FFFFFF' : '#FFD700'}
-                      />
-                      <Text style={[styles.typeButtonText, battleRanked && styles.typeButtonTextActive]}>
-                        Ranked
-                      </Text>
-                      <Text style={styles.typeButtonDescription}>
-                        Competitive, affects rank
-                      </Text>
-                    </TouchableOpacity>
+                {/* Ranked Battle Info - ALWAYS RANKED */}
+                <View style={styles.rankedInfoBox}>
+                  <IconSymbol
+                    ios_icon_name="trophy.fill"
+                    android_material_icon_name="emoji_events"
+                    size={24}
+                    color="#FFD700"
+                  />
+                  <View style={styles.rankedInfoText}>
+                    <Text style={styles.rankedInfoTitle}>Ranked Battle</Text>
+                    <Text style={styles.rankedInfoDescription}>
+                      All battles are ranked and affect your season score
+                    </Text>
                   </View>
                 </View>
 
@@ -314,37 +295,30 @@ const styles = StyleSheet.create({
     top: 8,
     right: 8,
   },
-  typeToggle: {
+  rankedInfoBox: {
     flexDirection: 'row',
-    gap: 12,
-  },
-  typeButton: {
-    flex: 1,
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
     alignItems: 'center',
-    gap: 6,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderColor: '#FFD700',
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    marginBottom: 16,
   },
-  typeButtonActive: {
-    backgroundColor: colors.brandPrimary,
-    borderColor: colors.brandPrimary,
+  rankedInfoText: {
+    flex: 1,
+    gap: 4,
   },
-  typeButtonText: {
-    fontSize: 15,
-    fontWeight: '700',
+  rankedInfoTitle: {
+    fontSize: 16,
+    fontWeight: '800',
     color: colors.text,
   },
-  typeButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  typeButtonDescription: {
-    fontSize: 11,
-    fontWeight: '400',
+  rankedInfoDescription: {
+    fontSize: 13,
+    fontWeight: '500',
     color: colors.textSecondary,
-    textAlign: 'center',
   },
   infoBox: {
     flexDirection: 'row',

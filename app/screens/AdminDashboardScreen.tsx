@@ -8,6 +8,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  TextInput,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -15,6 +18,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { adminService, AdminRole } from '@/app/services/adminService';
 import { supabase } from '@/app/integrations/supabase/client';
+import UserBanModal from '@/components/UserBanModal';
+
+interface UserSearchResult {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: string | null;
+  email: string | null;
+}
 
 export default function AdminDashboardScreen() {
   const { colors } = useTheme();
@@ -31,47 +44,46 @@ export default function AdminDashboardScreen() {
     totalUsers: 0,
     activeUsers: 0,
   });
+  const [showUserSearchModal, setShowUserSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
+  const [showBanModal, setShowBanModal] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   const fetchDashboardStats = useCallback(async () => {
     try {
-      // Fetch open reports
       const { data: reportsData } = await supabase
         .from('user_reports')
         .select('id, type')
         .eq('status', 'open');
       const openReports = reportsData?.filter(r => r.type !== 'stream').length || 0;
 
-      // Fetch live streams
       const { data: streamsData } = await supabase
         .from('streams')
         .select('id')
         .eq('status', 'live');
       const liveStreams = streamsData?.length || 0;
 
-      // Fetch users under penalty
       const { count: penaltyCount } = await supabase
         .from('admin_penalties')
         .select('*', { count: 'exact', head: true })
         .eq('is_active', true);
 
-      // Fetch pending appeals
       const { count: appealsCount } = await supabase
         .from('appeals')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
-      // Fetch VIP subscribers
       const { count: vipCount } = await supabase
         .from('vip_club_members')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'active');
 
-      // Fetch total users
       const { count: totalUsersCount } = await supabase
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
-      // Fetch active users (in last 5 minutes)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       
       const { data: activeViewers } = await supabase
@@ -124,8 +136,7 @@ export default function AdminDashboardScreen() {
       return;
     }
 
-    // Only ADMIN role can access this dashboard
-    if (result.role !== 'ADMIN') {
+    if (result.role !== 'ADMIN' && result.role !== 'HEAD_ADMIN') {
       Alert.alert('Access Denied', 'This dashboard is for Admin role only.');
       router.back();
       return;
@@ -139,13 +150,48 @@ export default function AdminDashboardScreen() {
   useEffect(() => {
     checkAdminAccess();
 
-    // Refresh stats every 30 seconds
     const interval = setInterval(() => {
       fetchDashboardStats();
     }, 30000);
 
     return () => clearInterval(interval);
   }, [checkAdminAccess, fetchDashboardStats]);
+
+  const handleSearchUsers = async () => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      setSearching(true);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, role, email')
+        .or(`username.ilike.%${searchQuery}%,display_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%`)
+        .limit(20);
+
+      if (error) {
+        console.error('Error searching users:', error);
+        Alert.alert('Error', 'Failed to search users');
+        return;
+      }
+
+      setSearchResults(data || []);
+    } catch (error) {
+      console.error('Error in handleSearchUsers:', error);
+      Alert.alert('Error', 'Failed to search users');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleSelectUser = (selectedUserData: UserSearchResult) => {
+    setSelectedUser(selectedUserData);
+    setShowUserSearchModal(false);
+    setShowBanModal(true);
+  };
 
   const getRoleColor = (role: AdminRole) => {
     switch (role) {
@@ -206,7 +252,7 @@ export default function AdminDashboardScreen() {
           </View>
         </View>
 
-        {/* Real-time Stats Grid - NOW CLICKABLE */}
+        {/* Real-time Stats Grid */}
         <View style={styles.statsGrid}>
           <TouchableOpacity
             style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -298,41 +344,41 @@ export default function AdminDashboardScreen() {
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.usersUnderPenalty}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Suspensions</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/AdminBanAppealsScreen' as any)}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="doc.text.fill"
-              android_material_icon_name="description"
-              size={32}
-              color="#4ECDC4"
-            />
-            <Text style={[styles.statValue, { color: colors.text }]}>{stats.pendingAppeals}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Pending Appeals</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/AdminUsersListScreen?type=vip' as any)}
-            activeOpacity={0.7}
-          >
-            <IconSymbol
-              ios_icon_name="star.fill"
-              android_material_icon_name="star"
-              size={32}
-              color="#FFD700"
-            />
-            <Text style={[styles.statValue, { color: colors.text }]}>{stats.vipSubscribers}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>VIP Subscribers</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Quick Actions */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
+
+          {/* Ban User - NEW */}
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: '#DC143C' }]}
+            onPress={() => setShowUserSearchModal(true)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionButtonContent}>
+              <IconSymbol
+                ios_icon_name="hand.raised.fill"
+                android_material_icon_name="block"
+                size={24}
+                color="#DC143C"
+              />
+              <View style={styles.actionButtonText}>
+                <Text style={[styles.actionButtonTitle, { color: colors.text }]}>
+                  Ban User
+                </Text>
+                <Text style={[styles.actionButtonSubtitle, { color: colors.textSecondary }]}>
+                  Search and ban users from the platform
+                </Text>
+              </View>
+            </View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="chevron_right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -478,66 +524,122 @@ export default function AdminDashboardScreen() {
               color={colors.textSecondary}
             />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/AdminMessagingScreen' as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionButtonContent}>
-              <IconSymbol
-                ios_icon_name="envelope.fill"
-                android_material_icon_name="mail"
-                size={24}
-                color="#9B59B6"
-              />
-              <View style={styles.actionButtonText}>
-                <Text style={[styles.actionButtonTitle, { color: colors.text }]}>
-                  Send Messages
-                </Text>
-                <Text style={[styles.actionButtonSubtitle, { color: colors.textSecondary }]}>
-                  Send warnings and notices to users
-                </Text>
-              </View>
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/AdminAnalyticsScreen' as any)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionButtonContent}>
-              <IconSymbol
-                ios_icon_name="chart.bar.xaxis"
-                android_material_icon_name="bar_chart"
-                size={24}
-                color="#3498DB"
-              />
-              <View style={styles.actionButtonText}>
-                <Text style={[styles.actionButtonTitle, { color: colors.text }]}>
-                  Analytics Dashboard
-                </Text>
-                <Text style={[styles.actionButtonSubtitle, { color: colors.textSecondary }]}>
-                  View platform analytics and insights
-                </Text>
-              </View>
-            </View>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="chevron_right"
-              size={20}
-              color={colors.textSecondary}
-            />
-          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* User Search Modal */}
+      <Modal
+        visible={showUserSearchModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowUserSearchModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Search Users to Ban</Text>
+              <TouchableOpacity onPress={() => setShowUserSearchModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.searchContainer}>
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
+                  placeholder="Username, Display Name, Email, or User ID"
+                  placeholderTextColor={colors.textSecondary}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  onSubmitEditing={handleSearchUsers}
+                />
+                <TouchableOpacity
+                  style={[styles.searchButton, { backgroundColor: colors.brandPrimary }]}
+                  onPress={handleSearchUsers}
+                  disabled={searching}
+                >
+                  {searching ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <IconSymbol
+                      ios_icon_name="magnifyingglass"
+                      android_material_icon_name="search"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.searchResults}>
+                {searchResults.map((result) => (
+                  <TouchableOpacity
+                    key={result.id}
+                    style={[styles.searchResultItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    onPress={() => handleSelectUser(result)}
+                  >
+                    <View style={styles.searchResultLeft}>
+                      <IconSymbol
+                        ios_icon_name="person.circle.fill"
+                        android_material_icon_name="account_circle"
+                        size={40}
+                        color={colors.textSecondary}
+                      />
+                      <View>
+                        <Text style={[styles.searchResultName, { color: colors.text }]}>
+                          {result.display_name || result.username}
+                        </Text>
+                        <Text style={[styles.searchResultUsername, { color: colors.textSecondary }]}>
+                          @{result.username}
+                        </Text>
+                        {result.email && (
+                          <Text style={[styles.searchResultEmail, { color: colors.textSecondary }]}>
+                            {result.email}
+                          </Text>
+                        )}
+                        {result.role && result.role !== 'USER' && (
+                          <Text style={[styles.searchResultRole, { color: colors.brandPrimary }]}>
+                            Role: {result.role}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <IconSymbol
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="chevron_right"
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Ban Modal */}
+      {selectedUser && (
+        <UserBanModal
+          visible={showBanModal}
+          onClose={() => {
+            setShowBanModal(false);
+            setSelectedUser(null);
+          }}
+          userId={selectedUser.id}
+          username={selectedUser.username}
+          onBanComplete={() => {
+            fetchDashboardStats();
+            setSearchResults([]);
+            setSearchQuery('');
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -601,9 +703,6 @@ const styles = StyleSheet.create({
     gap: 8,
     position: 'relative',
   },
-  wideCard: {
-    width: '100%',
-  },
   statValue: {
     fontSize: 32,
     fontWeight: '800',
@@ -656,5 +755,85 @@ const styles = StyleSheet.create({
   actionButtonSubtitle: {
     fontSize: 14,
     fontWeight: '400',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    flex: 1,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  searchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+  },
+  searchButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchResults: {
+    maxHeight: 400,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  searchResultLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  searchResultUsername: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  searchResultEmail: {
+    fontSize: 12,
+    fontWeight: '400',
+    fontStyle: 'italic',
+  },
+  searchResultRole: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
 });

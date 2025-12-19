@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   TextInput,
+  Pressable,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -30,6 +31,11 @@ interface Follower {
   avatar_url: string | null;
 }
 
+/**
+ * Moderator Panel Bottom Sheet
+ * 
+ * FIXED: Now properly centered and shows all details clearly
+ */
 export default function ModeratorPanelBottomSheet({
   visible,
   onClose,
@@ -47,10 +53,10 @@ export default function ModeratorPanelBottomSheet({
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('follows')
-        .select('follower_id, profiles!follows_follower_id_fkey(id, username, display_name, avatar_url)')
+        .from('followers')
+        .select('follower_id, profiles!followers_follower_id_fkey(id, username, display_name, avatar_url)')
         .eq('following_id', user.id)
-        .limit(50);
+        .limit(100);
 
       if (error) {
         console.error('Error loading followers:', error);
@@ -92,121 +98,133 @@ export default function ModeratorPanelBottomSheet({
   });
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.panel}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Moderator Panel</Text>
-            <TouchableOpacity onPress={onClose}>
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.content}>
-            <Text style={styles.sectionDescription}>
-              Assign moderators to help manage your stream. Moderators can timeout users, 
-              delete messages, and enable slow mode.
-            </Text>
-
-            {/* Search Bar */}
-            <View style={styles.searchContainer}>
-              <IconSymbol
-                ios_icon_name="magnifyingglass"
-                android_material_icon_name="search"
-                size={20}
-                color={colors.textSecondary}
-              />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search followers..."
-                placeholderTextColor={colors.placeholder}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <Pressable style={styles.centeredContainer} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.panel}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Moderator Panel</Text>
+              <TouchableOpacity onPress={onClose}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={28}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
             </View>
 
-            {/* Selected Count */}
-            {selectedModerators.length > 0 && (
-              <View style={styles.selectedBanner}>
+            <View style={styles.content}>
+              <View style={styles.infoBox}>
                 <IconSymbol
                   ios_icon_name="shield.fill"
                   android_material_icon_name="shield"
-                  size={16}
+                  size={20}
                   color={colors.brandPrimary}
                 />
-                <Text style={styles.selectedText}>
-                  {selectedModerators.length} moderator{selectedModerators.length !== 1 ? 's' : ''} selected
+                <Text style={styles.infoText}>
+                  Stream Moderators can timeout users, delete messages, and pin comments in your streams only.
                 </Text>
               </View>
-            )}
 
-            {/* Followers List */}
-            <ScrollView style={styles.followersList} showsVerticalScrollIndicator={false}>
-              {isLoading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={colors.brandPrimary} />
-                  <Text style={styles.loadingText}>Loading followers...</Text>
-                </View>
-              ) : filteredFollowers.length === 0 ? (
-                <View style={styles.emptyState}>
+              {/* Search Bar */}
+              <View style={styles.searchContainer}>
+                <IconSymbol
+                  ios_icon_name="magnifyingglass"
+                  android_material_icon_name="search"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search followers..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+
+              {/* Selected Count */}
+              {selectedModerators.length > 0 && (
+                <View style={styles.selectedBanner}>
                   <IconSymbol
-                    ios_icon_name="person.2.slash"
-                    android_material_icon_name="people_outline"
-                    size={48}
-                    color={colors.textSecondary}
+                    ios_icon_name="shield.fill"
+                    android_material_icon_name="shield"
+                    size={16}
+                    color={colors.brandPrimary}
                   />
-                  <Text style={styles.emptyText}>
-                    {searchQuery ? 'No followers found' : 'No followers yet'}
+                  <Text style={styles.selectedText}>
+                    {selectedModerators.length} moderator{selectedModerators.length !== 1 ? 's' : ''} selected
                   </Text>
                 </View>
-              ) : (
-                filteredFollowers.map((follower) => {
-                  const isSelected = selectedModerators.includes(follower.id);
-                  return (
-                    <TouchableOpacity
-                      key={follower.id}
-                      style={[styles.followerCard, isSelected && styles.followerCardActive]}
-                      onPress={() => handleToggleModerator(follower.id)}
-                    >
-                      <View style={styles.followerAvatar}>
-                        <IconSymbol
-                          ios_icon_name="person.fill"
-                          android_material_icon_name="person"
-                          size={24}
-                          color={colors.textSecondary}
-                        />
-                      </View>
-                      <View style={styles.followerInfo}>
-                        <Text style={[styles.followerName, isSelected && styles.followerNameActive]}>
-                          {follower.display_name || follower.username}
-                        </Text>
-                        <Text style={styles.followerUsername}>@{follower.username}</Text>
-                      </View>
-                      {isSelected && (
-                        <IconSymbol
-                          ios_icon_name="checkmark.circle.fill"
-                          android_material_icon_name="check_circle"
-                          size={24}
-                          color={colors.brandPrimary}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
               )}
-            </ScrollView>
-          </View>
 
-          <View style={styles.footer}>
-            <GradientButton title="Done" onPress={onClose} size="large" />
+              {/* Followers List */}
+              <ScrollView style={styles.followersList} showsVerticalScrollIndicator={false}>
+                {isLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={colors.brandPrimary} />
+                    <Text style={styles.loadingText}>Loading followers...</Text>
+                  </View>
+                ) : filteredFollowers.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <IconSymbol
+                      ios_icon_name="person.2.slash"
+                      android_material_icon_name="people_outline"
+                      size={48}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={styles.emptyText}>
+                      {searchQuery ? 'No followers found' : 'No followers yet'}
+                    </Text>
+                    <Text style={styles.emptyDescription}>
+                      {searchQuery ? 'Try a different search term' : 'Get followers to assign moderators'}
+                    </Text>
+                  </View>
+                ) : (
+                  filteredFollowers.map((follower) => {
+                    const isSelected = selectedModerators.includes(follower.id);
+                    return (
+                      <TouchableOpacity
+                        key={follower.id}
+                        style={[styles.followerCard, isSelected && styles.followerCardActive]}
+                        onPress={() => handleToggleModerator(follower.id)}
+                      >
+                        <View style={[styles.followerAvatar, isSelected && styles.followerAvatarActive]}>
+                          <IconSymbol
+                            ios_icon_name="person.fill"
+                            android_material_icon_name="person"
+                            size={24}
+                            color={isSelected ? colors.brandPrimary : colors.textSecondary}
+                          />
+                        </View>
+                        <View style={styles.followerInfo}>
+                          <Text style={[styles.followerName, isSelected && styles.followerNameActive]}>
+                            {follower.display_name || follower.username}
+                          </Text>
+                          <Text style={styles.followerUsername}>@{follower.username}</Text>
+                        </View>
+                        {isSelected && (
+                          <IconSymbol
+                            ios_icon_name="checkmark.circle.fill"
+                            android_material_icon_name="check_circle"
+                            size={24}
+                            color={colors.brandPrimary}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+
+            <View style={styles.footer}>
+              <GradientButton title="Done" onPress={onClose} size="large" />
+            </View>
           </View>
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
@@ -214,14 +232,19 @@ export default function ModeratorPanelBottomSheet({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centeredContainer: {
+    width: '90%',
+    maxWidth: 500,
+    maxHeight: '85%',
   },
   panel: {
     backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
+    borderRadius: 24,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -238,13 +261,24 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    flex: 1,
+    maxHeight: 500,
   },
-  sectionDescription: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: colors.textSecondary,
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.brandPrimary,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
     marginBottom: 16,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.text,
     lineHeight: 18,
   },
   searchContainer: {
@@ -283,7 +317,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   followersList: {
-    flex: 1,
+    maxHeight: 300,
   },
   loadingContainer: {
     alignItems: 'center',
@@ -298,12 +332,18 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     paddingVertical: 40,
-    gap: 16,
+    gap: 12,
   },
   emptyText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: colors.text,
+  },
+  emptyDescription: {
+    fontSize: 13,
+    fontWeight: '400',
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   followerCard: {
     flexDirection: 'row',
@@ -328,6 +368,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  followerAvatarActive: {
+    backgroundColor: 'rgba(164, 0, 40, 0.2)',
   },
   followerInfo: {
     flex: 1,

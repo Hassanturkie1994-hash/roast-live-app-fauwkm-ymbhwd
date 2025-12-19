@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,14 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useVIPClub } from '@/contexts/VIPClubContext';
+import { unifiedVIPClubService, VIPClubMember } from '@/app/services/unifiedVIPClubService';
 
 interface VIPClubBottomSheetProps {
   visible: boolean;
@@ -29,6 +31,9 @@ export default function VIPClubBottomSheet({
 }: VIPClubBottomSheetProps) {
   const { user } = useAuth();
   const { club, isLoading, canCreateClub, hoursStreamed, hoursNeeded } = useVIPClub();
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<VIPClubMember[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   const handleToggleClub = () => {
     if (selectedClub === club?.id) {
@@ -36,6 +41,35 @@ export default function VIPClubBottomSheet({
     } else if (club) {
       onSelectClub(club.id);
     }
+  };
+
+  const loadMembers = useCallback(async () => {
+    if (!club) return;
+
+    setLoadingMembers(true);
+    try {
+      const data = await unifiedVIPClubService.getVIPClubMembers(club.id);
+      setMembers(data);
+      setShowMembers(true);
+    } catch (error) {
+      console.error('Error loading VIP members:', error);
+    } finally {
+      setLoadingMembers(false);
+    }
+  }, [club]);
+
+  const getVIPLevelColor = (level: number): string => {
+    if (level >= 15) return '#FF1493';
+    if (level >= 10) return '#9B59B6';
+    if (level >= 5) return '#3498DB';
+    return '#FFD700';
+  };
+
+  const getVIPLevelLabel = (level: number): string => {
+    if (level >= 15) return 'LEGENDARY';
+    if (level >= 10) return 'ELITE';
+    if (level >= 5) return 'PREMIUM';
+    return 'VIP';
   };
 
   return (
@@ -56,102 +90,193 @@ export default function VIPClubBottomSheet({
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {club ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Your VIP Club</Text>
-                <Text style={styles.sectionDescription}>
-                  Restrict this stream to your VIP Club members only
-                </Text>
+              <>
+                {!showMembers ? (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Your VIP Club</Text>
+                    <Text style={styles.sectionDescription}>
+                      Restrict this stream to your VIP Club members only
+                    </Text>
 
-                <View style={styles.clubCard}>
-                  <View style={styles.clubHeader}>
-                    <View 
-                      style={[
-                        styles.clubBadge, 
-                        { backgroundColor: club.badge_color }
-                      ]}
-                    >
+                    <View style={styles.clubCard}>
+                      <View style={styles.clubHeader}>
+                        <View 
+                          style={[
+                            styles.clubBadge, 
+                            { backgroundColor: club.badge_color }
+                          ]}
+                        >
+                          <IconSymbol
+                            ios_icon_name="crown.fill"
+                            android_material_icon_name="workspace_premium"
+                            size={16}
+                            color="#FFFFFF"
+                          />
+                          <Text style={styles.clubBadgeText}>{club.badge_name}</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[
+                            styles.toggleButton,
+                            selectedClub === club.id && styles.toggleButtonActive,
+                          ]}
+                          onPress={handleToggleClub}
+                        >
+                          <View
+                            style={[
+                              styles.toggleThumb,
+                              selectedClub === club.id && styles.toggleThumbActive,
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.clubDetails}>
+                        <Text style={styles.clubName}>{club.club_name}</Text>
+                        {club.description && (
+                          <Text style={styles.clubDescription}>{club.description}</Text>
+                        )}
+                        
+                        <View style={styles.clubStats}>
+                          <View style={styles.clubStat}>
+                            <IconSymbol
+                              ios_icon_name="person.2.fill"
+                              android_material_icon_name="people"
+                              size={16}
+                              color={colors.brandPrimary}
+                            />
+                            <Text style={styles.clubStatText}>{club.total_members} members</Text>
+                          </View>
+                          <View style={styles.clubStat}>
+                            <IconSymbol
+                              ios_icon_name="creditcard.fill"
+                              android_material_icon_name="payment"
+                              size={16}
+                              color={colors.brandPrimary}
+                            />
+                            <Text style={styles.clubStatText}>
+                              {club.monthly_price_sek} kr/month
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {selectedClub === club.id && (
+                        <View style={styles.activeIndicator}>
+                          <IconSymbol
+                            ios_icon_name="checkmark.circle.fill"
+                            android_material_icon_name="check_circle"
+                            size={20}
+                            color={colors.brandPrimary}
+                          />
+                          <Text style={styles.activeText}>
+                            Only VIP Club members can watch this stream
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* View Members Button */}
+                      <TouchableOpacity
+                        style={styles.viewMembersButton}
+                        onPress={loadMembers}
+                        disabled={loadingMembers}
+                      >
+                        {loadingMembers ? (
+                          <ActivityIndicator size="small" color={colors.brandPrimary} />
+                        ) : (
+                          <>
+                            <IconSymbol
+                              ios_icon_name="person.2.fill"
+                              android_material_icon_name="people"
+                              size={18}
+                              color={colors.brandPrimary}
+                            />
+                            <Text style={styles.viewMembersText}>View Members & Levels</Text>
+                            <IconSymbol
+                              ios_icon_name="chevron.right"
+                              android_material_icon_name="chevron_right"
+                              size={18}
+                              color={colors.brandPrimary}
+                            />
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.infoBox}>
                       <IconSymbol
-                        ios_icon_name="crown.fill"
-                        android_material_icon_name="workspace_premium"
+                        ios_icon_name="info.circle.fill"
+                        android_material_icon_name="info"
                         size={16}
-                        color="#FFFFFF"
+                        color={colors.brandPrimary}
                       />
-                      <Text style={styles.clubBadgeText}>{club.badge_name}</Text>
+                      <Text style={styles.infoText}>
+                        When enabled, only your VIP Club members will be able to watch this stream. 
+                        This is perfect for exclusive content and building a loyal community.
+                      </Text>
                     </View>
+                  </View>
+                ) : (
+                  <View style={styles.membersView}>
                     <TouchableOpacity
-                      style={[
-                        styles.toggleButton,
-                        selectedClub === club.id && styles.toggleButtonActive,
-                      ]}
-                      onPress={handleToggleClub}
+                      style={styles.backToClubButton}
+                      onPress={() => setShowMembers(false)}
                     >
-                      <View
-                        style={[
-                          styles.toggleThumb,
-                          selectedClub === club.id && styles.toggleThumbActive,
-                        ]}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.clubDetails}>
-                    <Text style={styles.clubName}>{club.club_name}</Text>
-                    {club.description && (
-                      <Text style={styles.clubDescription}>{club.description}</Text>
-                    )}
-                    
-                    <View style={styles.clubStats}>
-                      <View style={styles.clubStat}>
-                        <IconSymbol
-                          ios_icon_name="person.2.fill"
-                          android_material_icon_name="people"
-                          size={16}
-                          color={colors.brandPrimary}
-                        />
-                        <Text style={styles.clubStatText}>{club.total_members} members</Text>
-                      </View>
-                      <View style={styles.clubStat}>
-                        <IconSymbol
-                          ios_icon_name="creditcard.fill"
-                          android_material_icon_name="payment"
-                          size={16}
-                          color={colors.brandPrimary}
-                        />
-                        <Text style={styles.clubStatText}>
-                          {club.monthly_price_sek} SEK/month
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {selectedClub === club.id && (
-                    <View style={styles.activeIndicator}>
                       <IconSymbol
-                        ios_icon_name="checkmark.circle.fill"
-                        android_material_icon_name="check_circle"
+                        ios_icon_name="chevron.left"
+                        android_material_icon_name="arrow_back"
                         size={20}
                         color={colors.brandPrimary}
                       />
-                      <Text style={styles.activeText}>
-                        Only VIP Club members can watch this stream
-                      </Text>
-                    </View>
-                  )}
-                </View>
+                      <Text style={styles.backToClubText}>Back to Club</Text>
+                    </TouchableOpacity>
 
-                <View style={styles.infoBox}>
-                  <IconSymbol
-                    ios_icon_name="info.circle.fill"
-                    android_material_icon_name="info"
-                    size={16}
-                    color={colors.brandPrimary}
-                  />
-                  <Text style={styles.infoText}>
-                    When enabled, only your VIP Club members will be able to watch this stream. 
-                    This is perfect for exclusive content and building a loyal community.
-                  </Text>
-                </View>
-              </View>
+                    <Text style={styles.membersTitle}>VIP Members ({members.length})</Text>
+
+                    {members.length === 0 ? (
+                      <View style={styles.emptyMembersState}>
+                        <IconSymbol
+                          ios_icon_name="person.slash.fill"
+                          android_material_icon_name="person_off"
+                          size={48}
+                          color={colors.textSecondary}
+                        />
+                        <Text style={styles.emptyMembersText}>No VIP members yet</Text>
+                      </View>
+                    ) : (
+                      <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
+                        {members.map((member) => {
+                          const levelColor = getVIPLevelColor(member.vip_level);
+                          const levelLabel = getVIPLevelLabel(member.vip_level);
+                          
+                          return (
+                            <View key={member.id} style={styles.memberCard}>
+                              <View style={[styles.memberAvatar, { backgroundColor: levelColor }]}>
+                                <Text style={styles.memberAvatarText}>
+                                  {member.profiles?.display_name?.charAt(0).toUpperCase() || 'V'}
+                                </Text>
+                                <View style={styles.memberLevelBadge}>
+                                  <Text style={styles.memberLevelText}>{member.vip_level}</Text>
+                                </View>
+                              </View>
+                              <View style={styles.memberInfo}>
+                                <Text style={styles.memberName}>
+                                  {member.profiles?.display_name || 'VIP Member'}
+                                </Text>
+                                <View style={[styles.memberTierBadge, { backgroundColor: levelColor }]}>
+                                  <Text style={styles.memberTierText}>{levelLabel}</Text>
+                                </View>
+                                <Text style={styles.memberGifted}>
+                                  {member.total_gifted_sek.toLocaleString()} kr gifted
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
+              </>
             ) : (
               <View style={styles.emptyState}>
                 <IconSymbol
@@ -343,12 +468,29 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     gap: 8,
+    marginBottom: 12,
   },
   activeText: {
     flex: 1,
     fontSize: 12,
     fontWeight: '600',
     color: colors.text,
+  },
+  viewMembersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(164, 0, 40, 0.1)',
+    borderColor: colors.brandPrimary,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  viewMembersText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.brandPrimary,
   },
   infoBox: {
     flexDirection: 'row',
@@ -367,6 +509,105 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.text,
     lineHeight: 18,
+  },
+  membersView: {
+    gap: 16,
+  },
+  backToClubButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  backToClubText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.brandPrimary,
+  },
+  membersTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  membersList: {
+    maxHeight: 400,
+  },
+  memberCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  memberAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  memberAvatarText: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  memberLevelBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  memberLevelText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  memberInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  memberTierBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  memberTierText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  memberGifted: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  emptyMembersState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 12,
+  },
+  emptyMembersText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   emptyState: {
     alignItems: 'center',

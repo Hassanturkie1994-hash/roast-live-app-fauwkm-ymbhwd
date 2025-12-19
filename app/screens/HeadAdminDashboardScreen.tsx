@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { adminService } from '@/app/services/adminService';
 import { supabase } from '@/app/integrations/supabase/client';
 import GradientButton from '@/components/GradientButton';
+import UserBanModal from '@/components/UserBanModal';
 
 interface UserSearchResult {
   id: string;
@@ -52,9 +53,11 @@ export default function HeadAdminDashboardScreen() {
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showBanModal, setShowBanModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string>('USER');
   const [searching, setSearching] = useState(false);
   const [assigningRole, setAssigningRole] = useState(false);
+  const [actionType, setActionType] = useState<'role' | 'ban'>('role');
 
   const fetchStats = useCallback(async () => {
     try {
@@ -62,7 +65,6 @@ export default function HeadAdminDashboardScreen() {
         .from('profiles')
         .select('*', { count: 'exact', head: true });
 
-      // Get active users (in last 5 minutes)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       
       const { data: activeViewers } = await supabase
@@ -97,7 +99,7 @@ export default function HeadAdminDashboardScreen() {
       const { data: staffData } = await supabase
         .from('profiles')
         .select('role')
-        .in('role', ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'MODERATOR']);
+        .in('role', ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'LIVE_MODERATOR']);
 
       const admins = staffData?.filter(s => s.role === 'ADMIN' || s.role === 'HEAD_ADMIN').length || 0;
       const support = staffData?.filter(s => s.role === 'SUPPORT').length || 0;
@@ -171,11 +173,19 @@ export default function HeadAdminDashboardScreen() {
     }
   };
 
-  const handleSelectUser = (selectedUserData: UserSearchResult) => {
+  const handleSelectUserForRole = (selectedUserData: UserSearchResult) => {
     setSelectedUser(selectedUserData);
     setSelectedRole(selectedUserData.role || 'USER');
+    setActionType('role');
     setShowUserSearchModal(false);
     setShowRoleModal(true);
+  };
+
+  const handleSelectUserForBan = (selectedUserData: UserSearchResult) => {
+    setSelectedUser(selectedUserData);
+    setActionType('ban');
+    setShowUserSearchModal(false);
+    setShowBanModal(true);
   };
 
   const handleAssignRole = async () => {
@@ -192,7 +202,6 @@ export default function HeadAdminDashboardScreen() {
     setAssigningRole(true);
 
     try {
-      // Update role in profiles table
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ role: selectedRole })
@@ -204,7 +213,6 @@ export default function HeadAdminDashboardScreen() {
         return;
       }
 
-      // Send notification to user
       const roleNames: Record<string, string> = {
         'HEAD_ADMIN': 'Head Admin',
         'ADMIN': 'Admin',
@@ -337,7 +345,7 @@ export default function HeadAdminDashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Platform Overview - CLICKABLE STATS */}
+        {/* Platform Overview */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>📊 Platform Overview</Text>
           
@@ -405,21 +413,40 @@ export default function HeadAdminDashboardScreen() {
           </View>
         </View>
 
-        {/* User Search & Role Assignment */}
+        {/* User Management */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>🔍 User Search & Role Management</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>👥 User Management</Text>
           
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => setShowUserSearchModal(true)}
+            onPress={() => {
+              setActionType('role');
+              setShowUserSearchModal(true);
+            }}
           >
             <IconSymbol
-              ios_icon_name="magnifyingglass"
-              android_material_icon_name="search"
+              ios_icon_name="person.badge.plus.fill"
+              android_material_icon_name="person_add"
               size={20}
               color={colors.brandPrimary}
             />
             <Text style={[styles.actionButtonText, { color: colors.text }]}>Search Users & Assign Roles</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: '#DC143C' }]}
+            onPress={() => {
+              setActionType('ban');
+              setShowUserSearchModal(true);
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="hand.raised.fill"
+              android_material_icon_name="block"
+              size={20}
+              color="#DC143C"
+            />
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>Ban User</Text>
           </TouchableOpacity>
           
           <Text style={[styles.helperText, { color: colors.textSecondary }]}>
@@ -427,7 +454,7 @@ export default function HeadAdminDashboardScreen() {
           </Text>
         </View>
 
-        {/* Reports - CLICKABLE */}
+        {/* Reports */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>🚨 Reports</Text>
           
@@ -542,32 +569,6 @@ export default function HeadAdminDashboardScreen() {
             />
             <Text style={[styles.actionButtonText, { color: colors.text }]}>Send In-App Announcement</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/SafetyCommunityRulesScreen' as any)}
-          >
-            <IconSymbol
-              ios_icon_name="doc.text.fill"
-              android_material_icon_name="description"
-              size={20}
-              color={colors.text}
-            />
-            <Text style={[styles.actionButtonText, { color: colors.text }]}>View Global Rules</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/AdminStrikesScreen' as any)}
-          >
-            <IconSymbol
-              ios_icon_name="exclamationmark.triangle.fill"
-              android_material_icon_name="warning"
-              size={20}
-              color="#FFA500"
-            />
-            <Text style={[styles.actionButtonText, { color: colors.text }]}>View & Remove Warnings</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -581,7 +582,9 @@ export default function HeadAdminDashboardScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
             <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Search Users</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {actionType === 'role' ? 'Search Users' : 'Search Users to Ban'}
+              </Text>
               <TouchableOpacity onPress={() => setShowUserSearchModal(false)}>
                 <IconSymbol
                   ios_icon_name="xmark"
@@ -625,7 +628,7 @@ export default function HeadAdminDashboardScreen() {
                   <TouchableOpacity
                     key={result.id}
                     style={[styles.searchResultItem, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    onPress={() => handleSelectUser(result)}
+                    onPress={() => actionType === 'role' ? handleSelectUserForRole(result) : handleSelectUserForBan(result)}
                   >
                     <View style={styles.searchResultLeft}>
                       <IconSymbol
@@ -815,6 +818,24 @@ export default function HeadAdminDashboardScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Ban Modal */}
+      {selectedUser && (
+        <UserBanModal
+          visible={showBanModal}
+          onClose={() => {
+            setShowBanModal(false);
+            setSelectedUser(null);
+          }}
+          userId={selectedUser.id}
+          username={selectedUser.username}
+          onBanComplete={() => {
+            fetchDashboardStats();
+            setSearchResults([]);
+            setSearchQuery('');
+          }}
+        />
+      )}
     </View>
   );
 }
@@ -824,11 +845,11 @@ function getRoleDescription(role: string): string {
     case 'HEAD_ADMIN':
       return 'Full platform control, can assign all roles';
     case 'ADMIN':
-      return 'Manage reports, users, and moderation';
+      return 'Manage reports, users, bans, and moderation';
     case 'SUPPORT':
       return 'Review appeals and support tickets';
     case 'LIVE_MODERATOR':
-      return 'Monitor and moderate live streams';
+      return 'Monitor and moderate all live streams';
     case 'USER':
       return 'Standard user with no admin privileges';
     default:
@@ -856,6 +877,7 @@ const styles = StyleSheet.create({
   backButton: {
     width: 40,
     height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -864,7 +886,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '800',
   },
   roleBadge: {
@@ -874,9 +896,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   roleBadgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#000000',
+    color: '#FFFFFF',
   },
   scrollView: {
     flex: 1,

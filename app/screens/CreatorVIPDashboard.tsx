@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
   Alert,
   Switch,
+  Modal,
+  TextInput,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { colors } from '@/styles/commonStyles';
@@ -19,21 +22,13 @@ import VIPMemberList from '@/components/VIPMemberList';
 import VIPActivityMetrics from '@/components/VIPActivityMetrics';
 import VIPClubMembersModal from '@/components/VIPClubMembersModal';
 import { unifiedVIPClubService, VIPClubMember } from '@/app/services/unifiedVIPClubService';
+import GradientButton from '@/components/GradientButton';
 
 /**
  * CreatorVIPDashboard Screen
  * 
- * Creator-side VIP Club management dashboard:
- * - List of VIP members
- * - Top VIP contributors
- * - VIP activity metrics
- * - Ability to enable/disable VIP perks (cosmetic only)
- * - Send announcements to VIP members
- * 
- * Rules:
- * - Creator CANNOT manually grant VIP
- * - All upgrades are system-driven
- * - VIP removal only via system rules
+ * FIXED: Replaced Alert.prompt (iOS-only) with custom modal
+ * IMPROVED: Better layout and spacing
  */
 export default function CreatorVIPDashboard() {
   const { user } = useAuth();
@@ -42,6 +37,10 @@ export default function CreatorVIPDashboard() {
   const [isLoadingMembers, setIsLoadingMembers] = useState(true);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'members' | 'metrics'>('members');
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcementTitle, setAnnouncementTitle] = useState('');
+  const [announcementMessage, setAnnouncementMessage] = useState('');
+  const [sendingAnnouncement, setSendingAnnouncement] = useState(false);
 
   // VIP Perk toggles (cosmetic only)
   const [enableCustomChatColors, setEnableCustomChatColors] = useState(true);
@@ -69,41 +68,37 @@ export default function CreatorVIPDashboard() {
     }
   }, [club, loadMembers]);
 
-  const handleSendAnnouncement = () => {
+  const handleSendAnnouncement = async () => {
     if (!club || !user) return;
 
-    Alert.prompt(
-      'Send VIP Announcement',
-      'Send a message to all VIP members',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send',
-          onPress: async (message) => {
-            if (!message?.trim()) return;
+    if (!announcementTitle.trim() || !announcementMessage.trim()) {
+      Alert.alert('Error', 'Please enter both title and message');
+      return;
+    }
 
-            try {
-              const result = await unifiedVIPClubService.sendVIPClubAnnouncement(
-                club.id,
-                user.id,
-                'VIP Announcement',
-                message
-              );
+    setSendingAnnouncement(true);
+    try {
+      const result = await unifiedVIPClubService.sendVIPClubAnnouncement(
+        club.id,
+        user.id,
+        announcementTitle,
+        announcementMessage
+      );
 
-              if (result.success) {
-                Alert.alert('Success', `Announcement sent to ${result.sentCount} members`);
-              } else {
-                Alert.alert('Error', result.error || 'Failed to send announcement');
-              }
-            } catch (error) {
-              console.error('Error sending announcement:', error);
-              Alert.alert('Error', 'Failed to send announcement');
-            }
-          },
-        },
-      ],
-      'plain-text'
-    );
+      if (result.success) {
+        Alert.alert('Success', `Announcement sent to ${result.sentCount} members`);
+        setShowAnnouncementModal(false);
+        setAnnouncementTitle('');
+        setAnnouncementMessage('');
+      } else {
+        Alert.alert('Error', result.error || 'Failed to send announcement');
+      }
+    } catch (error) {
+      console.error('Error sending announcement:', error);
+      Alert.alert('Error', 'Failed to send announcement');
+    } finally {
+      setSendingAnnouncement(false);
+    }
   };
 
   const handleToggleClubActive = async () => {
@@ -175,6 +170,7 @@ export default function CreatorVIPDashboard() {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backIcon} onPress={() => router.back()}>
           <IconSymbol
@@ -185,7 +181,7 @@ export default function CreatorVIPDashboard() {
           />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>VIP Dashboard</Text>
-        <TouchableOpacity onPress={handleSendAnnouncement}>
+        <TouchableOpacity onPress={() => setShowAnnouncementModal(true)}>
           <IconSymbol
             ios_icon_name="megaphone.fill"
             android_material_icon_name="campaign"
@@ -195,16 +191,28 @@ export default function CreatorVIPDashboard() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.clubHeader, { backgroundColor: club.badge_color }]}>
-        <Text style={styles.clubName}>{club.club_name}</Text>
-        <Text style={styles.clubBadge}>{club.badge_name}</Text>
-        <View style={styles.clubStats}>
-          <Text style={styles.clubStat}>{club.total_members} members</Text>
-          <Text style={styles.clubStat}>•</Text>
-          <Text style={styles.clubStat}>{club.monthly_price_sek} kr/month</Text>
+      {/* Club Header Card */}
+      <View style={[styles.clubHeaderCard, { backgroundColor: `${club.badge_color}15`, borderColor: club.badge_color }]}>
+        <View style={[styles.clubIcon, { backgroundColor: club.badge_color }]}>
+          <IconSymbol
+            ios_icon_name="crown.fill"
+            android_material_icon_name="workspace_premium"
+            size={32}
+            color="#FFFFFF"
+          />
+        </View>
+        <View style={styles.clubInfo}>
+          <Text style={styles.clubName}>{club.club_name}</Text>
+          <Text style={styles.clubBadge}>{club.badge_name}</Text>
+          <View style={styles.clubStats}>
+            <Text style={styles.clubStat}>{club.total_members} members</Text>
+            <Text style={styles.clubStat}>•</Text>
+            <Text style={styles.clubStat}>{club.monthly_price_sek} kr/month</Text>
+          </View>
         </View>
       </View>
 
+      {/* Tab Bar */}
       <View style={styles.tabBar}>
         <TouchableOpacity
           style={[styles.tab, selectedTab === 'members' && styles.tabActive]}
@@ -247,6 +255,7 @@ export default function CreatorVIPDashboard() {
         </TouchableOpacity>
       </View>
 
+      {/* Content */}
       {selectedTab === 'members' ? (
         <VIPMemberList
           clubId={club.id}
@@ -258,6 +267,7 @@ export default function CreatorVIPDashboard() {
         <VIPActivityMetrics clubId={club.id} />
       )}
 
+      {/* Perks Section */}
       <View style={styles.perksSection}>
         <Text style={styles.perksSectionTitle}>VIP Perks (Cosmetic Only)</Text>
         <Text style={styles.perksSectionDescription}>
@@ -339,6 +349,7 @@ export default function CreatorVIPDashboard() {
         </View>
       </View>
 
+      {/* Club Settings */}
       <View style={styles.dangerZone}>
         <Text style={styles.dangerZoneTitle}>Club Settings</Text>
         <TouchableOpacity
@@ -364,6 +375,69 @@ export default function CreatorVIPDashboard() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Announcement Modal - FIXED: Custom modal instead of Alert.prompt */}
+      <Modal
+        visible={showAnnouncementModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAnnouncementModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAnnouncementModal(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.background }]} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Send VIP Announcement</Text>
+              <TouchableOpacity onPress={() => setShowAnnouncementModal(false)}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={28}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.label, { color: colors.text }]}>Title</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
+                placeholder="Announcement title..."
+                placeholderTextColor={colors.textSecondary}
+                value={announcementTitle}
+                onChangeText={setAnnouncementTitle}
+              />
+
+              <Text style={[styles.label, { color: colors.text }]}>Message</Text>
+              <TextInput
+                style={[styles.textArea, { backgroundColor: colors.backgroundAlt, borderColor: colors.border, color: colors.text }]}
+                placeholder="Your message to VIP members..."
+                placeholderTextColor={colors.textSecondary}
+                value={announcementMessage}
+                onChangeText={setAnnouncementMessage}
+                multiline
+                numberOfLines={6}
+                textAlignVertical="top"
+              />
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.cancelButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
+                  onPress={() => setShowAnnouncementModal(false)}
+                >
+                  <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                <View style={styles.sendButtonContainer}>
+                  <GradientButton
+                    title={sendingAnnouncement ? 'Sending...' : 'Send'}
+                    onPress={handleSendAnnouncement}
+                    disabled={sendingAnnouncement}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {showMembersModal && club && (
         <VIPClubMembersModal
@@ -405,35 +479,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: colors.text,
   },
-  clubHeader: {
+  clubHeaderCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 24,
-    gap: 8,
+    margin: 20,
+    padding: 20,
+    borderRadius: 20,
+    borderWidth: 2,
+    gap: 16,
+  },
+  clubIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clubInfo: {
+    flex: 1,
+    gap: 6,
   },
   clubName: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: colors.text,
   },
   clubBadge: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
-    opacity: 0.9,
+    color: colors.textSecondary,
   },
   clubStats: {
     flexDirection: 'row',
     gap: 8,
+    marginTop: 4,
   },
   clubStat: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#FFFFFF',
-    opacity: 0.8,
+    color: colors.textSecondary,
   },
   tabBar: {
     flexDirection: 'row',
@@ -449,7 +537,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 12,
     backgroundColor: colors.backgroundAlt,
   },
@@ -566,5 +654,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    flex: 1,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    minHeight: 120,
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  cancelButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  sendButtonContainer: {
+    flex: 1,
   },
 });

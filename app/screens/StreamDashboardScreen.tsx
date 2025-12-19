@@ -31,6 +31,13 @@ interface CreatorStats {
   currentSeasonScore: number;
 }
 
+interface RankHistory {
+  season_number: number;
+  rank: number;
+  score: number;
+  tier: string;
+}
+
 export default function StreamDashboardScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -41,6 +48,7 @@ export default function StreamDashboardScreen() {
   const [streamDelay, setStreamDelay] = useState(0);
   const [enableSafetyHints, setEnableSafetyHints] = useState(true);
   const [autoModerateSpam, setAutoModerateSpam] = useState(false);
+  const [chatPaused, setChatPaused] = useState(false);
   const [creatorStats, setCreatorStats] = useState<CreatorStats>({
     level: 1,
     xp: 0,
@@ -51,6 +59,7 @@ export default function StreamDashboardScreen() {
     currentSeasonRank: 0,
     currentSeasonScore: 0,
   });
+  const [rankHistory, setRankHistory] = useState<RankHistory[]>([]);
 
   const fetchVIPClubData = useCallback(async () => {
     if (!user) return;
@@ -93,7 +102,7 @@ export default function StreamDashboardScreen() {
         .from('creator_levels')
         .select('*')
         .eq('creator_id', user.id)
-        .single();
+        .maybeSingle();
 
       // Load total gifts received
       const { data: giftsData } = await supabase
@@ -114,7 +123,7 @@ export default function StreamDashboardScreen() {
       const { data: streamData } = await supabase
         .from('live_streams')
         .select('started_at, ended_at')
-        .eq('user_id', user.id)
+        .eq('creator_id', user.id)
         .not('ended_at', 'is', null);
 
       const totalDuration = streamData?.reduce((sum, stream) => {
@@ -128,21 +137,38 @@ export default function StreamDashboardScreen() {
       // Load current season rank
       const { data: seasonData } = await supabase
         .from('creator_season_scores')
-        .select('rank, total_score')
+        .select('season_score, rank_tier, roast_ranking_seasons(season_number)')
         .eq('creator_id', user.id)
-        .order('season_id', { ascending: false })
+        .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
+
+      // Load rank history (last 5 seasons)
+      const { data: historyData } = await supabase
+        .from('creator_season_scores')
+        .select('season_score, rank_tier, roast_ranking_seasons(season_number)')
+        .eq('creator_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      const history: RankHistory[] = historyData?.map((item: any) => ({
+        season_number: item.roast_ranking_seasons?.season_number || 0,
+        rank: 0, // We'll calculate this from rank_tier
+        score: item.season_score || 0,
+        tier: item.rank_tier || 'Bronze Mouth',
+      })) || [];
+
+      setRankHistory(history);
 
       setCreatorStats({
-        level: levelData?.level || 1,
-        xp: levelData?.xp || 0,
+        level: levelData?.current_level || 1,
+        xp: levelData?.current_xp || 0,
         xpToNextLevel: levelData?.xp_to_next_level || 1000,
         totalGiftsReceived: totalGifts,
         totalBattles: battleCount || 0,
         totalStreamDuration: totalHours,
-        currentSeasonRank: seasonData?.rank || 0,
-        currentSeasonScore: seasonData?.total_score || 0,
+        currentSeasonRank: 0,
+        currentSeasonScore: seasonData?.season_score || 0,
       });
     } catch (error) {
       console.error('Error loading creator stats:', error);
@@ -195,6 +221,12 @@ export default function StreamDashboardScreen() {
     return 'Bronze Mouth';
   };
 
+  const handleToggleChatPause = () => {
+    setChatPaused(!chatPaused);
+    // This would be sent to the live stream when active
+    console.log('Chat paused:', !chatPaused);
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
@@ -244,20 +276,20 @@ export default function StreamDashboardScreen() {
                   styles.xpFill,
                   {
                     backgroundColor: colors.brandPrimary,
-                    width: `${(creatorStats.xp / creatorStats.xpToNextLevel) * 100}%`,
+                    width: `${Math.min(100, (creatorStats.xp / creatorStats.xpToNextLevel) * 100)}%`,
                   },
                 ]}
               />
             </View>
             <Text style={[styles.xpText, { color: colors.textSecondary }]}>
-              {creatorStats.xp} / {creatorStats.xpToNextLevel} XP
+              {creatorStats.xp.toLocaleString()} / {creatorStats.xpToNextLevel.toLocaleString()} XP
             </Text>
 
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
                 <UnifiedRoastIcon name="roast-gift-box" size={20} color={colors.brandPrimary} />
-                <Text style={[styles.statValue, { color: colors.text }]}>{creatorStats.totalGiftsReceived}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Gifts</Text>
+                <Text style={[styles.statValue, { color: colors.text }]}>{creatorStats.totalGiftsReceived.toLocaleString()}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>kr Gifts</Text>
               </View>
               <View style={styles.statBox}>
                 <UnifiedRoastIcon name="flame" size={20} color={colors.brandPrimary} />
@@ -273,13 +305,14 @@ export default function StreamDashboardScreen() {
           </View>
         </View>
 
-        {/* Seasons & Rankings */}
+        {/* Seasons & Rankings - MOVED FROM PROFILE SETTINGS */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <UnifiedRoastIcon name="crown" size={24} color="#FFD700" />
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Seasons & Rankings</Text>
           </View>
 
+          {/* Current Season Card */}
           <TouchableOpacity
             style={[styles.rankingCard, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => router.push('/screens/SeasonsRankingsScreen' as any)}
@@ -298,6 +331,35 @@ export default function StreamDashboardScreen() {
             </View>
             <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
+
+          {/* Rank History */}
+          {rankHistory.length > 0 && (
+            <View style={styles.rankHistorySection}>
+              <Text style={[styles.rankHistoryTitle, { color: colors.text }]}>Rank History</Text>
+              <View style={styles.rankHistoryList}>
+                {rankHistory.map((history, index) => (
+                  <View key={index} style={[styles.rankHistoryItem, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+                    <View style={styles.rankHistoryLeft}>
+                      <Text style={[styles.rankHistorySeason, { color: colors.textSecondary }]}>
+                        Season {history.season_number}
+                      </Text>
+                      <Text style={[styles.rankHistoryTier, { color: colors.text }]}>
+                        {history.tier}
+                      </Text>
+                    </View>
+                    <View style={styles.rankHistoryRight}>
+                      <Text style={[styles.rankHistoryScore, { color: colors.brandPrimary }]}>
+                        {history.score.toLocaleString()}
+                      </Text>
+                      <Text style={[styles.rankHistoryLabel, { color: colors.textSecondary }]}>
+                        points
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
 
         {/* VIP Club Section */}
@@ -323,7 +385,7 @@ export default function StreamDashboardScreen() {
                   Badge: {vipClub.badge_name}
                 </Text>
                 <Text style={[styles.vipClubMembers, { color: colors.textSecondary }]}>
-                  {vipClub.total_members} members • {vipClub.monthly_price_sek} SEK/month
+                  {vipClub.total_members} members • {vipClub.monthly_price_sek} kr/month
                 </Text>
               </View>
               <TouchableOpacity
@@ -384,9 +446,17 @@ export default function StreamDashboardScreen() {
             <Text style={[styles.actionButtonText, { color: colors.text }]}>Retention Analytics</Text>
             <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/screens/BattleHistoryScreen' as any)}
+          >
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>Battle History</Text>
+            <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Stream Settings Section */}
+        {/* Stream Controls */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <IconSymbol
@@ -395,7 +465,22 @@ export default function StreamDashboardScreen() {
               size={24}
               color={colors.text}
             />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stream Settings</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stream Controls</Text>
+          </View>
+
+          <View style={[styles.settingRow, { borderBottomColor: colors.border }]}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Pause Chat</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                Temporarily pause chat during stream
+              </Text>
+            </View>
+            <Switch
+              value={chatPaused}
+              onValueChange={handleToggleChatPause}
+              trackColor={{ false: colors.border, true: colors.brandPrimary }}
+              thumbColor="#FFFFFF"
+            />
           </View>
 
           <View style={[styles.settingRow, { borderBottomColor: colors.border }]}>
@@ -444,20 +529,57 @@ export default function StreamDashboardScreen() {
               size={24}
               color={colors.text}
             />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Moderators</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Stream Moderators</Text>
           </View>
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/ModeratorDashboardScreen' as any)}
+            onPress={() => router.push('/screens/RoleManagementScreen' as any)}
           >
-            <Text style={[styles.actionButtonText, { color: colors.text }]}>Manage Moderators</Text>
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>Manage Stream Moderators</Text>
             <IconSymbol
               ios_icon_name="chevron.right"
               android_material_icon_name="chevron_right"
               size={20}
               color={colors.textSecondary}
             />
+          </TouchableOpacity>
+
+          <View style={[styles.infoBox, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+            <IconSymbol
+              ios_icon_name="info.circle.fill"
+              android_material_icon_name="info"
+              size={16}
+              color={colors.brandPrimary}
+            />
+            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+              Stream Moderators can timeout, ban, and pin messages in your streams only. 
+              They are different from Staff Moderators who manage all streams.
+            </Text>
+          </View>
+        </View>
+
+        {/* Earnings & Payouts */}
+        <View style={[styles.section, { borderBottomColor: colors.border }]}>
+          <View style={styles.sectionHeader}>
+            <UnifiedRoastIcon name="lava-wallet" size={24} color={colors.brandPrimary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Earnings & Payouts</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/screens/CreatorEarningsScreen' as any)}
+          >
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>View Earnings Summary</Text>
+            <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/screens/StreamRevenueScreen' as any)}
+          >
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>Stream Revenue</Text>
+            <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -579,6 +701,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
+    marginBottom: 16,
   },
   rankingContent: {
     flexDirection: 'row',
@@ -608,6 +731,48 @@ const styles = StyleSheet.create({
   },
   rankingScore: {
     fontSize: 13,
+    fontWeight: '600',
+  },
+  rankHistorySection: {
+    gap: 12,
+  },
+  rankHistoryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  rankHistoryList: {
+    gap: 10,
+  },
+  rankHistoryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  rankHistoryLeft: {
+    gap: 4,
+  },
+  rankHistorySeason: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  rankHistoryTier: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  rankHistoryRight: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  rankHistoryScore: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  rankHistoryLabel: {
+    fontSize: 11,
     fontWeight: '600',
   },
   vipClubCard: {
@@ -706,5 +871,20 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 8,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 18,
   },
 });

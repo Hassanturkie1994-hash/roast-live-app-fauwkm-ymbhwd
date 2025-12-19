@@ -6,30 +6,28 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  Image,
-  ActivityIndicator,
+  Modal,
+  Pressable,
+  Animated,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
-import { ROAST_GIFT_MANIFEST, RoastGiftTier } from '@/constants/RoastGiftManifest';
+import { ROAST_GIFT_MANIFEST, RoastGiftTier, RoastGift, getRoastGiftAnimationDuration } from '@/constants/RoastGiftManifest';
+import { IconSymbol } from '@/components/IconSymbol';
+import GradientButton from '@/components/GradientButton';
 
 /**
  * Gift & Effects Screen
  * 
  * Displays the NEW Roast Gift catalog with 45 gifts across 4 tiers.
+ * NOW WITH CLICKABLE DETAILS:
+ * - Animation preview
+ * - Duration display
+ * - Sound information
+ * - Full description
  * 
- * SAFETY GUARDS:
- * - All gift arrays default to empty arrays
- * - filteredGifts is ALWAYS an array
- * - Loading, empty, and error states are handled
- * - No .map() is called on undefined values
- * 
- * TIER SYSTEM:
- * - LOW: 1-10 SEK (Cheap Heckles)
- * - MID: 20-100 SEK (Crowd Reactions)
- * - HIGH: 150-500 SEK (Roast Weapons)
- * - ULTRA: 700-4000 SEK (Battle Disruptors & Nuclear Moments)
+ * SORTED BY PRICE: Cheapest first, most expensive last
  */
 
 type TierFilter = 'LOW' | 'MID' | 'HIGH' | 'ULTRA' | null;
@@ -37,15 +35,19 @@ type TierFilter = 'LOW' | 'MID' | 'HIGH' | 'ULTRA' | null;
 export default function GiftInformationScreen() {
   const { colors } = useTheme();
   const [selectedTier, setSelectedTier] = useState<TierFilter>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [selectedGift, setSelectedGift] = useState<RoastGift | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [animationPlaying, setAnimationPlaying] = useState(false);
+  const animationScale = useState(new Animated.Value(1))[0];
 
-  // SAFETY GUARD: Ensure gifts is always an array
+  // SAFETY GUARD: Ensure gifts is always an array and SORTED BY PRICE
   const allGifts = useMemo(() => {
     if (!ROAST_GIFT_MANIFEST || !Array.isArray(ROAST_GIFT_MANIFEST)) {
       console.error('❌ [GiftInformationScreen] ROAST_GIFT_MANIFEST is not an array');
       return [];
     }
-    return ROAST_GIFT_MANIFEST;
+    // Sort by price: cheapest first, most expensive last
+    return [...ROAST_GIFT_MANIFEST].sort((a, b) => a.priceSEK - b.priceSEK);
   }, []);
 
   // SAFETY GUARD: Filter logic that always returns an array
@@ -92,48 +94,97 @@ export default function GiftInformationScreen() {
     }
   };
 
-  // LOADING STATE
-  if (isLoading) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <UnifiedRoastIcon name="chevron-left" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Gifts & Effects</Text>
-          <View style={styles.placeholder} />
-        </View>
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.brandPrimary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Loading gift catalog...
-          </Text>
-        </View>
-      </View>
-    );
-  }
+  const handleGiftPress = (gift: RoastGift) => {
+    setSelectedGift(gift);
+    setShowDetailsModal(true);
+  };
 
-  // EMPTY STATE
-  if (!allGifts || allGifts.length === 0) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <UnifiedRoastIcon name="chevron-left" size={24} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Gifts & Effects</Text>
-          <View style={styles.placeholder} />
-        </View>
-        <View style={styles.centerContainer}>
-          <Text style={[styles.emptyIcon, { color: colors.textSecondary }]}>🎁</Text>
-          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Gifts Available</Text>
-          <Text style={[styles.emptyDescription, { color: colors.textSecondary }]}>
-            The gift catalog is currently empty. Please check back later.
-          </Text>
-        </View>
-      </View>
-    );
-  }
+  const playAnimation = () => {
+    setAnimationPlaying(true);
+    
+    // Simulate gift animation
+    Animated.sequence([
+      Animated.timing(animationScale, {
+        toValue: 1.5,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.timing(animationScale, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setAnimationPlaying(false);
+    });
+  };
+
+  const getSoundDescription = (soundProfile: string): string => {
+    const soundMap: Record<string, string> = {
+      'crowd_boo': 'Crowd booing sound',
+      'tomato_splat': 'Tomato splat sound effect',
+      'sitcom_laugh': 'Sitcom laugh track',
+      'slap_sound': 'Slap sound effect',
+      'cricket_chirp': 'Cricket chirping',
+      'yawn_sound': 'Yawning sound',
+      'clown_horn': 'Clown horn honk',
+      'trash_dump': 'Trash dumping sound',
+      'death_sound': 'Death sound effect',
+      'fart_sound': 'Fart sound',
+      'mic_drop_thud': 'Mic drop thud',
+      'airhorn_blast': 'Loud airhorn blast',
+      'crowd_roar': 'Crowd roaring',
+      'boxing_bell': 'Boxing bell ding',
+      'fire_whoosh': 'Fire whoosh sound',
+      'explosion_boom': 'Explosion boom',
+      'gasp_sound': 'Shocked gasp',
+      'savage_sound': 'Savage sound effect',
+      'salt_pour': 'Salt pouring',
+      'tea_spill': 'Tea spilling',
+      'flamethrower': 'Flamethrower sound',
+      'stamp_slam': 'Stamp slamming',
+      'gavel_bang': 'Judge gavel bang',
+      'crown_fanfare': 'Crown fanfare',
+      'punch_knockout': 'Knockout punch',
+      'bomb_explosion': 'Bomb explosion',
+      'thunder_crack': 'Thunder crack',
+      'trophy_win': 'Trophy win fanfare',
+      'earthquake_rumble': 'Earthquake rumble',
+      'slow_motion': 'Slow motion effect',
+      'spotlight_on': 'Spotlight turning on',
+      'mute_sound': 'Mute sound',
+      'time_stop': 'Time freeze effect',
+      'nuke_explosion': 'Nuclear explosion',
+      'shame_bell_ring': 'Shame bell ringing',
+      'meteor_impact': 'Meteor impact',
+      'funeral_march': 'Funeral march music',
+      'riot_chaos': 'Riot chaos sounds',
+      'execution_sound': 'Execution sound',
+      'game_over': 'Game over sound',
+      'apocalypse_sound': 'Apocalypse sound',
+      'sigh_sound': 'Sigh sound',
+      'snore_sound': 'Snoring sound',
+      'cringe_sound': 'Cringe sound',
+      'hammer_slam': 'Hammer slam',
+      'sword_slash': 'Sword slash',
+      'shield_block': 'Shield block',
+      'dragon_roar': 'Dragon roar',
+    };
+    return soundMap[soundProfile] || 'Sound effect';
+  };
+
+  const getAnimationDescription = (animationType: string): string => {
+    switch (animationType) {
+      case 'OVERLAY':
+        return 'Appears as an overlay on screen';
+      case 'AR':
+        return 'Augmented reality effect on camera';
+      case 'CINEMATIC':
+        return 'Full-screen cinematic takeover';
+      default:
+        return 'Animation effect';
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -232,13 +283,14 @@ export default function GiftInformationScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* SAFETY GUARD: Only render grid if filteredGifts has items */}
         {filteredGifts.length > 0 ? (
           <View style={styles.giftGrid}>
             {filteredGifts.map((gift, index) => (
-              <View 
-                key={`${gift.giftId}-${index}`} 
+              <TouchableOpacity
+                key={`${gift.giftId}-${index}`}
                 style={[styles.giftCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => handleGiftPress(gift)}
+                activeOpacity={0.7}
               >
                 <View style={[styles.giftImageContainer, { backgroundColor: colors.backgroundAlt }]}>
                   <Text style={styles.giftEmoji}>{gift.emoji}</Text>
@@ -250,17 +302,18 @@ export default function GiftInformationScreen() {
                   <Text style={styles.tierText}>{getTierLabel(gift.tier).toUpperCase()}</Text>
                 </View>
                 <Text style={[styles.giftPrice, { color: colors.brandPrimary }]}>
-                  {gift.priceSEK} SEK
+                  {gift.priceSEK} kr
                 </Text>
-                <Text style={[styles.giftDescription, { color: colors.textSecondary }]} numberOfLines={2}>
-                  {gift.description}
-                </Text>
-                <View style={[styles.animationTypeBadge, { backgroundColor: colors.backgroundAlt }]}>
-                  <Text style={[styles.animationTypeText, { color: colors.textSecondary }]}>
-                    {gift.animationType}
-                  </Text>
+                <View style={styles.tapHint}>
+                  <IconSymbol
+                    ios_icon_name="hand.tap.fill"
+                    android_material_icon_name="touch_app"
+                    size={12}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={[styles.tapHintText, { color: colors.textSecondary }]}>Tap for details</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         ) : (
@@ -273,6 +326,159 @@ export default function GiftInformationScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Gift Details Modal */}
+      <Modal
+        visible={showDetailsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDetailsModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowDetailsModal(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.background }]} onPress={(e) => e.stopPropagation()}>
+            {selectedGift && (
+              <>
+                <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedGift.displayName}</Text>
+                  <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
+                    <IconSymbol
+                      ios_icon_name="xmark.circle.fill"
+                      android_material_icon_name="cancel"
+                      size={28}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                  {/* Animated Gift Preview */}
+                  <View style={[styles.previewContainer, { backgroundColor: colors.backgroundAlt }]}>
+                    <Animated.View style={{ transform: [{ scale: animationScale }] }}>
+                      <Text style={styles.previewEmoji}>{selectedGift.emoji}</Text>
+                    </Animated.View>
+                  </View>
+
+                  {/* Price and Tier */}
+                  <View style={styles.detailsRow}>
+                    <View style={styles.detailItem}>
+                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Price</Text>
+                      <Text style={[styles.detailValue, { color: colors.brandPrimary }]}>
+                        {selectedGift.priceSEK} kr
+                      </Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Tier</Text>
+                      <View style={[styles.tierBadgeLarge, { backgroundColor: getTierColor(selectedGift.tier) }]}>
+                        <Text style={styles.tierTextLarge}>{getTierLabel(selectedGift.tier).toUpperCase()}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Description */}
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Description</Text>
+                    <Text style={[styles.detailSectionText, { color: colors.textSecondary }]}>
+                      {selectedGift.description}
+                    </Text>
+                  </View>
+
+                  {/* Animation Type */}
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Animation Type</Text>
+                    <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <IconSymbol
+                        ios_icon_name="sparkles"
+                        android_material_icon_name="auto_awesome"
+                        size={20}
+                        color={colors.brandPrimary}
+                      />
+                      <View style={styles.infoCardText}>
+                        <Text style={[styles.infoCardTitle, { color: colors.text }]}>
+                          {selectedGift.animationType}
+                        </Text>
+                        <Text style={[styles.infoCardDescription, { color: colors.textSecondary }]}>
+                          {getAnimationDescription(selectedGift.animationType)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Duration */}
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Duration</Text>
+                    <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <IconSymbol
+                        ios_icon_name="clock.fill"
+                        android_material_icon_name="schedule"
+                        size={20}
+                        color={colors.brandPrimary}
+                      />
+                      <View style={styles.infoCardText}>
+                        <Text style={[styles.infoCardTitle, { color: colors.text }]}>
+                          {(getRoastGiftAnimationDuration(selectedGift.tier) / 1000).toFixed(1)} seconds
+                        </Text>
+                        <Text style={[styles.infoCardDescription, { color: colors.textSecondary }]}>
+                          Appears during live stream
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Sound */}
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Sound Effect</Text>
+                    <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <IconSymbol
+                        ios_icon_name="speaker.wave.3.fill"
+                        android_material_icon_name="volume_up"
+                        size={20}
+                        color={colors.brandPrimary}
+                      />
+                      <View style={styles.infoCardText}>
+                        <Text style={[styles.infoCardTitle, { color: colors.text }]}>
+                          {selectedGift.soundProfile}
+                        </Text>
+                        <Text style={[styles.infoCardDescription, { color: colors.textSecondary }]}>
+                          {getSoundDescription(selectedGift.soundProfile)}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Cinematic Timeline Info */}
+                  {selectedGift.cinematicTimeline && (
+                    <View style={styles.detailSection}>
+                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Cinematic Effects</Text>
+                      <View style={[styles.cinematicCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <IconSymbol
+                          ios_icon_name="film.fill"
+                          android_material_icon_name="movie"
+                          size={20}
+                          color="#E91E63"
+                        />
+                        <Text style={[styles.cinematicText, { color: colors.text }]}>
+                          This gift includes a {(selectedGift.cinematicTimeline.duration / 1000).toFixed(1)}s 
+                          cinematic sequence with {selectedGift.cinematicTimeline.keyframes.length} effects
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Play Animation Button */}
+                  <View style={styles.actionButtonContainer}>
+                    <GradientButton
+                      title={animationPlaying ? 'Playing Animation...' : 'Show Animation Preview'}
+                      onPress={playAnimation}
+                      size="large"
+                      disabled={animationPlaying}
+                    />
+                  </View>
+                </ScrollView>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -350,11 +556,6 @@ const styles = StyleSheet.create({
   giftEmoji: {
     fontSize: 48,
   },
-  giftImage: {
-    width: '70%',
-    height: '70%',
-    resizeMode: 'contain',
-  },
   giftName: {
     fontSize: 14,
     fontWeight: '700',
@@ -374,20 +575,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
-  giftDescription: {
-    fontSize: 11,
-    fontWeight: '400',
-    lineHeight: 14,
-  },
-  animationTypeBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
+  tapHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginTop: 4,
   },
-  animationTypeText: {
-    fontSize: 9,
+  tapHintText: {
+    fontSize: 10,
     fontWeight: '600',
   },
   centerContainer: {
@@ -396,11 +591,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 32,
     paddingTop: 100,
-  },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 16,
   },
   emptyIcon: {
     fontSize: 64,
@@ -417,5 +607,122 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: 24,
+    maxHeight: '90%',
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    flex: 1,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  previewContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    borderRadius: 16,
+    marginBottom: 24,
+  },
+  previewEmoji: {
+    fontSize: 96,
+  },
+  detailsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  detailItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  detailLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  tierBadgeLarge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  tierTextLarge: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  detailSection: {
+    marginBottom: 20,
+  },
+  detailSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  detailSectionText: {
+    fontSize: 15,
+    fontWeight: '400',
+    lineHeight: 22,
+  },
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  infoCardText: {
+    flex: 1,
+    gap: 4,
+  },
+  infoCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  infoCardDescription: {
+    fontSize: 13,
+    fontWeight: '400',
+  },
+  cinematicCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  cinematicText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  actionButtonContainer: {
+    marginTop: 24,
   },
 });
