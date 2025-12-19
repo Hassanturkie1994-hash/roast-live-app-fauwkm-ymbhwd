@@ -20,11 +20,11 @@ import GradientButton from '@/components/GradientButton';
 /**
  * Gift & Effects Screen
  * 
- * FIXED UX ISSUES:
- * - Proper ScrollView with full scrolling capability
+ * RESTORED GIFT DETAILS MODAL:
+ * - ALL gift information visible (icon, name, price, tier, description, sound, animation)
+ * - Full vertical scrolling capability
  * - Animation renders inline below the button
  * - User can see animation immediately when triggered
- * - No hidden animations
  * 
  * Displays the NEW Roast Gift catalog with 45 gifts across 4 tiers.
  * SORTED BY PRICE: Cheapest first, most expensive last
@@ -40,7 +40,6 @@ export default function GiftInformationScreen() {
   const [animationPlaying, setAnimationPlaying] = useState(false);
   const animationScale = useState(new Animated.Value(1))[0];
   const scrollViewRef = useRef<ScrollView>(null);
-  const animationViewRef = useRef<View>(null);
 
   // SAFETY GUARD: Ensure gifts is always an array and SORTED BY PRICE
   const allGifts = useMemo(() => {
@@ -77,7 +76,7 @@ export default function GiftInformationScreen() {
       case 'ULTRA':
         return '#E91E63';
       default:
-        return colors.textSecondary;
+        return '#999999';
     }
   };
 
@@ -97,12 +96,14 @@ export default function GiftInformationScreen() {
   };
 
   const handleGiftPress = (gift: RoastGift) => {
+    console.log('🎁 [GiftInformationScreen] Opening gift details for:', gift.displayName);
     setSelectedGift(gift);
     setShowDetailsModal(true);
     setAnimationPlaying(false); // Reset animation state
   };
 
   const playAnimation = () => {
+    console.log('▶️ [GiftInformationScreen] Playing animation preview');
     setAnimationPlaying(true);
     
     // Simulate gift animation with inline rendering
@@ -283,7 +284,7 @@ export default function GiftInformationScreen() {
         </ScrollView>
       </View>
 
-      {/* Gift Grid - FIXED: Proper scrolling with paddingBottom */}
+      {/* Gift Grid */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
@@ -334,7 +335,7 @@ export default function GiftInformationScreen() {
         )}
       </ScrollView>
 
-      {/* Gift Details Modal - FIXED: Proper scrolling and inline animation */}
+      {/* RESTORED Gift Details Modal - ALL INFORMATION VISIBLE */}
       <Modal
         visible={showDetailsModal}
         transparent
@@ -342,9 +343,13 @@ export default function GiftInformationScreen() {
         onRequestClose={() => setShowDetailsModal(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setShowDetailsModal(false)}>
-          <Pressable style={[styles.modalContent, { backgroundColor: colors.background }]} onPress={(e) => e.stopPropagation()}>
-            {selectedGift && (
-              <>
+          <Pressable 
+            style={[styles.modalContent, { backgroundColor: colors.background }]} 
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedGift ? (
+              <View style={styles.modalInnerContainer}>
+                {/* Modal Header */}
                 <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
                   <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedGift.displayName}</Text>
                   <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
@@ -357,18 +362,24 @@ export default function GiftInformationScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* FIXED: ScrollView with proper contentContainerStyle and paddingBottom */}
+                {/* RESTORED: ScrollView with ALL gift information */}
                 <ScrollView 
                   ref={scrollViewRef}
                   style={styles.modalBody} 
                   contentContainerStyle={styles.modalBodyContent}
-                  showsVerticalScrollIndicator={false}
+                  showsVerticalScrollIndicator={true}
                   scrollEnabled={true}
+                  bounces={true}
                 >
-                  {/* Static Gift Preview */}
+                  {/* Gift Icon/Emoji */}
                   <View style={[styles.previewContainer, { backgroundColor: colors.backgroundAlt }]}>
                     <Text style={styles.previewEmoji}>{selectedGift.emoji}</Text>
                   </View>
+
+                  {/* Gift Name (redundant but ensures visibility) */}
+                  <Text style={[styles.giftNameLarge, { color: colors.text }]}>
+                    {selectedGift.displayName}
+                  </Text>
 
                   {/* Price and Tier */}
                   <View style={styles.detailsRow}>
@@ -386,7 +397,7 @@ export default function GiftInformationScreen() {
                     </View>
                   </View>
 
-                  {/* Description */}
+                  {/* Full Description */}
                   <View style={styles.detailSection}>
                     <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Description</Text>
                     <Text style={[styles.detailSectionText, { color: colors.textSecondary }]}>
@@ -436,7 +447,7 @@ export default function GiftInformationScreen() {
                     </View>
                   </View>
 
-                  {/* Sound */}
+                  {/* Sound Description */}
                   <View style={styles.detailSection}>
                     <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Sound Effect</Text>
                     <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -457,7 +468,28 @@ export default function GiftInformationScreen() {
                     </View>
                   </View>
 
-                  {/* Cinematic Timeline Info */}
+                  {/* Battle / Roast Behavior */}
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Battle Behavior</Text>
+                    <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <IconSymbol
+                        ios_icon_name="flame.fill"
+                        android_material_icon_name="local_fire_department"
+                        size={20}
+                        color="#FF6B35"
+                      />
+                      <View style={styles.infoCardText}>
+                        <Text style={[styles.infoCardTitle, { color: colors.text }]}>
+                          Roast Gift
+                        </Text>
+                        <Text style={[styles.infoCardDescription, { color: colors.textSecondary }]}>
+                          This gift can be sent during battles and roast sessions to support your favorite creator
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Cinematic Timeline Info (if applicable) */}
                   {selectedGift.cinematicTimeline && (
                     <View style={styles.detailSection}>
                       <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Cinematic Effects</Text>
@@ -476,7 +508,7 @@ export default function GiftInformationScreen() {
                     </View>
                   )}
 
-                  {/* Play Animation Button */}
+                  {/* Show Animation Button */}
                   <View style={styles.actionButtonContainer}>
                     <GradientButton
                       title={animationPlaying ? 'Playing Animation...' : 'Show Animation Preview'}
@@ -486,10 +518,9 @@ export default function GiftInformationScreen() {
                     />
                   </View>
 
-                  {/* FIXED: Inline Animation - Renders BELOW the button */}
+                  {/* INLINE Animation Preview - Renders BELOW the button */}
                   {animationPlaying && (
                     <Animated.View
-                      ref={animationViewRef}
                       style={[
                         styles.inlineAnimationContainer,
                         { 
@@ -507,8 +538,17 @@ export default function GiftInformationScreen() {
                       </Text>
                     </Animated.View>
                   )}
+
+                  {/* Bottom Padding Spacer */}
+                  <View style={styles.bottomSpacer} />
                 </ScrollView>
-              </>
+              </View>
+            ) : (
+              <View style={styles.modalInnerContainer}>
+                <Text style={[styles.errorText, { color: colors.textSecondary }]}>
+                  No gift selected
+                </Text>
+              </View>
             )}
           </Pressable>
         </Pressable>
@@ -564,7 +604,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingBottom: 120, // FIXED: Proper padding for full scroll
+    paddingBottom: 120,
   },
   giftGrid: {
     flexDirection: 'row',
@@ -656,6 +696,9 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
     overflow: 'hidden',
   },
+  modalInnerContainer: {
+    flex: 1,
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -673,17 +716,23 @@ const styles = StyleSheet.create({
   },
   modalBodyContent: {
     padding: 20,
-    paddingBottom: 40, // FIXED: Proper padding for full scroll
+    paddingBottom: 60,
   },
   previewContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 40,
     borderRadius: 16,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   previewEmoji: {
     fontSize: 96,
+  },
+  giftNameLarge: {
+    fontSize: 24,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 24,
   },
   detailsRow: {
     flexDirection: 'row',
@@ -762,9 +811,8 @@ const styles = StyleSheet.create({
   },
   actionButtonContainer: {
     marginTop: 24,
-    marginBottom: 16, // Space for inline animation
+    marginBottom: 16,
   },
-  // FIXED: Inline animation container - renders BELOW the button
   inlineAnimationContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -785,5 +833,14 @@ const styles = StyleSheet.create({
   animationSubtext: {
     fontSize: 14,
     fontWeight: '400',
+  },
+  bottomSpacer: {
+    height: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    padding: 40,
   },
 });
