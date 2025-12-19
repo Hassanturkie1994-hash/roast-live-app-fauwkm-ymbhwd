@@ -1,34 +1,28 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { colors } from '@/styles/commonStyles';
-import { IconSymbol } from '@/components/IconSymbol';
 
 interface ModeratorBadgeAnimationProps {
   username: string;
+  onComplete: () => void;
 }
 
-export default function ModeratorBadgeAnimation({ username }: ModeratorBadgeAnimationProps) {
-  const scaleAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim = useRef(new Animated.Value(0)).current;
+export default function ModeratorBadgeAnimation({
+  username,
+  onComplete,
+}: ModeratorBadgeAnimationProps) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.5)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    // Badge zooms up then shrinks to normal size
-    Animated.sequence([
-      Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1.5,
-          friction: 6,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]),
+  const startAnimation = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
       Animated.spring(scaleAnim, {
         toValue: 1,
         friction: 8,
@@ -37,27 +31,42 @@ export default function ModeratorBadgeAnimation({ username }: ModeratorBadgeAnim
       }),
     ]).start();
 
-    // Glow pulse
     Animated.loop(
       Animated.sequence([
         Animated.timing(glowAnim, {
           toValue: 1,
-          duration: 1000,
+          duration: 500,
           useNativeDriver: true,
         }),
         Animated.timing(glowAnim, {
           toValue: 0,
-          duration: 1000,
+          duration: 500,
           useNativeDriver: true,
         }),
       ])
     ).start();
-  }, []);
 
-  const glowOpacity = glowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 0.8],
-  });
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.5,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        onComplete();
+      });
+    }, 3000);
+  }, [fadeAnim, scaleAnim, glowAnim, onComplete]);
+
+  useEffect(() => {
+    startAnimation();
+  }, [startAnimation]);
 
   return (
     <Animated.View
@@ -68,70 +77,35 @@ export default function ModeratorBadgeAnimation({ username }: ModeratorBadgeAnim
           transform: [{ scale: scaleAnim }],
         },
       ]}
+      pointerEvents="none"
     >
-      {/* Glow effect */}
-      <Animated.View
-        style={[
-          styles.glow,
-          {
-            opacity: glowOpacity,
-          },
-        ]}
-      />
-
-      {/* Badge */}
       <View style={styles.badge}>
-        <IconSymbol
-          ios_icon_name="shield.fill"
-          android_material_icon_name="shield"
-          size={16}
-          color={colors.text}
-        />
-        <Text style={styles.badgeText}>MOD</Text>
+        <Text style={styles.text}>{username} is now a Moderator!</Text>
       </View>
-
-      {/* Label */}
-      <Text style={styles.label}>Moderator</Text>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
-  },
-  glow: {
     position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.gradientEnd,
-    borderWidth: 2,
-    borderColor: '#00FF00',
+    top: 100,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 1000,
   },
   badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.gradientEnd,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: 'rgba(0, 128, 0, 0.9)',
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderWidth: 2,
-    borderColor: '#00FF00',
-    zIndex: 2,
+    borderColor: '#32CD32',
   },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  label: {
-    fontSize: 8,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginTop: 2,
+  text: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

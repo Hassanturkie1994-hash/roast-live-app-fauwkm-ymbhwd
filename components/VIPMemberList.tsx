@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -32,11 +32,7 @@ export default function VIPMemberList({ clubId, onMemberPress }: VIPMemberListPr
   const [members, setMembers] = useState<VIPClubMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadMembers();
-  }, [clubId]);
-
-  const loadMembers = async () => {
+  const loadMembers = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await unifiedVIPClubService.getVIPClubMembers(clubId);
@@ -46,7 +42,11 @@ export default function VIPMemberList({ clubId, onMemberPress }: VIPMemberListPr
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [clubId]);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
 
   const getVIPLevelColor = (level: number): string => {
     if (level >= 15) return '#FF1493'; // Hot Pink - Legendary

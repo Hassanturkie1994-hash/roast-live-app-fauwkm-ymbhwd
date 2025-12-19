@@ -1,254 +1,99 @@
 
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  ActivityIndicator,
-  StyleSheet,
-} from 'react-native';
-import { useTheme } from '@/contexts/ThemeContext';
-import { leaderboardService, LeaderboardEntry } from '@/app/services/leaderboardService';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
+import { colors } from '@/styles/commonStyles';
+import { IconSymbol } from '@/components/IconSymbol';
+import { globalLeaderboardService } from '@/app/services/globalLeaderboardService';
 
 interface GlobalLeaderboardProps {
-  creatorId: string;
-  type: 'weekly' | 'alltime';
-  limit?: number;
+  type: 'creators' | 'fans';
 }
 
-export default function GlobalLeaderboard({
-  creatorId,
-  type,
-  limit = 10,
-}: GlobalLeaderboardProps) {
-  const { colors } = useTheme();
-  const [loading, setLoading] = useState(true);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+export default function GlobalLeaderboard({ type }: GlobalLeaderboardProps) {
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadLeaderboard();
-    // Auto-refresh every 20 seconds
-    const interval = setInterval(loadLeaderboard, 20000);
-    return () => clearInterval(interval);
-  }, [creatorId, type]);
-
-  const loadLeaderboard = async () => {
+  const loadLeaderboard = useCallback(async () => {
+    setIsLoading(true);
     try {
-      setLoading(true);
-      const data =
-        type === 'weekly'
-          ? await leaderboardService.getWeeklyLeaderboard(creatorId, limit)
-          : await leaderboardService.getGlobalLeaderboard(creatorId, limit);
+      const data = type === 'creators'
+        ? await globalLeaderboardService.getTopCreators(10)
+        : await globalLeaderboardService.getTopFans(10);
       setLeaderboard(data);
     } catch (error) {
       console.error('Error loading leaderboard:', error);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  };
+  }, [type]);
 
-  const getMedalEmoji = (rank: number) => {
-    switch (rank) {
-      case 1:
-        return '🥇';
-      case 2:
-        return '🥈';
-      case 3:
-        return '🥉';
-      default:
-        return `${rank}.`;
-    }
-  };
+  useEffect(() => {
+    loadLeaderboard();
+  }, [loadLeaderboard]);
 
-  if (loading) {
+  const renderItem = ({ item, index }: { item: any; index: number }) => (
+    <View style={styles.item}>
+      <Text style={styles.rank}>#{index + 1}</Text>
+      <Text style={styles.name}>{item.display_name || 'Unknown'}</Text>
+      <Text style={styles.score}>{item.composite_score}</Text>
+    </View>
+  );
+
+  if (isLoading) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.card }]}>
-        <ActivityIndicator size="large" color="#A40028" />
-      </View>
-    );
-  }
-
-  if (leaderboard.length === 0) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.card }]}>
-        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-          No supporters yet
-        </Text>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.brandPrimary} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.card }]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>
-          {type === 'weekly' ? 'Top Supporters This Week' : 'Top Supporters All Time'}
-        </Text>
-        <TouchableOpacity onPress={loadLeaderboard}>
-          <Text style={[styles.refreshText, { color: '#A40028' }]}>Refresh</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
-        {leaderboard.map((entry, index) => (
-          <View
-            key={entry.user_id}
-            style={[
-              styles.leaderboardItem,
-              index < 3 && styles.topThreeItem,
-              { borderColor: colors.border },
-            ]}
-          >
-            {/* Rank */}
-            <Text style={[styles.rank, { color: colors.text }]}>{getMedalEmoji(index + 1)}</Text>
-
-            {/* Avatar */}
-            {entry.avatar_url ? (
-              <Image source={{ uri: entry.avatar_url }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, { backgroundColor: '#A40028' }]}>
-                <Text style={styles.avatarText}>{entry.username.charAt(0).toUpperCase()}</Text>
-              </View>
-            )}
-
-            {/* User Info */}
-            <View style={styles.userInfo}>
-              <View style={styles.nameRow}>
-                <Text style={[styles.username, { color: colors.text }]} numberOfLines={1}>
-                  {entry.display_name || entry.username}
-                </Text>
-                {/* Badges */}
-                {entry.is_moderator && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>MOD</Text>
-                  </View>
-                )}
-                {entry.is_vip && entry.vip_badge && (
-                  <View style={[styles.badge, styles.vipBadge]}>
-                    <Text style={styles.badgeText}>{entry.vip_badge}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.totalValue, { color: colors.textSecondary }]}>
-                {entry.total_value.toFixed(2)} SEK
-              </Text>
-            </View>
-
-            {/* Value Badge for Top 3 */}
-            {index < 3 && (
-              <LinearGradient
-                colors={['#A40028', '#E30052']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.valueBadge}
-              >
-                <Text style={styles.valueBadgeText}>{entry.total_value.toFixed(0)} SEK</Text>
-              </LinearGradient>
-            )}
-          </View>
-        ))}
-      </ScrollView>
-    </View>
+    <FlatList
+      data={leaderboard}
+      renderItem={renderItem}
+      keyExtractor={(item, index) => `${item.id}-${index}`}
+      contentContainerStyle={styles.list}
+      showsVerticalScrollIndicator={false}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    borderRadius: 12,
-    padding: 20,
-    marginVertical: 10,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  refreshText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptyText: {
-    textAlign: 'center',
-    fontSize: 16,
-    paddingVertical: 20,
-  },
-  listContainer: {
-    maxHeight: 400,
-  },
-  leaderboardItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  topThreeItem: {
-    paddingVertical: 16,
-  },
-  rank: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    width: 40,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
   },
-  avatarText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
+  list: {
+    padding: 16,
+    gap: 12,
   },
-  userInfo: {
-    flex: 1,
-  },
-  nameRow: {
+  item: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  username: {
+  rank: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.brandPrimary,
+    width: 40,
+  },
+  name: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '600',
-    flex: 1,
+    color: colors.text,
   },
-  badge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  vipBadge: {
-    backgroundColor: '#FFD700',
-  },
-  badgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  totalValue: {
+  score: {
     fontSize: 14,
-  },
-  valueBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  valueBadgeText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

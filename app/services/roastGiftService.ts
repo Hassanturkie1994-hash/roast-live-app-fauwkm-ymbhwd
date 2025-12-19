@@ -70,7 +70,7 @@ class RoastGiftService {
 
       const battleContext = battleGiftService.getBattleContext();
       if (battleContext?.isInBattle) {
-        const receiverTeam = this.determineReceiverTeamForGift(creatorId, battleContext);
+        const receiverTeam = this.determineReceiverTeam(creatorId, battleContext);
         const { allowed, behavior } = await battleGiftService.routeGift(
           giftId,
           senderId,
@@ -105,21 +105,21 @@ class RoastGiftService {
 
       await giftSoundEngine.playSound(gift.soundProfile, gift.tier);
 
-      await this.updateCreatorStatsForGift(creatorId, streamId, gift.priceSEK);
+      await this.updateCreatorStats(creatorId, streamId, gift.priceSEK);
 
       await roastRankingService.updateCreatorStats(creatorId, {
         giftsReceivedSek: gift.priceSEK,
         uniqueRoaster: senderId,
       });
 
-      await this.updateVIPLevelForMember(senderId, creatorId, gift.priceSEK);
+      await this.updateVIPLevel(senderId, creatorId, gift.priceSEK);
 
-      const club = await this.getCreatorVIPClub(creatorId);
+      const club = await this.getCreatorClub(creatorId);
       if (club) {
         await vipLevelService.detectVIPFarming(club.id, senderId, gift.priceSEK);
       }
 
-      await this.broadcastGiftAnimationToStream(giftId, senderId, creatorId, streamId, gift);
+      await this.broadcastGiftAnimation(giftId, senderId, creatorId, streamId, gift);
 
       console.log('✅ [RoastGiftService] Gift sent successfully');
       return { success: true };
@@ -129,7 +129,7 @@ class RoastGiftService {
     }
   }
 
-  private async getCreatorVIPClub(creatorId: string): Promise<{ id: string } | null> {
+  private async getCreatorClub(creatorId: string): Promise<{ id: string } | null> {
     try {
       const { data, error } = await supabase
         .from('vip_clubs')
@@ -149,13 +149,13 @@ class RoastGiftService {
     }
   }
 
-  private async updateVIPLevelForMember(
+  private async updateVIPLevel(
     senderId: string,
     creatorId: string,
     giftAmountSEK: number
   ): Promise<void> {
     try {
-      const club = await this.getCreatorVIPClub(creatorId);
+      const club = await this.getCreatorClub(creatorId);
       if (!club) return;
 
       const { data: member, error } = await supabase
@@ -195,14 +195,14 @@ class RoastGiftService {
     }
   }
 
-  private determineReceiverTeamForGift(
+  private determineReceiverTeam(
     creatorId: string,
     battleContext: any
   ): 'team_a' | 'team_b' {
     return 'team_a';
   }
 
-  private async updateCreatorStatsForGift(
+  private async updateCreatorStats(
     creatorId: string,
     streamId: string | null,
     amountSek: number
@@ -244,7 +244,7 @@ class RoastGiftService {
     }
   }
 
-  private async broadcastGiftAnimationToStream(
+  private async broadcastGiftAnimation(
     giftId: string,
     senderId: string,
     creatorId: string,

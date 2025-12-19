@@ -1,49 +1,62 @@
 
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Animated,
-} from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import { supabase } from '@/app/integrations/supabase/client';
 
-interface PinnedMessage {
-  id: string;
-  comment_text: string;
-  username: string;
-  expires_at: string;
-}
-
 interface PinnedMessageBannerProps {
   streamId: string;
-  canUnpin: boolean;
-  onUnpin?: (messageId: string) => void;
 }
 
-export default function PinnedMessageBanner({
-  streamId,
-  canUnpin,
-  onUnpin,
-}: PinnedMessageBannerProps) {
-  const [pinnedMessage, setPinnedMessage] = useState<PinnedMessage | null>(null);
-  const [fadeAnim] = useState(new Animated.Value(0));
-  const channelRef = React.useRef<any>(null);
+export default function PinnedMessageBanner({ streamId }: PinnedMessageBannerProps) {
+  const [pinnedMessage, setPinnedMessage] = useState<any>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const fetchPinnedMessage = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('stream_pinned_comments')
+        .select('*')
+        .eq('stream_id', streamId)
+        .eq('is_active', true)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching pinned message:', error);
+        return;
+      }
+
+      setPinnedMessage(data);
+    } catch (error) {
+      console.error('Error fetching pinned message:', error);
+    }
+  }, [streamId]);
+
+  const subscribeToPinnedMessages = useCallback(() => {
+    const channel = supabase
+      .channel(`pinned_messages:${streamId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'stream_pinned_comments',
+        filter: `stream_id=eq.${streamId}`,
+      }, (payload) => {
+        console.log('Pinned message update:', payload);
+        fetchPinnedMessage();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [streamId, fetchPinnedMessage]);
 
   useEffect(() => {
     fetchPinnedMessage();
-    subscribeToPinnedMessages();
-
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
-  }, [streamId]);
+    const unsubscribe = subscribeToPinnedMessages();
+    return unsubscribe;
+  }, [fetchPinnedMessage, subscribeToPinnedMessages]);
 
   useEffect(() => {
     if (pinnedMessage) {
@@ -59,72 +72,7 @@ export default function PinnedMessageBanner({
         useNativeDriver: true,
       }).start();
     }
-  }, [pinnedMessage]);
-
-  const fetchPinnedMessage = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('stream_pinned_comments')
-        .select('*')
-        .eq('stream_id', streamId)
-        .eq('is_active', true)
-        .gt('expires_at', new Date().toISOString())
-        .order('pinned_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching pinned message:', error);
-        return;
-      }
-
-      setPinnedMessage(data);
-    } catch (error) {
-      console.error('Error in fetchPinnedMessage:', error);
-    }
-  };
-
-  const subscribeToPinnedMessages = () => {
-    const channel = supabase
-      .channel(`stream:${streamId}:pinned`)
-      .on('broadcast', { event: 'pinned_message_update' }, (payload) => {
-        console.log('📌 Pinned message update:', payload);
-        fetchPinnedMessage();
-      })
-      .subscribe();
-
-    channelRef.current = channel;
-  };
-
-  const handleUnpin = async () => {
-    if (!pinnedMessage || !onUnpin) return;
-
-    try {
-      const { error } = await supabase
-        .from('stream_pinned_comments')
-        .update({ is_active: false })
-        .eq('id', pinnedMessage.id);
-
-      if (error) {
-        console.error('Error unpinning message:', error);
-        return;
-      }
-
-      // Broadcast update
-      if (channelRef.current) {
-        await channelRef.current.send({
-          type: 'broadcast',
-          event: 'pinned_message_update',
-          payload: { action: 'unpinned', messageId: pinnedMessage.id },
-        });
-      }
-
-      onUnpin(pinnedMessage.id);
-      setPinnedMessage(null);
-    } catch (error) {
-      console.error('Error in handleUnpin:', error);
-    }
-  };
+  }, [pinnedMessage, fadeAnim]);
 
   if (!pinnedMessage) {
     return null;
@@ -132,85 +80,34 @@ export default function PinnedMessageBanner({
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <IconSymbol
-            ios_icon_name="pin.fill"
-            android_material_icon_name="push_pin"
-            size={16}
-            color={colors.brandPrimary}
-          />
-        </View>
-        <View style={styles.messageContainer}>
-          <Text style={styles.username}>{pinnedMessage.username}</Text>
-          <Text style={styles.message} numberOfLines={2}>
-            {pinnedMessage.comment_text}
-          </Text>
-        </View>
-        {canUnpin && (
-          <TouchableOpacity style={styles.unpinButton} onPress={handleUnpin}>
-            <IconSymbol
-              ios_icon_name="xmark"
-              android_material_icon_name="close"
-              size={16}
-              color={colors.text}
-            />
-          </TouchableOpacity>
-        )}
-      </View>
+      <IconSymbol
+        ios_icon_name="pin.fill"
+        android_material_icon_name="push_pin"
+        size={16}
+        color={colors.brandPrimary}
+      />
+      <Text style={styles.message} numberOfLines={2}>
+        {pinnedMessage.comment_text}
+      </Text>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    top: 140,
-    left: 16,
-    right: 16,
-    zIndex: 100,
-  },
-  content: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(227, 0, 82, 0.95)',
+    backgroundColor: 'rgba(164, 0, 40, 0.9)',
     borderRadius: 12,
     padding: 12,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  iconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  messageContainer: {
-    flex: 1,
-  },
-  username: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 2,
+    gap: 8,
+    marginHorizontal: 16,
+    marginTop: 16,
   },
   message: {
+    flex: 1,
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: '600',
     color: '#FFFFFF',
-  },
-  unpinButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
