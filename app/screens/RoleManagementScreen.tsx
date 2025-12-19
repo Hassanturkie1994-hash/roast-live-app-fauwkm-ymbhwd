@@ -17,6 +17,23 @@ import { useAuth } from '@/contexts/AuthContext';
 import { adminService, AdminRole } from '@/app/services/adminService';
 import GradientButton from '@/components/GradientButton';
 
+/**
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * ROLE MANAGEMENT SCREEN
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * ONLY accessible by HEAD_ADMIN.
+ * 
+ * Allows assigning platform roles:
+ * - HEAD_ADMIN (highest authority)
+ * - ADMIN (under head_admin)
+ * - MODERATOR (under admin)
+ * - SUPPORT (under moderator)
+ * 
+ * Stream-level moderators are managed separately by creators.
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
 export default function RoleManagementScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
@@ -55,7 +72,7 @@ export default function RoleManagementScreen() {
 
     setAssigning(true);
     try {
-      const result = await adminService.assignRole(searchQuery.trim(), selectedRole, user.id);
+      const result = await adminService.updateUserRole(searchQuery.trim(), selectedRole || 'USER');
       
       if (result.success) {
         Alert.alert('Success', `Role ${selectedRole} assigned successfully`);
@@ -123,7 +140,21 @@ export default function RoleManagementScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.content}>
-          <Text style={[styles.title, { color: colors.text }]}>Assign Admin Role</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Assign Staff Role</Text>
+
+          <View style={[styles.infoBox, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+            <IconSymbol
+              ios_icon_name="info.circle.fill"
+              android_material_icon_name="info"
+              size={20}
+              color={colors.brandPrimary}
+            />
+            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+              Role hierarchy:{'\n'}
+              HEAD_ADMIN → ADMIN → MODERATOR → SUPPORT{'\n\n'}
+              Stream moderators are managed by creators separately.
+            </Text>
+          </View>
 
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: colors.text }]}>User ID</Text>
@@ -141,7 +172,7 @@ export default function RoleManagementScreen() {
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: colors.text }]}>Role</Text>
             <View style={styles.roleButtons}>
-              {(['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'LIVE_MODERATOR'] as AdminRole[]).map((role) => (
+              {(['HEAD_ADMIN', 'ADMIN', 'MODERATOR', 'SUPPORT'] as AdminRole[]).map((role) => (
                 <TouchableOpacity
                   key={`role-${role}`}
                   style={[
@@ -162,6 +193,14 @@ export default function RoleManagementScreen() {
                   >
                     {role.replace('_', ' ')}
                   </Text>
+                  <Text
+                    style={[
+                      styles.roleButtonDescription,
+                      { color: selectedRole === role ? 'rgba(255,255,255,0.8)' : colors.textSecondary },
+                    ]}
+                  >
+                    {getRoleDescription(role)}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -177,6 +216,21 @@ export default function RoleManagementScreen() {
       </ScrollView>
     </View>
   );
+}
+
+function getRoleDescription(role: string): string {
+  switch (role) {
+    case 'HEAD_ADMIN':
+      return 'Full platform control';
+    case 'ADMIN':
+      return 'Manage reports & users';
+    case 'MODERATOR':
+      return 'Monitor all live streams';
+    case 'SUPPORT':
+      return 'Review appeals & reports';
+    default:
+      return '';
+  }
 }
 
 const styles = StyleSheet.create({
@@ -224,6 +278,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 24,
   },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+    marginBottom: 24,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
   inputContainer: {
     marginBottom: 24,
   },
@@ -247,11 +316,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1,
-    alignItems: 'center',
+    gap: 6,
   },
   roleButtonText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  roleButtonDescription: {
+    fontSize: 13,
+    fontWeight: '400',
   },
   accessDeniedText: {
     fontSize: 20,

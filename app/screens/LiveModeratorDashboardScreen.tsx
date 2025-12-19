@@ -30,10 +30,27 @@ interface LiveStream {
 }
 
 /**
- * Live Moderator Dashboard
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * MODERATOR DASHBOARD (STAFF ROLE)
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  * 
- * For LIVE_MODERATOR staff role (different from stream-level moderators)
- * Can monitor and moderate ALL live streams on the platform
+ * For MODERATOR platform role (staff who monitor ALL live streams).
+ * 
+ * This is DIFFERENT from stream-level moderators (streammoderator) who are
+ * assigned to specific creators and can only moderate those creators' streams.
+ * 
+ * Permissions:
+ * - Monitor all live streams on the platform
+ * - Stop streams
+ * - Watch active streams
+ * - Give timeouts
+ * - Give warnings
+ * 
+ * Cannot:
+ * - Ban users (admin/head_admin only)
+ * - Assign roles (head_admin only)
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 export default function LiveModeratorDashboardScreen() {
   const { colors } = useTheme();
@@ -88,10 +105,10 @@ export default function LiveModeratorDashboardScreen() {
 
     const result = await adminService.checkAdminRole(user.id);
     
-    console.log('Live Moderator access check:', result);
+    console.log('Moderator access check:', result);
     
-    if (!result.isAdmin || !['LIVE_MODERATOR', 'ADMIN', 'HEAD_ADMIN'].includes(result.role || '')) {
-      Alert.alert('Access Denied', 'You do not have live moderator privileges.');
+    if (!result.isAdmin || result.role !== 'MODERATOR') {
+      Alert.alert('Access Denied', 'You do not have moderator privileges.');
       router.back();
       return;
     }
@@ -177,9 +194,9 @@ export default function LiveModeratorDashboardScreen() {
           />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Live Moderator</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Moderator Dashboard</Text>
           <View style={[styles.roleBadge, { backgroundColor: '#9B59B6' }]}>
-            <Text style={styles.roleBadgeText}>LIVE MODERATOR</Text>
+            <Text style={styles.roleBadgeText}>MODERATOR</Text>
           </View>
         </View>
       </View>

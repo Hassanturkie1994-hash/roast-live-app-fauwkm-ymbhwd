@@ -13,12 +13,14 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import { adminService } from '@/app/services/adminService';
+import { supabase } from '@/app/integrations/supabase/client';
 
 export default function AccountSettingsScreen() {
   const { colors } = useTheme();
   const { user, signOut } = useAuth();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState(true);
+  const [isStreamModerator, setIsStreamModerator] = useState(false);
 
   const checkUserRole = useCallback(async () => {
     if (!user) {
@@ -27,8 +29,13 @@ export default function AccountSettingsScreen() {
     }
 
     try {
+      // Check platform role
       const result = await adminService.checkAdminRole(user.id);
       setUserRole(result.role);
+
+      // Check if user is a stream moderator (assigned to specific creators)
+      const streamModResult = await adminService.checkStreamModeratorRole(user.id);
+      setIsStreamModerator(streamModResult.isModerator);
     } catch (error) {
       console.error('Error checking user role:', error);
     } finally {
@@ -109,99 +116,156 @@ export default function AccountSettingsScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Role-Based Dashboards */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            ROLE-BASED DASHBOARD VISIBILITY
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            
+            STRICT RULES:
+            - head_admin: Head Admin Dashboard ONLY (aggregates everything)
+            - admin: Admin Dashboard ONLY
+            - moderator: Moderator Dashboard ONLY
+            - support: Support Dashboard ONLY
+            - streammoderator: Moderator Dashboard ONLY (stream-level)
+            - Regular users: NO dashboards visible
+            
+            NO ROLE SHOULD SEE MULTIPLE DASHBOARDS
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {loadingRole ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.brandPrimary} />
           </View>
-        ) : userRole && ['HEAD_ADMIN', 'ADMIN', 'SUPPORT', 'LIVE_MODERATOR'].includes(userRole) && (
-          <View style={[styles.section, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Staff Dashboards</Text>
-            
+        ) : (
+          <>
+            {/* HEAD ADMIN - Shows ONLY Head Admin Dashboard */}
             {userRole === 'HEAD_ADMIN' && (
-              <TouchableOpacity
-                style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#FFD700' }]}
-                onPress={() => router.push('/screens/HeadAdminDashboardScreen' as any)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.settingLeft}>
-                  <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(255, 215, 0, 0.1)' }]}>
-                    <UnifiedRoastIcon name="crown" size={24} color="#FFD700" />
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Staff Dashboard</Text>
+                
+                <TouchableOpacity
+                  style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#FFD700' }]}
+                  onPress={() => router.push('/screens/HeadAdminDashboardScreen' as any)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingLeft}>
+                    <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(255, 215, 0, 0.1)' }]}>
+                      <UnifiedRoastIcon name="crown" size={24} color="#FFD700" />
+                    </View>
+                    <View style={styles.dashboardInfo}>
+                      <Text style={[styles.dashboardLabel, { color: colors.text }]}>Head Admin Dashboard</Text>
+                      <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
+                        Full platform control & oversight
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.dashboardInfo}>
-                    <Text style={[styles.dashboardLabel, { color: colors.text }]}>Head Admin Dashboard</Text>
-                    <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
-                      Full platform control
-                    </Text>
-                  </View>
-                </View>
-                <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
+                  <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             )}
 
-            {(userRole === 'ADMIN' || userRole === 'HEAD_ADMIN') && (
-              <TouchableOpacity
-                style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: colors.brandPrimary }]}
-                onPress={() => router.push('/screens/AdminDashboardScreen' as any)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.settingLeft}>
-                  <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(164, 0, 40, 0.1)' }]}>
-                    <UnifiedRoastIcon name="shield-flame" size={24} color={colors.brandPrimary} />
+            {/* ADMIN - Shows ONLY Admin Dashboard */}
+            {userRole === 'ADMIN' && (
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Staff Dashboard</Text>
+                
+                <TouchableOpacity
+                  style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: colors.brandPrimary }]}
+                  onPress={() => router.push('/screens/AdminDashboardScreen' as any)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingLeft}>
+                    <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(164, 0, 40, 0.1)' }]}>
+                      <UnifiedRoastIcon name="shield-flame" size={24} color={colors.brandPrimary} />
+                    </View>
+                    <View style={styles.dashboardInfo}>
+                      <Text style={[styles.dashboardLabel, { color: colors.text }]}>Admin Dashboard</Text>
+                      <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
+                        Manage reports, users & bans
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.dashboardInfo}>
-                    <Text style={[styles.dashboardLabel, { color: colors.text }]}>Admin Dashboard</Text>
-                    <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
-                      Manage reports & users
-                    </Text>
-                  </View>
-                </View>
-                <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
+                  <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             )}
 
-            {(userRole === 'LIVE_MODERATOR' || userRole === 'ADMIN' || userRole === 'HEAD_ADMIN') && (
-              <TouchableOpacity
-                style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#9B59B6' }]}
-                onPress={() => router.push('/screens/LiveModeratorDashboardScreen' as any)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.settingLeft}>
-                  <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(155, 89, 182, 0.1)' }]}>
-                    <UnifiedRoastIcon name="shield" size={24} color="#9B59B6" />
+            {/* MODERATOR - Shows ONLY Moderator Dashboard */}
+            {userRole === 'MODERATOR' && (
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Staff Dashboard</Text>
+                
+                <TouchableOpacity
+                  style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#9B59B6' }]}
+                  onPress={() => router.push('/screens/LiveModeratorDashboardScreen' as any)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingLeft}>
+                    <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(155, 89, 182, 0.1)' }]}>
+                      <UnifiedRoastIcon name="shield" size={24} color="#9B59B6" />
+                    </View>
+                    <View style={styles.dashboardInfo}>
+                      <Text style={[styles.dashboardLabel, { color: colors.text }]}>Moderator Dashboard</Text>
+                      <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
+                        Monitor all live streams
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.dashboardInfo}>
-                    <Text style={[styles.dashboardLabel, { color: colors.text }]}>Live Moderator Dashboard</Text>
-                    <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
-                      Monitor all live streams
-                    </Text>
-                  </View>
-                </View>
-                <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
+                  <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             )}
 
-            {(userRole === 'SUPPORT' || userRole === 'ADMIN' || userRole === 'HEAD_ADMIN') && (
-              <TouchableOpacity
-                style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#4ECDC4' }]}
-                onPress={() => router.push('/screens/SupportDashboardScreen' as any)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.settingLeft}>
-                  <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(78, 205, 196, 0.1)' }]}>
-                    <UnifiedRoastIcon name="shield" size={24} color="#4ECDC4" />
+            {/* SUPPORT - Shows ONLY Support Dashboard */}
+            {userRole === 'SUPPORT' && (
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Staff Dashboard</Text>
+                
+                <TouchableOpacity
+                  style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#4ECDC4' }]}
+                  onPress={() => router.push('/screens/SupportDashboardScreen' as any)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingLeft}>
+                    <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(78, 205, 196, 0.1)' }]}>
+                      <UnifiedRoastIcon name="shield" size={24} color="#4ECDC4" />
+                    </View>
+                    <View style={styles.dashboardInfo}>
+                      <Text style={[styles.dashboardLabel, { color: colors.text }]}>Support Dashboard</Text>
+                      <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
+                        Review appeals & reports
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.dashboardInfo}>
-                    <Text style={[styles.dashboardLabel, { color: colors.text }]}>Support Dashboard</Text>
-                    <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
-                      Review appeals & reports
-                    </Text>
-                  </View>
-                </View>
-                <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
+                  <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             )}
-          </View>
+
+            {/* STREAM MODERATOR - Shows ONLY Moderator Dashboard (stream-level) */}
+            {!userRole && isStreamModerator && (
+              <View style={[styles.section, { borderBottomColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Moderator Dashboard</Text>
+                
+                <TouchableOpacity
+                  style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#9B59B6' }]}
+                  onPress={() => router.push('/screens/ModeratorDashboardScreen' as any)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingLeft}>
+                    <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(155, 89, 182, 0.1)' }]}>
+                      <UnifiedRoastIcon name="shield" size={24} color="#9B59B6" />
+                    </View>
+                    <View style={styles.dashboardInfo}>
+                      <Text style={[styles.dashboardLabel, { color: colors.text }]}>Moderator Dashboard</Text>
+                      <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
+                        Manage assigned creator streams
+                      </Text>
+                    </View>
+                  </View>
+                  <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
         )}
 
         {settingsSections.map((section, sectionIndex) => (

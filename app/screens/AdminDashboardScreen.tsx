@@ -10,7 +10,6 @@ import {
   Alert,
   TextInput,
   Modal,
-  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -29,6 +28,26 @@ interface UserSearchResult {
   email: string | null;
 }
 
+/**
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * ADMIN DASHBOARD
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * For ADMIN role ONLY.
+ * 
+ * Permissions:
+ * - Manage reports and users
+ * - Ban users
+ * - Issue warnings and timeouts
+ * - View financial data
+ * - Access user privacy data
+ * 
+ * Cannot:
+ * - Assign roles (head_admin only)
+ * - Reverse enforcement actions (head_admin only)
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
 export default function AdminDashboardScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -136,7 +155,7 @@ export default function AdminDashboardScreen() {
       return;
     }
 
-    if (result.role !== 'ADMIN' && result.role !== 'HEAD_ADMIN') {
+    if (result.role !== 'ADMIN') {
       Alert.alert('Access Denied', 'This dashboard is for Admin role only.');
       router.back();
       return;
@@ -193,36 +212,6 @@ export default function AdminDashboardScreen() {
     setShowBanModal(true);
   };
 
-  const getRoleColor = (role: AdminRole) => {
-    switch (role) {
-      case 'HEAD_ADMIN':
-        return '#FFD700';
-      case 'ADMIN':
-        return colors.gradientEnd;
-      case 'SUPPORT':
-        return '#4ECDC4';
-      case 'LIVE_MODERATOR':
-        return '#FF6B6B';
-      default:
-        return colors.textSecondary;
-    }
-  };
-
-  const getRoleLabel = (role: AdminRole) => {
-    switch (role) {
-      case 'HEAD_ADMIN':
-        return 'Head Admin';
-      case 'ADMIN':
-        return 'Admin';
-      case 'SUPPORT':
-        return 'Support Team';
-      case 'LIVE_MODERATOR':
-        return 'Live Moderator';
-      default:
-        return 'Moderator';
-    }
-  };
-
   if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -246,8 +235,8 @@ export default function AdminDashboardScreen() {
           </TouchableOpacity>
           <View style={styles.headerContent}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Admin Dashboard</Text>
-            <View style={[styles.roleBadge, { backgroundColor: getRoleColor(adminRole!) }]}>
-              <Text style={styles.roleBadgeText}>{getRoleLabel(adminRole!)}</Text>
+            <View style={[styles.roleBadge, { backgroundColor: colors.brandPrimary }]}>
+              <Text style={styles.roleBadgeText}>ADMIN</Text>
             </View>
           </View>
         </View>
@@ -350,7 +339,7 @@ export default function AdminDashboardScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
 
-          {/* Ban User - NEW */}
+          {/* Ban User */}
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.card, borderColor: '#DC143C' }]}
             onPress={() => setShowUserSearchModal(true)}

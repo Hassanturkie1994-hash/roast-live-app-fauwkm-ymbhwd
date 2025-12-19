@@ -13,12 +13,57 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { adminService } from '@/app/services/adminService';
+import { supabase } from '@/app/integrations/supabase/client';
 
+/**
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * SUPPORT DASHBOARD
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * For SUPPORT role ONLY.
+ * 
+ * Permissions:
+ * - Review appeals
+ * - Handle user reports
+ * - Live chat customer service (coming later)
+ * 
+ * Cannot:
+ * - Ban users (admin/head_admin only)
+ * - Stop streams (moderator/admin/head_admin only)
+ * - Assign roles (head_admin only)
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
 export default function SupportDashboardScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
+  const [stats, setStats] = useState({
+    pendingAppeals: 0,
+    openReports: 0,
+  });
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const { count: appealsCount } = await supabase
+        .from('appeals')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+
+      const { count: reportsCount } = await supabase
+        .from('user_reports')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'open');
+
+      setStats({
+        pendingAppeals: appealsCount || 0,
+        openReports: reportsCount || 0,
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  }, []);
 
   const checkAccess = useCallback(async () => {
     if (!user) {
@@ -28,14 +73,19 @@ export default function SupportDashboardScreen() {
 
     try {
       const result = await adminService.checkAdminRole(user.id);
-      setHasAccess(result.role === 'SUPPORT' || result.role === 'ADMIN' || result.role === 'HEAD_ADMIN');
+      const hasAccess = result.role === 'SUPPORT';
+      setHasAccess(hasAccess);
+      
+      if (hasAccess) {
+        await fetchStats();
+      }
     } catch (error) {
       console.error('Error checking access:', error);
       setHasAccess(false);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, fetchStats]);
 
   useEffect(() => {
     checkAccess();
@@ -80,7 +130,12 @@ export default function SupportDashboardScreen() {
             color={colors.text}
           />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Support Dashboard</Text>
+        <View style={styles.headerContent}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Support Dashboard</Text>
+          <View style={[styles.roleBadge, { backgroundColor: '#4ECDC4' }]}>
+            <Text style={styles.roleBadgeText}>SUPPORT</Text>
+          </View>
+        </View>
         <View style={styles.placeholder} />
       </View>
 
@@ -89,6 +144,31 @@ export default function SupportDashboardScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
+        {/* Stats */}
+        <View style={styles.statsGrid}>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <IconSymbol
+              ios_icon_name="doc.text.fill"
+              android_material_icon_name="description"
+              size={28}
+              color="#4ECDC4"
+            />
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.pendingAppeals}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Pending Appeals</Text>
+          </View>
+
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <IconSymbol
+              ios_icon_name="flag.fill"
+              android_material_icon_name="flag"
+              size={28}
+              color={colors.gradientEnd}
+            />
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.openReports}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Open Reports</Text>
+          </View>
+        </View>
+
         <View style={styles.content}>
           <TouchableOpacity
             style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -127,6 +207,18 @@ export default function SupportDashboardScreen() {
               color={colors.textSecondary}
             />
           </TouchableOpacity>
+
+          <View style={[styles.infoBox, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+            <IconSymbol
+              ios_icon_name="info.circle.fill"
+              android_material_icon_name="info"
+              size={20}
+              color={colors.brandPrimary}
+            />
+            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+              Live chat customer service feature coming soon!
+            </Text>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -157,9 +249,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerContent: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  roleBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  roleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   placeholder: {
     width: 40,
@@ -169,6 +276,30 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingBottom: 100,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    gap: 12,
+  },
+  statCard: {
+    width: '48%',
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  statValue: {
+    fontSize: 32,
+    fontWeight: '800',
+  },
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   content: {
     padding: 20,
@@ -186,6 +317,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
   },
   accessDeniedText: {
     fontSize: 20,

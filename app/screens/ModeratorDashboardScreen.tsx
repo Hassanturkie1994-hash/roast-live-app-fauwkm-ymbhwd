@@ -16,6 +16,31 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/app/integrations/supabase/client';
 import { adminService } from '@/app/services/adminService';
 
+/**
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * MODERATOR DASHBOARD (STREAM-LEVEL)
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * For users assigned as stream moderators (streammoderator role).
+ * 
+ * This is DIFFERENT from the MODERATOR platform role (staff who monitor all streams).
+ * 
+ * Stream moderators are assigned to specific creators and can ONLY moderate
+ * those creators' streams. They have ZERO permissions outside those streams.
+ * 
+ * Permissions (stream-level only):
+ * - Ban users from the creator's streams
+ * - Timeout users temporarily
+ * - Remove inappropriate comments
+ * - Pin important messages
+ * 
+ * Cannot:
+ * - Access other creators' streams
+ * - Perform global moderation actions
+ * - Ban users platform-wide
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
 export default function ModeratorDashboardScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -130,7 +155,7 @@ export default function ModeratorDashboardScreen() {
           />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Stream Moderator</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Moderator Dashboard</Text>
           <View style={[styles.roleBadge, { backgroundColor: '#9B59B6' }]}>
             <Text style={styles.roleBadgeText}>STREAM MODERATOR</Text>
           </View>
@@ -189,7 +214,7 @@ export default function ModeratorDashboardScreen() {
               - Access other creators&apos; streams{'\n'}
               - Perform global moderation actions{'\n'}
               - Ban users platform-wide{'\n\n'}
-              Note: This is different from the LIVE_MODERATOR staff role which monitors all live streams.
+              Note: This is different from the MODERATOR staff role which monitors all live streams on the platform.
             </Text>
           </View>
         </View>
