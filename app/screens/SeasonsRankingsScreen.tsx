@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -40,11 +40,7 @@ export default function SeasonsRankingsScreen() {
   const [userRank, setUserRank] = useState<RankingData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [activeTab]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       if (activeTab === 'seasons') {
@@ -66,7 +62,11 @@ export default function SeasonsRankingsScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeTab, user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const getSeasonStatusColor = (status: string) => {
     switch (status) {

@@ -47,16 +47,16 @@ interface UserPrivacyData {
   premium_active: boolean;
   
   // VIP Club data
-  vip_clubs: Array<{
+  vip_clubs: {
     club_name: string;
     badge_name: string;
     total_members: number;
-  }>;
-  vip_memberships: Array<{
+  }[];
+  vip_memberships: {
     club_name: string;
     vip_level: number;
     total_gifted_sek: number;
-  }>;
+  }[];
   
   // Financial data
   total_gifts_sent_sek: number;

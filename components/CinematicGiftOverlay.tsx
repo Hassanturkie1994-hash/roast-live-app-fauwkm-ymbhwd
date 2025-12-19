@@ -203,7 +203,7 @@ export default function CinematicGiftOverlay({
 
     return () => {
       isMountedRef.current = false;
-      // Clear all timeouts
+      // Copy ref value to local variable for cleanup
       const currentTimeouts = timelineRef.current;
       currentTimeouts.forEach(clearTimeout);
     };

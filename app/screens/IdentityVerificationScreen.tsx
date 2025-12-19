@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -59,11 +59,7 @@ export default function IdentityVerificationScreen() {
   const [documentUri, setDocumentUri] = useState<string | null>(null);
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadExistingVerification();
-  }, []);
-
-  const loadExistingVerification = async () => {
+  const loadExistingVerification = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -92,7 +88,11 @@ export default function IdentityVerificationScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadExistingVerification();
+  }, [loadExistingVerification]);
 
   const handlePickDocument = async () => {
     try {

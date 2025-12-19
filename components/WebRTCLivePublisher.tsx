@@ -34,7 +34,9 @@ export default function WebRTCLivePublisher({
     }
 
     return () => {
-      if (streamRef.current) {
+      // Copy ref value to local variable for cleanup
+      const currentStream = streamRef.current;
+      if (currentStream) {
         console.log('Cleaning up WebRTC stream');
       }
     };

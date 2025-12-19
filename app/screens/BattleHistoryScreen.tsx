@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   ScrollView,
@@ -40,11 +40,7 @@ export default function BattleHistoryScreen() {
     totalEarnings: 0,
   });
 
-  useEffect(() => {
-    loadBattleHistory();
-  }, []);
-
-  const loadBattleHistory = async () => {
+  const loadBattleHistory = useCallback(async () => {
     if (!user) return;
 
     setIsLoading(true);
@@ -107,7 +103,11 @@ export default function BattleHistoryScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    loadBattleHistory();
+  }, [loadBattleHistory]);
 
   const getResultColor = (battle: BattleRecord) => {
     if (battle.winner_team === 'draw') return colors.textSecondary;
