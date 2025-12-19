@@ -74,6 +74,7 @@ export { vipLevelService } from './vipLevelService'; // NEW: VIP Level Service
 export { vipMembershipService } from './vipMembershipService'; // NEW: Roast VIP Membership
 export { walletService } from './walletService';
 export { walletTransactionService } from './walletTransactionService';
+export { identityVerificationService } from './identityVerificationService'; // NEW: Identity Verification Service
 
 // Export types that are commonly used
 export type { AdminPenalty } from './adminService';

@@ -842,6 +842,102 @@ class AdminService {
       console.error('Error logging privacy data access:', error);
     }
   }
+
+  /**
+   * Get all pending identity verifications (admin and head_admin only)
+   */
+  async getPendingVerifications(): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('identity_verifications')
+        .select('*, profiles(username, display_name, email)')
+        .eq('verification_status', 'pending')
+        .order('submitted_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching pending verifications:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('Error in getPendingVerifications:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Approve identity verification (admin and head_admin only)
+   */
+  async approveVerification(
+    verificationId: string,
+    adminId: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase
+        .from('identity_verifications')
+        .update({
+          verification_status: 'approved',
+          verified_at: new Date().toISOString(),
+          verified_by: adminId,
+        })
+        .eq('id', verificationId);
+
+      if (error) {
+        console.error('Error approving verification:', error);
+        return { success: false, error: error.message };
+      }
+
+      // Log audit
+      await supabase.from('identity_verification_audit_log').insert({
+        verification_id: verificationId,
+        admin_id: adminId,
+        action_type: 'approved',
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error in approveVerification:', error);
+      return { success: false, error: 'Failed to approve verification' };
+    }
+  }
+
+  /**
+   * Reject identity verification (admin and head_admin only)
+   */
+  async rejectVerification(
+    verificationId: string,
+    adminId: string,
+    reason: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await supabase
+        .from('identity_verifications')
+        .update({
+          verification_status: 'rejected',
+          rejection_reason: reason,
+        })
+        .eq('id', verificationId);
+
+      if (error) {
+        console.error('Error rejecting verification:', error);
+        return { success: false, error: error.message };
+      }
+
+      // Log audit
+      await supabase.from('identity_verification_audit_log').insert({
+        verification_id: verificationId,
+        admin_id: adminId,
+        action_type: 'rejected',
+        reason,
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error in rejectVerification:', error);
+      return { success: false, error: 'Failed to reject verification' };
+    }
+  }
 }
 
 export const adminService = new AdminService();

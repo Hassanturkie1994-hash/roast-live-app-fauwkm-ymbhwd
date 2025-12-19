@@ -16,6 +16,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import GlobalLeaderboard from '@/components/GlobalLeaderboard';
 import ReportUserModal from '@/components/ReportUserModal';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -36,6 +37,7 @@ interface ProfileData {
   followers_count: number;
   following_count: number;
   total_streaming_hours: number;
+  verified_badge: boolean;
 }
 
 interface UserSettings {
@@ -483,6 +485,9 @@ export default function PublicProfileScreen() {
             <Text style={[styles.displayName, { color: colors.text }]}>
               {profile.display_name || profile.username}
             </Text>
+            {profile.verified_badge && (
+              <VerifiedBadge size="small" showText={false} />
+            )}
             {vipClub && (
               <View style={[styles.vipBadge, { backgroundColor: vipClub.badge_color }]}>
                 <IconSymbol

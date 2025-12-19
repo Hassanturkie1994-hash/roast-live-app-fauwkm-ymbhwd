@@ -16,9 +16,17 @@ import { colors, commonStyles } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/app/integrations/supabase/client';
-import { cdnService } from '@/app/services/cdnService';
+import { postService } from '@/app/services/postService';
 
+/**
+ * Create Post Screen
+ * 
+ * FIXED: Proper media persistence
+ * - Uses mediaUploadService for uploads
+ * - Stores media in Supabase Storage
+ * - Persists metadata in database
+ * - Media retrievable on all devices
+ */
 export default function CreatePostScreen() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -50,38 +58,22 @@ export default function CreatePostScreen() {
     setLoading(true);
 
     try {
-      // Upload media using CDN service
-      const response = await fetch(mediaUri);
-      const blob = await response.blob();
+      console.log('📸 [CreatePost] Creating post...');
 
-      const uploadResult = await cdnService.uploadPostMedia(user.id, blob);
+      // Create post with media upload
+      const result = await postService.createPost(user.id, mediaUri, caption, mediaType === 'video' ? 'video' : 'photo');
 
-      if (!uploadResult.success || !uploadResult.cdnUrl) {
-        Alert.alert('Error', uploadResult.error || 'Failed to upload media');
-        setLoading(false);
-        return;
-      }
-
-      // Create post with CDN URL
-      const { error } = await supabase.from('posts').insert({
-        user_id: user.id,
-        media_url: uploadResult.cdnUrl,
-        caption: caption,
-        likes_count: 0,
-        comments_count: 0,
-      });
-
-      if (error) {
-        console.error('Error creating post:', error);
+      if (!result.success) {
         Alert.alert('Error', 'Failed to create post');
         setLoading(false);
         return;
       }
 
+      console.log('✅ [CreatePost] Post created successfully');
       Alert.alert('Success', 'Post created successfully');
       router.back();
     } catch (error) {
-      console.error('Error in handlePost:', error);
+      console.error('❌ [CreatePost] Error in handlePost:', error);
       Alert.alert('Error', 'An unexpected error occurred');
     } finally {
       setLoading(false);
@@ -155,7 +147,8 @@ export default function CreatePostScreen() {
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={colors.gradientEnd} />
-          <Text style={styles.loadingText}>Uploading with CDN optimization...</Text>
+          <Text style={styles.loadingText}>Uploading and storing media...</Text>
+          <Text style={styles.loadingSubtext}>Your post will be accessible on all devices</Text>
         </View>
       )}
     </View>
@@ -269,16 +262,142 @@ const styles = StyleSheet.create({
   buttonContainer: {
     marginTop: 20,
   },
+  permissionContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 20,
+  },
+  camera: {
+    flex: 1,
+    width: screenWidth,
+    height: screenHeight,
+  },
+  cameraOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'space-between',
+  },
+  topControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 60,
+    paddingHorizontal: 20,
+  },
+  controlButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+  },
+  galleryButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: colors.text,
+  },
+  captureButtonInner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.text,
+  },
+  flipButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewContainer: {
+    flex: 1,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 16,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  previewImage: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.backgroundAlt,
+  },
+  actionButtons: {
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    backgroundColor: colors.background,
+    gap: 16,
+  },
+  actionButtonContainer: {
+    gap: 8,
+  },
+  actionHint: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  feedButton: {
+    backgroundColor: colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 25,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feedButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
   },
   loadingText: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+  },
+  loadingSubtext: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.textSecondary,
   },
 });

@@ -5,6 +5,7 @@ import { colors } from '@/styles/commonStyles';
 import { IconSymbol } from '@/components/IconSymbol';
 import LiveBadge from '@/components/LiveBadge';
 import PremiumBadge from '@/components/PremiumBadge';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { NormalizedStream } from '@/utils/streamNormalizer';
 
 interface StreamPreviewCardProps {
@@ -21,6 +22,8 @@ interface StreamPreviewCardProps {
  * - No assumptions about data shape
  * - Graceful degradation when data is missing
  * - Console warnings for debugging
+ * 
+ * NEW: Shows verified badge on live streams
  */
 export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCardProps) {
   // CRITICAL LAYER 1: Guard against null/undefined stream
@@ -144,12 +147,9 @@ export default function StreamPreviewCard({ stream, onPress }: StreamPreviewCard
               {displayName}
             </Text>
             {verifiedStatus && (
-              <IconSymbol
-                ios_icon_name="checkmark.seal.fill"
-                android_material_icon_name="verified"
-                size={14}
-                color={colors.brandPrimary}
-              />
+              <View style={styles.verifiedBadgeContainer}>
+                <VerifiedBadge size="small" showText={false} />
+              </View>
             )}
             {broadcasterId && <PremiumBadge userId={broadcasterId} size="small" />}
           </View>
@@ -247,5 +247,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: colors.textSecondary,
+  },
+  verifiedBadgeContainer: {
+    marginLeft: 2,
   },
 });

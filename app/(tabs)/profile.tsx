@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import GradientButton from '@/components/GradientButton';
 import AppLogo from '@/components/AppLogo';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -46,16 +47,18 @@ export default function ProfileScreen() {
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [isVerified, setIsVerified] = useState(false);
 
   const fetchUserData = useCallback(async () => {
     if (!user) return;
 
     try {
-      const [postsData, storiesData, likedData, profileData, walletData] = await Promise.all([
+      const [postsData, storiesData, likedData, profileData, walletData, verifiedData] = await Promise.all([
         supabase
           .from('posts')
           .select('*')
           .eq('user_id', user.id)
+          .eq('media_status', 'active')
           .order('created_at', { ascending: false })
           .then(res => ({ data: res.data || [], error: res.error })),
         supabase
@@ -63,6 +66,7 @@ export default function ProfileScreen() {
           .select('*')
           .eq('user_id', user.id)
           .gt('expires_at', new Date().toISOString())
+          .eq('media_status', 'active')
           .order('created_at', { ascending: false })
           .then(res => ({ data: res.data || [], error: res.error })),
         supabase
@@ -73,7 +77,7 @@ export default function ProfileScreen() {
           .then(res => ({ data: res.data || [], error: res.error })),
         supabase
           .from('profiles')
-          .select('followers_count, following_count')
+          .select('followers_count, following_count, verified_badge')
           .eq('id', user.id)
           .single()
           .then(res => ({ data: res.data, error: res.error })),
@@ -82,6 +86,13 @@ export default function ProfileScreen() {
           .select('balance')
           .eq('user_id', user.id)
           .single()
+          .then(res => ({ data: res.data, error: res.error })),
+        supabase
+          .from('identity_verifications')
+          .select('verification_status')
+          .eq('user_id', user.id)
+          .eq('verification_status', 'approved')
+          .maybeSingle()
           .then(res => ({ data: res.data, error: res.error })),
       ]);
 
@@ -94,9 +105,13 @@ export default function ProfileScreen() {
       if (profileData.data) {
         setFollowersCount(profileData.data.followers_count || 0);
         setFollowingCount(profileData.data.following_count || 0);
+        setIsVerified(profileData.data.verified_badge === true);
       }
       if (walletData.data) {
         setWalletBalance(parseFloat(walletData.data.balance) || 0);
+      }
+      if (verifiedData.data) {
+        setIsVerified(true);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -197,11 +212,17 @@ export default function ProfileScreen() {
         <View style={styles.postsGrid}>
           {posts.map((post, index) => (
             <TouchableOpacity
-              key={index}
+              key={`post-${post.id}-${index}`}
               style={[styles.postCard, { backgroundColor: colors.card, width: (screenWidth - 6) / 3 }]}
               activeOpacity={0.8}
             >
-              <Image source={{ uri: post.media_url }} style={styles.postImage} />
+              <Image 
+                source={{ uri: post.media_url }} 
+                style={styles.postImage}
+                onError={(error) => {
+                  console.warn('⚠️ Post image load error:', error.nativeEvent.error);
+                }}
+              />
               <View style={styles.postOverlay}>
                 <View style={styles.postStats}>
                   <View style={styles.postStat}>
@@ -252,12 +273,18 @@ export default function ProfileScreen() {
       <View style={styles.storiesGrid}>
         {stories.map((story, index) => (
           <TouchableOpacity
-            key={index}
+            key={`story-${story.id}-${index}`}
             style={[styles.storyCard, { backgroundColor: colors.card, width: (screenWidth - 6) / 3 }]}
             onPress={() => handleStoryPress(story)}
             activeOpacity={0.8}
           >
-            <Image source={{ uri: story.media_url }} style={styles.storyImage} />
+            <Image 
+              source={{ uri: story.media_url }} 
+              style={styles.storyImage}
+              onError={(error) => {
+                console.warn('⚠️ Story image load error:', error.nativeEvent.error);
+              }}
+            />
             <View style={styles.storyOverlay}>
               <View style={styles.storyStats}>
                 <UnifiedRoastIcon
@@ -306,7 +333,13 @@ export default function ProfileScreen() {
 
         {/* Banner */}
         {profile.banner_url && (
-          <Image source={{ uri: profile.banner_url }} style={[styles.banner, { backgroundColor: colors.backgroundAlt }]} />
+          <Image 
+            source={{ uri: profile.banner_url }} 
+            style={[styles.banner, { backgroundColor: colors.backgroundAlt }]}
+            onError={(error) => {
+              console.warn('⚠️ Banner image load error:', error.nativeEvent.error);
+            }}
+          />
         )}
 
         {/* Profile Header */}
@@ -316,9 +349,40 @@ export default function ProfileScreen() {
               uri: profile.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
             }}
             style={[styles.avatar, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
+            onError={(error) => {
+              console.warn('⚠️ Avatar image load error:', error.nativeEvent.error);
+            }}
           />
-          <Text style={[styles.displayName, { color: colors.text }]}>{profile.display_name || profile.username}</Text>
+          <View style={styles.nameRow}>
+            <Text style={[styles.displayName, { color: colors.text }]}>{profile.display_name || profile.username}</Text>
+            {isVerified && <VerifiedBadge size="small" showText={false} />}
+          </View>
           <Text style={[styles.username, { color: colors.textSecondary }]}>@{profile.username}</Text>
+
+          {/* Identity Verification Notice */}
+          {!isVerified && (
+            <TouchableOpacity
+              style={[styles.verificationNotice, { backgroundColor: 'rgba(29, 161, 242, 0.1)', borderColor: '#1DA1F2' }]}
+              onPress={() => router.push('/screens/IdentityVerificationScreen' as any)}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="checkmark.seal.fill"
+                android_material_icon_name="verified"
+                size={20}
+                color="#1DA1F2"
+              />
+              <View style={styles.verificationNoticeText}>
+                <Text style={[styles.verificationNoticeTitle, { color: colors.text }]}>
+                  Get Verified
+                </Text>
+                <Text style={[styles.verificationNoticeSubtitle, { color: colors.textSecondary }]}>
+                  Required to go live & receive payouts
+                </Text>
+              </View>
+              <UnifiedRoastIcon name="chevron-right" size={20} color="#1DA1F2" />
+            </TouchableOpacity>
+          )}
 
           {profile.bio && <Text style={[styles.bio, { color: colors.text }]}>{profile.bio}</Text>}
 
@@ -543,15 +607,42 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 3,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   displayName: {
     fontSize: 24,
     fontWeight: '800',
-    marginBottom: 4,
   },
   username: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  verificationNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12,
+  },
+  verificationNoticeText: {
+    flex: 1,
+    gap: 2,
+  },
+  verificationNoticeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  verificationNoticeSubtitle: {
+    fontSize: 12,
+    fontWeight: '400',
   },
   bio: {
     fontSize: 14,

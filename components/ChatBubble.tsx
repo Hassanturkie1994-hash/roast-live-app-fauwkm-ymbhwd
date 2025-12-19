@@ -4,6 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { colors } from '@/styles/commonStyles';
 import PremiumBadge from '@/components/PremiumBadge';
+import VerifiedBadge from '@/components/VerifiedBadge';
 
 export interface ChatMessage {
   id: string;
@@ -11,6 +12,7 @@ export interface ChatMessage {
   username: string;
   message: string;
   timestamp: number;
+  verified_badge?: boolean;
 }
 
 interface ChatBubbleProps {
@@ -18,6 +20,14 @@ interface ChatBubbleProps {
   index: number;
 }
 
+/**
+ * ChatBubble Component
+ * 
+ * Displays chat messages in live streams with:
+ * - Verified badge (if user is verified)
+ * - Premium badge (if user has premium)
+ * - Colored username
+ */
 export default function ChatBubble({ message, index }: ChatBubbleProps) {
   const usernameColor = getUsernameColor(message.username);
 
@@ -30,6 +40,11 @@ export default function ChatBubble({ message, index }: ChatBubbleProps) {
         <Text style={[styles.username, { color: usernameColor }]}>
           {message.username}
         </Text>
+        {message.verified_badge && (
+          <View style={styles.badgeContainer}>
+            <VerifiedBadge size="small" showText={false} />
+          </View>
+        )}
         <PremiumBadge userId={message.user_id} size="small" />
       </View>
       <Text style={styles.messageText}>{message.message}</Text>
@@ -67,6 +82,9 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  badgeContainer: {
+    marginLeft: -2,
   },
   messageText: {
     color: colors.text,

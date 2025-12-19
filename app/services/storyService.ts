@@ -1,18 +1,52 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
+import { mediaUploadService } from './mediaUploadService';
 
+/**
+ * Story Service
+ * 
+ * FIXED: Proper media persistence
+ * - Uploads media to Supabase Storage
+ * - Stores metadata in database
+ * - Ensures stories persist beyond session
+ * - Retrievable on all devices
+ */
 export const storyService = {
-  async createStory(userId: string, mediaUrl: string) {
+  async createStory(
+    userId: string, 
+    fileUri: string,
+    caption?: string,
+    mediaType: 'photo' | 'video' = 'photo'
+  ) {
     try {
+      console.log('📸 [StoryService] Creating story...');
+
+      // Upload media to storage
+      const uploadResult = await mediaUploadService.uploadMedia(userId, fileUri, 'story');
+
+      if (!uploadResult.success || !uploadResult.url) {
+        console.error('❌ [StoryService] Media upload failed:', uploadResult.error);
+        return { success: false, error: uploadResult.error || 'Failed to upload media' };
+      }
+
+      console.log('✅ [StoryService] Media uploaded:', uploadResult.url);
+
+      // Set expiration to 24 hours from now
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 24);
 
+      // Create story record in database
       const { data, error } = await supabase
         .from('stories')
         .insert({
           user_id: userId,
-          media_url: mediaUrl,
+          media_url: uploadResult.url,
+          cdn_url: uploadResult.url,
+          storage_path: uploadResult.storagePath,
+          media_type: mediaType,
+          caption: caption || null,
           expires_at: expiresAt.toISOString(),
+          media_status: 'active',
           views_count: 0,
           likes_count: 0,
           comments_count: 0,
@@ -21,14 +55,16 @@ export const storyService = {
         .single();
 
       if (error) {
-        console.error('Error creating story:', error);
-        return { success: false, error };
+        console.error('❌ [StoryService] Error creating story:', error);
+        return { success: false, error: error.message };
       }
+
+      console.log('✅ [StoryService] Story created successfully:', data.id);
 
       return { success: true, data };
     } catch (error) {
-      console.error('Error in createStory:', error);
-      return { success: false, error };
+      console.error('❌ [StoryService] Error in createStory:', error);
+      return { success: false, error: 'Failed to create story' };
     }
   },
 
@@ -39,6 +75,7 @@ export const storyService = {
         .from('stories')
         .select('*, profiles(*)')
         .gt('expires_at', now)
+        .eq('media_status', 'active')
         .order('created_at', { ascending: false });
 
       if (userId) {
@@ -72,7 +109,10 @@ export const storyService = {
       }
 
       // Increment view count
-      await supabase.rpc('increment_story_views', { story_id: storyId });
+      await supabase
+        .from('stories')
+        .update({ views_count: supabase.raw('views_count + 1') })
+        .eq('id', storyId);
 
       return { success: true };
     } catch (error) {
@@ -164,7 +204,7 @@ export const storyService = {
     try {
       const { data: story, error: fetchError } = await supabase
         .from('stories')
-        .select('user_id, media_url')
+        .select('user_id, storage_path')
         .eq('id', storyId)
         .single();
 
@@ -177,23 +217,20 @@ export const storyService = {
         return { success: false, error: new Error('Unauthorized') };
       }
 
-      const { error: deleteError } = await supabase
+      // Soft delete - mark as deleted
+      const { error: updateError } = await supabase
         .from('stories')
-        .delete()
+        .update({ media_status: 'deleted' })
         .eq('id', storyId);
 
-      if (deleteError) {
-        console.error('Error deleting story:', deleteError);
-        return { success: false, error: deleteError };
+      if (updateError) {
+        console.error('Error deleting story:', updateError);
+        return { success: false, error: updateError };
       }
 
-      // Optionally delete the media from storage
-      if (story.media_url) {
-        const urlParts = story.media_url.split('/');
-        const fileName = urlParts[urlParts.length - 1];
-        const filePath = `stories/${fileName}`;
-        
-        await supabase.storage.from('stories').remove([filePath]);
+      // Optionally delete from storage
+      if (story.storage_path) {
+        await mediaUploadService.deleteMedia('story', story.storage_path);
       }
 
       return { success: true };

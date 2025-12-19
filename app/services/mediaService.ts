@@ -165,13 +165,22 @@ class MediaService {
   }
 
   /**
-   * Create a story
+   * Create a story with improved persistence
    */
   async createStory(
     userId: string,
     mediaUri: string
   ): Promise<{ success: boolean; storyId?: string; error?: string }> {
     try {
+      console.log('📸 Creating story for user:', userId);
+      
+      // Validate URI first
+      const validation = this.validateFile(mediaUri);
+      if (!validation.valid) {
+        console.error('❌ Invalid media URI:', validation.error);
+        return { success: false, error: validation.error };
+      }
+
       // Upload media with retry logic
       const timestamp = Date.now();
       const uploadResult = await this.uploadMedia(
@@ -181,8 +190,11 @@ class MediaService {
       );
 
       if (!uploadResult.success || !uploadResult.url) {
+        console.error('❌ Upload failed:', uploadResult.error);
         return { success: false, error: uploadResult.error || 'Failed to upload media' };
       }
+
+      console.log('✅ Media uploaded:', uploadResult.url);
 
       // Generate thumbnail
       const thumbUrl = await this.generateThumbnail(uploadResult.url);
@@ -191,13 +203,16 @@ class MediaService {
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + 24);
 
-      // Create story record
+      // Create story record with CDN URL and storage path
       const { data, error } = await supabase
         .from('stories')
         .insert({
           user_id: userId,
           media_url: uploadResult.url,
+          cdn_url: uploadResult.url, // Store CDN URL
+          storage_path: `${userId}/${timestamp}`, // Store path for reference
           thumb_url: thumbUrl,
+          media_status: 'active', // Mark as active
           expires_at: expiresAt.toISOString(),
         })
         .select()
@@ -218,7 +233,7 @@ class MediaService {
   }
 
   /**
-   * Create a post
+   * Create a post with improved persistence
    */
   async createPost(
     userId: string,
@@ -226,6 +241,15 @@ class MediaService {
     caption?: string
   ): Promise<{ success: boolean; postId?: string; error?: string }> {
     try {
+      console.log('📝 Creating post for user:', userId);
+      
+      // Validate URI first
+      const validation = this.validateFile(mediaUri);
+      if (!validation.valid) {
+        console.error('❌ Invalid media URI:', validation.error);
+        return { success: false, error: validation.error };
+      }
+
       // Upload media with retry logic
       const timestamp = Date.now();
       const uploadResult = await this.uploadMedia(
@@ -235,19 +259,25 @@ class MediaService {
       );
 
       if (!uploadResult.success || !uploadResult.url) {
+        console.error('❌ Upload failed:', uploadResult.error);
         return { success: false, error: uploadResult.error || 'Failed to upload media' };
       }
+
+      console.log('✅ Media uploaded:', uploadResult.url);
 
       // Generate thumbnail
       const thumbUrl = await this.generateThumbnail(uploadResult.url);
 
-      // Create post record
+      // Create post record with CDN URL and storage path
       const { data, error } = await supabase
         .from('posts')
         .insert({
           user_id: userId,
           media_url: uploadResult.url,
+          cdn_url: uploadResult.url, // Store CDN URL
+          storage_path: `${userId}/${timestamp}`, // Store path for reference
           thumb_url: thumbUrl,
+          media_status: 'active', // Mark as active
           caption: caption || null,
         })
         .select()

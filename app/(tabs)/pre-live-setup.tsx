@@ -25,6 +25,7 @@ import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
 import { enhancedContentSafetyService } from '@/app/services/enhancedContentSafetyService';
 import { communityGuidelinesService } from '@/app/services/communityGuidelinesService';
 import { BattleFormat, battleService } from '@/app/services/battleService';
+import { identityVerificationService } from '@/app/services/identityVerificationService';
 
 // NEW: Import modular bottom-sheet panels
 import FiltersEffectsBottomSheet from '@/components/FiltersEffectsBottomSheet';
@@ -294,6 +295,28 @@ function PreLiveSetupScreenContent() {
     if (!user) {
       Alert.alert('Error', 'You must be logged in to start streaming');
       return;
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // IDENTITY VERIFICATION CHECK (REQUIRED FOR GOING LIVE)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (!practiceMode) {
+      const verificationCheck = await identityVerificationService.canGoLive(user.id);
+      
+      if (!verificationCheck.canGoLive) {
+        Alert.alert(
+          'Identity Verification Required',
+          verificationCheck.reason || 'You must complete identity verification before going live.',
+          [
+            {
+              text: 'Verify Now',
+              onPress: () => router.push('/screens/IdentityVerificationScreen' as any),
+            },
+            { text: 'Cancel', style: 'cancel' },
+          ]
+        );
+        return;
+      }
     }
 
     // Battle mode validation

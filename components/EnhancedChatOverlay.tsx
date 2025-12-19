@@ -20,9 +20,12 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { Tables } from '@/app/integrations/supabase/types';
 import UserActionModal from './UserActionModal';
 import { moderationService } from '@/app/services/moderationService';
+import VerifiedBadge from './VerifiedBadge';
 
 type ChatMessage = Tables<'chat_messages'> & {
-  users: Tables<'users'>;
+  users: Tables<'users'> & {
+    verified_badge?: boolean;
+  };
 };
 
 interface EnhancedChatOverlayProps {
@@ -83,22 +86,53 @@ export default function EnhancedChatOverlay({
     try {
       console.log('📥 Fetching recent messages for stream:', streamId);
       
-      const { data, error } = await supabase
+      // Fetch messages with user data including verified_badge from profiles
+      const { data: messagesData, error: messagesError } = await supabase
         .from('chat_messages')
         .select('*, users(*)')
         .eq('stream_id', streamId)
         .order('created_at', { ascending: true })
         .limit(50);
 
-      if (error) {
-        console.error('❌ Error fetching chat messages:', error);
+      if (messagesError) {
+        console.error('❌ Error fetching chat messages:', messagesError);
         return;
       }
 
-      console.log(`✅ Loaded ${data?.length || 0} recent messages`);
+      // Fetch verified_badge status for each user
+      if (messagesData && messagesData.length > 0) {
+        const userIds = [...new Set(messagesData.map(m => m.user_id))];
+        
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, verified_badge')
+          .in('id', userIds);
+
+        if (!profilesError && profilesData) {
+          const verifiedMap = new Map(profilesData.map(p => [p.id, p.verified_badge]));
+          
+          // Add verified_badge to messages
+          const enrichedMessages = messagesData.map(msg => ({
+            ...msg,
+            users: {
+              ...msg.users,
+              verified_badge: verifiedMap.get(msg.user_id) || false,
+            },
+          }));
+
+          console.log(`✅ Loaded ${enrichedMessages.length} recent messages with verification status`);
+          
+          if (isMountedRef.current) {
+            setMessages(enrichedMessages as ChatMessage[]);
+          }
+          return;
+        }
+      }
+
+      console.log(`✅ Loaded ${messagesData?.length || 0} recent messages`);
       
       if (isMountedRef.current) {
-        setMessages(data as ChatMessage[]);
+        setMessages(messagesData as ChatMessage[]);
       }
     } catch (error) {
       console.error('❌ Error in fetchRecentMessages:', error);
@@ -218,16 +252,31 @@ export default function EnhancedChatOverlay({
 
       console.log('✅ Message saved to database');
 
+      // Fetch verified_badge from profiles
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('verified_badge')
+        .eq('id', user.id)
+        .single();
+
+      const enrichedMessage = {
+        ...newMessage,
+        users: {
+          ...newMessage.users,
+          verified_badge: profileData?.verified_badge || false,
+        },
+      };
+
       // Add message to local state immediately for broadcaster
-      if (isBroadcaster && newMessage && isMountedRef.current) {
-        setMessages((prev) => [...prev, newMessage]);
+      if (isBroadcaster && enrichedMessage && isMountedRef.current) {
+        setMessages((prev) => [...prev, enrichedMessage]);
       }
 
-      if (channelRef.current && newMessage && isMountedRef.current) {
+      if (channelRef.current && enrichedMessage && isMountedRef.current) {
         await channelRef.current.send({
           type: 'broadcast',
           event: 'new_message',
-          payload: newMessage,
+          payload: enrichedMessage,
         });
         console.log('📡 Message broadcasted to all viewers');
       }
@@ -295,6 +344,7 @@ export default function EnhancedChatOverlay({
   const renderMessage = (msg: ChatMessage, index: number) => {
     const isHost = msg.user_id === hostId;
     const canInteract = isBroadcaster || isModerator;
+    const isVerified = msg.users.verified_badge === true;
     
     return (
       <Animated.View
@@ -309,13 +359,25 @@ export default function EnhancedChatOverlay({
           onLongPress={() => canInteract && setLongPressedMessage(msg)}
           disabled={!canInteract}
         >
-          <Text style={styles.chatUsername}>
-            <Text style={isHost ? styles.hostUsername : undefined}>
-              {msg.users.display_name}
+          <View style={styles.chatUsernameRow}>
+            <Text style={styles.chatUsername}>
+              <Text style={isHost ? styles.hostUsername : undefined}>
+                {msg.users.display_name}
+              </Text>
+              {isHost && <Text style={styles.hostLabel}> - Host</Text>}
+              :
             </Text>
-            {isHost && <Text style={styles.hostLabel}> - Host</Text>}
-            :
-          </Text>
+            {isVerified && (
+              <View style={styles.verifiedBadgeInline}>
+                <IconSymbol
+                  ios_icon_name="checkmark.seal.fill"
+                  android_material_icon_name="verified"
+                  size={14}
+                  color="#1DA1F2"
+                />
+              </View>
+            )}
+          </View>
           <Text style={styles.chatText}>{msg.message}</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -499,11 +561,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 8,
   },
+  chatUsernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
   chatUsername: {
     fontSize: 12,
     fontWeight: '700',
     color: colors.gradientEnd,
-    marginBottom: 2,
+  },
+  verifiedBadgeInline: {
+    marginLeft: 2,
   },
   hostUsername: {
     color: '#FF0000',

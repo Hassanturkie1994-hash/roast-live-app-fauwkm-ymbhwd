@@ -13,9 +13,10 @@ import {
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
-import { searchService } from '@/app/services/searchService';
+import { searchService, SearchContentType } from '@/app/services/searchService';
 import { followService } from '@/app/services/followService';
 import { useAuth } from '@/contexts/AuthContext';
+import VerifiedBadge from '@/components/VerifiedBadge';
 
 interface SearchUserResult {
   id: string;
@@ -23,6 +24,7 @@ interface SearchUserResult {
   display_name: string | null;
   avatar_url: string | null;
   bio: string | null;
+  verified_badge: boolean | null;
 }
 
 export default function SearchScreen() {
@@ -33,6 +35,7 @@ export default function SearchScreen() {
   const [users, setUsers] = useState<SearchUserResult[]>([]);
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<SearchContentType>('all');
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -47,14 +50,24 @@ export default function SearchScreen() {
     setError(null);
 
     try {
-      const result = await searchService.searchUsers(query);
+      const result = await searchService.searchByType(query, activeFilter);
       
       if (result.success) {
-        setUsers(result.data as SearchUserResult[]);
+        if (activeFilter === 'all' && 'data' in result && typeof result.data === 'object') {
+          setUsers((result.data as any).users || []);
+        } else if (activeFilter === 'profiles') {
+          setUsers(result.data as SearchUserResult[]);
+        } else {
+          setUsers([]);
+        }
 
-        if (user) {
+        if (user && result.success) {
+          const usersToCheck = activeFilter === 'all' 
+            ? ((result.data as any).users || [])
+            : (activeFilter === 'profiles' ? result.data as SearchUserResult[] : []);
+
           const followingStatuses: Record<string, boolean> = {};
-          for (const searchUser of result.data) {
+          for (const searchUser of usersToCheck) {
             try {
               const isFollowing = await followService.isFollowing(user.id, searchUser.id);
               followingStatuses[searchUser.id] = isFollowing;
@@ -66,7 +79,7 @@ export default function SearchScreen() {
           setFollowingMap(followingStatuses);
         }
       } else {
-        setError('Failed to search users. Please try again.');
+        setError('Failed to search. Please try again.');
         setUsers([]);
       }
     } catch (error) {
@@ -76,7 +89,7 @@ export default function SearchScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, activeFilter]);
 
   useEffect(() => {
     if (debounceTimerRef.current) {
@@ -150,7 +163,7 @@ export default function SearchScreen() {
           return (
             <TouchableOpacity
               key={`user-${searchUser.id}`}
-              style={[styles.userCard, { backgroundColor: colors.card }]}
+              style={[styles.userCard, { backgroundColor: colors.card, borderBottomColor: colors.border }]}
               onPress={() => handleUserPress(searchUser.id)}
               activeOpacity={0.7}
             >
@@ -161,9 +174,12 @@ export default function SearchScreen() {
                 style={styles.userAvatar}
               />
               <View style={styles.userInfo}>
-                <Text style={[styles.userName, { color: colors.text }]}>
-                  {searchUser.display_name || searchUser.username}
-                </Text>
+                <View style={styles.userNameRow}>
+                  <Text style={[styles.userName, { color: colors.text }]}>
+                    {searchUser.display_name || searchUser.username}
+                  </Text>
+                  {searchUser.verified_badge && <VerifiedBadge size="small" showText={false} />}
+                </View>
                 <Text style={[styles.userUsername, { color: colors.textSecondary }]}>
                   @{searchUser.username}
                 </Text>
@@ -223,7 +239,7 @@ export default function SearchScreen() {
           />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Search users..."
+            placeholder="Search..."
             placeholderTextColor={colors.placeholder}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -242,6 +258,55 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
         </View>
+      </View>
+
+      {/* IMPROVED: Horizontal filter chips that fit on screen */}
+      <View style={styles.filterChipsContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.filterChipsScroll}
+        >
+          {(['all', 'profiles', 'posts', 'lives'] as SearchContentType[]).map((type) => (
+            <TouchableOpacity
+              key={`filter-${type}`}
+              style={[
+                styles.filterChip,
+                {
+                  backgroundColor: activeFilter === type ? colors.brandPrimary : colors.backgroundAlt,
+                  borderColor: activeFilter === type ? colors.brandPrimary : colors.border,
+                },
+              ]}
+              onPress={() => setActiveFilter(type)}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name={
+                  type === 'all' ? 'square.grid.2x2.fill' :
+                  type === 'profiles' ? 'person.fill' :
+                  type === 'posts' ? 'photo.fill' :
+                  'video.fill'
+                }
+                android_material_icon_name={
+                  type === 'all' ? 'apps' :
+                  type === 'profiles' ? 'person' :
+                  type === 'posts' ? 'photo' :
+                  'videocam'
+                }
+                size={16}
+                color={activeFilter === type ? '#FFFFFF' : colors.text}
+              />
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: activeFilter === type ? '#FFFFFF' : colors.text },
+                ]}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       <ScrollView
@@ -276,9 +341,9 @@ export default function SearchScreen() {
               size={64}
               color={colors.textSecondary}
             />
-            <Text style={[styles.emptyText, { color: colors.text }]}>Search for users</Text>
+            <Text style={[styles.emptyText, { color: colors.text }]}>Search Roast Live</Text>
             <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-              Find and follow other users on Roast Live
+              Find users, posts, and live streams
             </Text>
           </View>
         ) : users.length === 0 ? (
@@ -289,7 +354,7 @@ export default function SearchScreen() {
               size={64}
               color={colors.textSecondary}
             />
-            <Text style={[styles.emptyText, { color: colors.text }]}>No users found</Text>
+            <Text style={[styles.emptyText, { color: colors.text }]}>No results found</Text>
             <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
               Try a different search term
             </Text>
@@ -334,6 +399,28 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
   },
+  filterChipsContainer: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  filterChipsScroll: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
   scrollView: {
     flex: 1,
   },
@@ -377,6 +464,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     gap: 12,
+    borderBottomWidth: 1,
   },
   userAvatar: {
     width: 50,
@@ -386,6 +474,11 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
     gap: 2,
+  },
+  userNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   userName: {
     fontSize: 16,

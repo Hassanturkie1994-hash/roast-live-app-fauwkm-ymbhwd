@@ -1,7 +1,69 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
+import { mediaUploadService } from './mediaUploadService';
 
+/**
+ * Post Service
+ * 
+ * FIXED: Proper media persistence
+ * - Uploads media to Supabase Storage
+ * - Stores metadata in database
+ * - Ensures posts persist beyond session
+ * - Retrievable on all devices
+ */
 export const postService = {
+  async createPost(
+    userId: string,
+    fileUri: string,
+    caption?: string,
+    mediaType: 'photo' | 'video' = 'photo'
+  ) {
+    try {
+      console.log('📸 [PostService] Creating post...');
+
+      // Upload media to storage
+      const uploadResult = await mediaUploadService.uploadMedia(userId, fileUri, 'post');
+
+      if (!uploadResult.success || !uploadResult.url) {
+        console.error('❌ [PostService] Media upload failed:', uploadResult.error);
+        return { success: false, error: uploadResult.error || 'Failed to upload media' };
+      }
+
+      console.log('✅ [PostService] Media uploaded:', uploadResult.url);
+
+      // Create post record in database
+      const { data, error } = await supabase
+        .from('posts')
+        .insert({
+          user_id: userId,
+          media_url: uploadResult.url,
+          cdn_url: uploadResult.url,
+          storage_path: uploadResult.storagePath,
+          media_type: mediaType,
+          caption: caption || null,
+          media_status: 'active',
+          likes_count: 0,
+          comments_count: 0,
+          views_count: 0,
+          shares_count: 0,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ [PostService] Error creating post:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('✅ [PostService] Post created successfully:', data.id);
+
+      return { success: true, data };
+    } catch (error) {
+      console.error('❌ [PostService] Error in createPost:', error);
+      return { success: false, error: 'Failed to create post' };
+    }
+  },
+
   async likePost(userId: string, postId: string) {
     try {
       const { error } = await supabase.from('post_likes').insert({
@@ -13,6 +75,12 @@ export const postService = {
         console.error('Error liking post:', error);
         return { success: false, error };
       }
+
+      // Increment like count
+      await supabase
+        .from('posts')
+        .update({ likes_count: supabase.raw('likes_count + 1') })
+        .eq('id', postId);
 
       return { success: true };
     } catch (error) {
@@ -33,6 +101,12 @@ export const postService = {
         console.error('Error unliking post:', error);
         return { success: false, error };
       }
+
+      // Decrement like count
+      await supabase
+        .from('posts')
+        .update({ likes_count: supabase.raw('likes_count - 1') })
+        .eq('id', postId);
 
       return { success: true };
     } catch (error) {
@@ -64,10 +138,10 @@ export const postService = {
 
   async deletePost(userId: string, postId: string) {
     try {
-      // First, get the post to verify ownership and get media URL
+      // First, get the post to verify ownership and get storage path
       const { data: post, error: fetchError } = await supabase
         .from('posts')
-        .select('user_id, media_url')
+        .select('user_id, storage_path')
         .eq('id', postId)
         .single();
 
@@ -80,24 +154,20 @@ export const postService = {
         return { success: false, error: new Error('Unauthorized') };
       }
 
-      // Delete the post
-      const { error: deleteError } = await supabase
+      // Soft delete - mark as deleted
+      const { error: updateError } = await supabase
         .from('posts')
-        .delete()
+        .update({ media_status: 'deleted' })
         .eq('id', postId);
 
-      if (deleteError) {
-        console.error('Error deleting post:', deleteError);
-        return { success: false, error: deleteError };
+      if (updateError) {
+        console.error('Error deleting post:', updateError);
+        return { success: false, error: updateError };
       }
 
-      // Optionally delete the media from storage
-      if (post.media_url) {
-        const urlParts = post.media_url.split('/');
-        const fileName = urlParts[urlParts.length - 1];
-        const filePath = `posts/${fileName}`;
-        
-        await supabase.storage.from('posts').remove([filePath]);
+      // Optionally delete from storage
+      if (post.storage_path) {
+        await mediaUploadService.deleteMedia('post', post.storage_path);
       }
 
       return { success: true };
@@ -113,6 +183,7 @@ export const postService = {
         .from('posts')
         .select('*')
         .eq('user_id', userId)
+        .eq('media_status', 'active')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -132,6 +203,7 @@ export const postService = {
       const { data, error } = await supabase
         .from('posts')
         .select('*, profiles(*)')
+        .eq('media_status', 'active')
         .order('created_at', { ascending: false })
         .limit(limit);
 

@@ -637,6 +637,19 @@ export default function HeadAdminDashboardScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>👥 User Management</Text>
           
           <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.card, borderColor: '#1DA1F2' }]}
+            onPress={() => router.push('/screens/AdminIdentityVerificationsScreen' as any)}
+          >
+            <IconSymbol
+              ios_icon_name="checkmark.seal.fill"
+              android_material_icon_name="verified"
+              size={20}
+              color="#1DA1F2"
+            />
+            <Text style={[styles.actionButtonText, { color: colors.text }]}>Identity Verifications</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => {
               setActionType('role');
