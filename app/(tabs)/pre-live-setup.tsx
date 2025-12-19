@@ -460,7 +460,20 @@ export default function PreLiveSetupScreen() {
               size={16}
               color="#FF6B00"
             />
-            <Text style={styles.battleModeText}>Battle Mode: {battleFormat.toUpperCase()}</Text>
+            <Text style={styles.battleModeText}>🎮 Battle Mode: {battleFormat.toUpperCase()}</Text>
+          </View>
+        )}
+
+        {/* VIP CLUB INDICATOR */}
+        {selectedVIPClub && (
+          <View style={styles.vipClubIndicator}>
+            <IconSymbol
+              ios_icon_name="star.circle.fill"
+              android_material_icon_name="workspace_premium"
+              size={16}
+              color="#FFD700"
+            />
+            <Text style={styles.vipClubText}>💎 VIP Club Enabled</Text>
           </View>
         )}
 
@@ -534,7 +547,7 @@ export default function PreLiveSetupScreen() {
                 isLoading 
                   ? 'LOADING...' 
                   : streamMode === 'battle' 
-                    ? 'CREATE BATTLE LOBBY' 
+                    ? '🎮 CREATE BATTLE LOBBY' 
                     : practiceMode 
                       ? 'START PRACTICE' 
                       : 'GO LIVE'
@@ -706,6 +719,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  vipClubIndicator: {
+    position: 'absolute',
+    top: Platform.OS === 'android' ? 350 : 340,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.9)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 8,
+    zIndex: 10,
+  },
+  vipClubText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000000',
   },
   bottomBar: {
     position: 'absolute',

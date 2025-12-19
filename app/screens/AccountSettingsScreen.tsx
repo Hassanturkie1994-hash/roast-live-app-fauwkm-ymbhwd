@@ -578,7 +578,37 @@ export default function AccountSettingsScreen() {
           >
             <View style={styles.settingLeft}>
               <RoastIcon name="roast-gift-box" size={20} />
-              <Text style={[styles.settingText, { color: colors.text }]}>Gift Information</Text>
+              <Text style={[styles.settingText, { color: colors.text }]}>Gifts & Effects</Text>
+            </View>
+            <RoastIcon
+              name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
+            onPress={() => router.push('/screens/SeasonsRankingsScreen')}
+          >
+            <View style={styles.settingLeft}>
+              <RoastIcon name="crown" size={20} />
+              <Text style={[styles.settingText, { color: colors.text }]}>Seasons & Rankings</Text>
+            </View>
+            <RoastIcon
+              name="chevron-right"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: colors.divider }]} 
+            onPress={() => router.push('/screens/CreatorVIPDashboard')}
+          >
+            <View style={styles.settingLeft}>
+              <RoastIcon name="vip-diamond-flame" size={20} />
+              <Text style={[styles.settingText, { color: colors.text }]}>VIP Club</Text>
             </View>
             <RoastIcon
               name="chevron-right"
@@ -729,7 +759,7 @@ export default function AccountSettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Privacy Preferences Section - REPLACED "Who can comment" with "Profile visibility" */}
+        {/* Privacy Preferences Section */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionTitleRow}>
             <RoastIcon name="privacy" size={20} />
