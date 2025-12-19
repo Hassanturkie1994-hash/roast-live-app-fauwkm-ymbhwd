@@ -29,13 +29,14 @@ export default function WebRTCLivePublisher({
   }, [streamId, onStreamReady, onStreamError]);
 
   useEffect(() => {
+    // Copy ref value to local variable for cleanup
+    const currentStream = streamRef.current;
+
     if (Platform.OS !== 'web') {
       initializeWebRTCStream();
     }
 
     return () => {
-      // Copy ref value to local variable for cleanup
-      const currentStream = streamRef.current;
       if (currentStream) {
         console.log('Cleaning up WebRTC stream');
       }

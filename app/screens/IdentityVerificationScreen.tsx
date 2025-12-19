@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   ScrollView,
@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -18,29 +19,31 @@ import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
 import { identityVerificationService, IdentityVerificationData } from '@/app/services/identityVerificationService';
 import * as ImagePicker from 'expo-image-picker';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 /**
  * Identity Verification Screen
  * 
- * Required before:
- * - Going live
- * - Receiving payouts (PayPal or Stripe)
- * 
- * Collects:
- * - Full legal name
- * - Personal ID number
- * - Country
- * - Address/State/City
- * - Date of birth
- * - Identity verification document (Passport, National ID, or Driver's License)
+ * UPDATED BEHAVIOR:
+ * - Verification is NOT required for streaming
+ * - Verification is ONLY required for payouts (Stripe/PayPal)
+ * - Supports automatic camera-based verification
+ * - Shows upload progress
+ * - Handles network errors gracefully
+ * - Retries on failure
  */
 export default function IdentityVerificationScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [existingVerification, setExistingVerification] = useState<any>(null);
+  const [verificationMethod, setVerificationMethod] = useState<'manual' | 'automatic'>('automatic');
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
 
   // Form state
   const [fullLegalName, setFullLegalName] = useState('');
@@ -58,6 +61,8 @@ export default function IdentityVerificationScreen() {
   const [showExpiryDatePicker, setShowExpiryDatePicker] = useState(false);
   const [documentUri, setDocumentUri] = useState<string | null>(null);
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [selfieUri, setSelfieUri] = useState<string | null>(null);
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
 
   const loadExistingVerification = useCallback(async () => {
     if (!user) return;
@@ -79,6 +84,8 @@ export default function IdentityVerificationScreen() {
         setDocumentType(verification.document_type as any);
         setDocumentNumber(verification.document_number);
         setDocumentUrl(verification.document_url);
+        setSelfieUrl(verification.selfie_url);
+        setVerificationMethod(verification.verification_method || 'manual');
         if (verification.document_expiry_date) {
           setDocumentExpiryDate(new Date(verification.document_expiry_date));
         }
@@ -92,7 +99,7 @@ export default function IdentityVerificationScreen() {
 
   useEffect(() => {
     loadExistingVerification();
-  }, []);
+  }, [loadExistingVerification]);
 
   const handlePickDocument = async () => {
     try {
@@ -103,7 +110,7 @@ export default function IdentityVerificationScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         quality: 0.9,
       });
@@ -114,6 +121,36 @@ export default function IdentityVerificationScreen() {
     } catch (error) {
       console.error('Error picking document:', error);
       Alert.alert('Error', 'Failed to pick document');
+    }
+  };
+
+  const handleTakeSelfie = async () => {
+    if (!cameraPermission?.granted) {
+      const { granted } = await requestCameraPermission();
+      if (!granted) {
+        Alert.alert('Permission Denied', 'Camera permission is required for automatic verification.');
+        return;
+      }
+    }
+
+    setShowCamera(true);
+  };
+
+  const captureSelfie = async () => {
+    if (!cameraRef.current) return;
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.9,
+      });
+
+      if (photo) {
+        setSelfieUri(photo.uri);
+        setShowCamera(false);
+      }
+    } catch (error) {
+      console.error('Error capturing selfie:', error);
+      Alert.alert('Error', 'Failed to capture selfie');
     }
   };
 
@@ -156,21 +193,35 @@ export default function IdentityVerificationScreen() {
       return;
     }
 
+    if (verificationMethod === 'automatic' && !selfieUri && !selfieUrl) {
+      Alert.alert('Error', 'Please take a selfie for automatic verification');
+      return;
+    }
+
     setSubmitting(true);
+    setUploadProgress(0);
 
     try {
       let uploadedDocumentUrl = documentUrl;
+      let uploadedSelfieUrl = selfieUrl;
 
       // Upload document if new file selected
       if (documentUri && !documentUrl) {
+        console.log('📤 Uploading document...');
         const uploadResult = await identityVerificationService.uploadVerificationDocument(
           user.id,
           documentUri,
-          documentType
+          documentType,
+          (progress) => {
+            setUploadProgress(progress.percentage / 2); // First 50%
+          }
         );
 
         if (!uploadResult.success || !uploadResult.url) {
-          Alert.alert('Error', uploadResult.error || 'Failed to upload document');
+          Alert.alert(
+            'Upload Failed', 
+            uploadResult.error || 'Failed to upload document. Please check your network connection and try again.'
+          );
           setSubmitting(false);
           return;
         }
@@ -178,11 +229,36 @@ export default function IdentityVerificationScreen() {
         uploadedDocumentUrl = uploadResult.url;
       }
 
+      // Upload selfie if automatic verification
+      if (verificationMethod === 'automatic' && selfieUri && !selfieUrl) {
+        console.log('📤 Uploading selfie...');
+        const uploadResult = await identityVerificationService.uploadVerificationSelfie(
+          user.id,
+          selfieUri,
+          (progress) => {
+            setUploadProgress(50 + (progress.percentage / 2)); // Second 50%
+          }
+        );
+
+        if (!uploadResult.success || !uploadResult.url) {
+          Alert.alert(
+            'Upload Failed', 
+            uploadResult.error || 'Failed to upload selfie. Please check your network connection and try again.'
+          );
+          setSubmitting(false);
+          return;
+        }
+
+        uploadedSelfieUrl = uploadResult.url;
+      }
+
       if (!uploadedDocumentUrl) {
         Alert.alert('Error', 'Document upload failed');
         setSubmitting(false);
         return;
       }
+
+      setUploadProgress(100);
 
       // Submit verification
       const verificationData: IdentityVerificationData = {
@@ -198,24 +274,32 @@ export default function IdentityVerificationScreen() {
         documentUrl: uploadedDocumentUrl,
         documentNumber,
         documentExpiryDate: documentExpiryDate.toISOString().split('T')[0],
+        selfieUrl: uploadedSelfieUrl,
       };
 
-      const result = await identityVerificationService.submitVerification(user.id, verificationData);
+      const result = await identityVerificationService.submitVerification(
+        user.id, 
+        verificationData,
+        verificationMethod
+      );
 
       if (result.success) {
         Alert.alert(
           'Verification Submitted',
-          'Your identity verification has been submitted for review. You will be notified once it is approved.',
+          verificationMethod === 'automatic'
+            ? 'Your identity verification has been submitted for automatic processing. You will be notified within minutes.'
+            : 'Your identity verification has been submitted for review. You will be notified once it is approved.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
       } else {
-        Alert.alert('Error', result.error || 'Failed to submit verification');
+        Alert.alert('Error', result.error || 'Failed to submit verification. Please try again.');
       }
     } catch (error) {
       console.error('Error submitting verification:', error);
-      Alert.alert('Error', 'Failed to submit verification');
+      Alert.alert('Error', 'Network error. Please check your connection and try again.');
     } finally {
       setSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -223,6 +307,45 @@ export default function IdentityVerificationScreen() {
     return (
       <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
+      </View>
+    );
+  }
+
+  // Show camera for selfie capture
+  if (showCamera) {
+    return (
+      <View style={styles.container}>
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing="front"
+        >
+          <View style={styles.cameraOverlay}>
+            <View style={styles.cameraHeader}>
+              <TouchableOpacity onPress={() => setShowCamera(false)} style={styles.cameraCloseButton}>
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={28}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+              <Text style={styles.cameraTitle}>Take a Selfie</Text>
+              <View style={styles.placeholder} />
+            </View>
+
+            <View style={styles.cameraInstructions}>
+              <Text style={styles.instructionText}>Position your face in the circle</Text>
+              <Text style={styles.instructionSubtext}>Make sure your face is clearly visible</Text>
+            </View>
+
+            <View style={styles.cameraControls}>
+              <TouchableOpacity onPress={captureSelfie} style={styles.captureButton}>
+                <View style={styles.captureButtonInner} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </CameraView>
       </View>
     );
   }
@@ -255,7 +378,7 @@ export default function IdentityVerificationScreen() {
           </View>
           <Text style={[styles.successTitle, { color: colors.text }]}>Verified</Text>
           <Text style={[styles.successDescription, { color: colors.textSecondary }]}>
-            Your identity has been verified. You can now go live and receive payouts.
+            Your identity has been verified. You can now receive payouts.
           </Text>
           <Text style={[styles.verifiedDate, { color: colors.textSecondary }]}>
             Verified on {new Date(existingVerification.verified_at).toLocaleDateString()}
@@ -292,7 +415,9 @@ export default function IdentityVerificationScreen() {
           </View>
           <Text style={[styles.pendingTitle, { color: colors.text }]}>Verification Pending</Text>
           <Text style={[styles.pendingDescription, { color: colors.textSecondary }]}>
-            Your identity verification is being reviewed. This usually takes 1-3 business days.
+            {existingVerification.verification_method === 'automatic'
+              ? 'Your identity is being verified automatically. This usually takes a few minutes.'
+              : 'Your identity verification is being reviewed. This usually takes 1-3 business days.'}
           </Text>
           <Text style={[styles.submittedDate, { color: colors.textSecondary }]}>
             Submitted on {new Date(existingVerification.submitted_at).toLocaleDateString()}
@@ -330,9 +455,63 @@ export default function IdentityVerificationScreen() {
             color={colors.brandPrimary}
           />
           <Text style={[styles.infoText, { color: colors.text }]}>
-            Identity verification is required before you can go live or receive payouts. 
-            All information is stored securely and used only for verification purposes.
+            Identity verification is required before you can receive payouts (Stripe or PayPal). 
+            You can stream without verification. All information is stored securely.
           </Text>
+        </View>
+
+        {/* Verification Method Selection */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Verification Method</Text>
+          
+          <View style={styles.methodButtons}>
+            <TouchableOpacity
+              style={[
+                styles.methodButton,
+                { backgroundColor: colors.backgroundAlt, borderColor: colors.border },
+                verificationMethod === 'automatic' && { borderColor: colors.brandPrimary, borderWidth: 2 },
+              ]}
+              onPress={() => setVerificationMethod('automatic')}
+            >
+              <IconSymbol
+                ios_icon_name="camera.fill"
+                android_material_icon_name="camera_alt"
+                size={32}
+                color={verificationMethod === 'automatic' ? colors.brandPrimary : colors.textSecondary}
+              />
+              <Text style={[styles.methodTitle, { color: verificationMethod === 'automatic' ? colors.brandPrimary : colors.text }]}>
+                Automatic
+              </Text>
+              <Text style={[styles.methodDescription, { color: colors.textSecondary }]}>
+                Instant verification with camera
+              </Text>
+              <View style={[styles.recommendedBadge, { backgroundColor: colors.brandPrimary }]}>
+                <Text style={styles.recommendedText}>RECOMMENDED</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.methodButton,
+                { backgroundColor: colors.backgroundAlt, borderColor: colors.border },
+                verificationMethod === 'manual' && { borderColor: colors.brandPrimary, borderWidth: 2 },
+              ]}
+              onPress={() => setVerificationMethod('manual')}
+            >
+              <IconSymbol
+                ios_icon_name="doc.fill"
+                android_material_icon_name="description"
+                size={32}
+                color={verificationMethod === 'manual' ? colors.brandPrimary : colors.textSecondary}
+              />
+              <Text style={[styles.methodTitle, { color: verificationMethod === 'manual' ? colors.brandPrimary : colors.text }]}>
+                Manual
+              </Text>
+              <Text style={[styles.methodDescription, { color: colors.textSecondary }]}>
+                Upload documents for review
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Personal Information */}
@@ -549,20 +728,73 @@ export default function IdentityVerificationScreen() {
             style={[styles.uploadButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
             onPress={handlePickDocument}
           >
-            <IconSymbol
-              ios_icon_name="camera.fill"
-              android_material_icon_name="camera_alt"
-              size={32}
-              color={colors.brandPrimary}
-            />
-            <Text style={[styles.uploadButtonText, { color: colors.text }]}>
-              {documentUri || documentUrl ? 'Document Uploaded ✓' : 'Upload Photo of ID'}
-            </Text>
-            <Text style={[styles.uploadButtonSubtext, { color: colors.textSecondary }]}>
-              Clear photo showing all details
-            </Text>
+            {documentUri ? (
+              <Image source={{ uri: documentUri }} style={styles.uploadedImage} />
+            ) : (
+              <>
+                <IconSymbol
+                  ios_icon_name="camera.fill"
+                  android_material_icon_name="camera_alt"
+                  size={32}
+                  color={colors.brandPrimary}
+                />
+                <Text style={[styles.uploadButtonText, { color: colors.text }]}>
+                  {documentUrl ? 'Document Uploaded ✓' : 'Upload Photo of ID'}
+                </Text>
+                <Text style={[styles.uploadButtonSubtext, { color: colors.textSecondary }]}>
+                  Clear photo showing all details
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
+
+          {/* Selfie for Automatic Verification */}
+          {verificationMethod === 'automatic' && (
+            <>
+              <Text style={[styles.label, { color: colors.text }]}>Take a Selfie *</Text>
+              <TouchableOpacity
+                style={[styles.uploadButton, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
+                onPress={handleTakeSelfie}
+              >
+                {selfieUri ? (
+                  <Image source={{ uri: selfieUri }} style={styles.uploadedImage} />
+                ) : (
+                  <>
+                    <IconSymbol
+                      ios_icon_name="person.crop.circle.fill"
+                      android_material_icon_name="face"
+                      size={32}
+                      color={colors.brandPrimary}
+                    />
+                    <Text style={[styles.uploadButtonText, { color: colors.text }]}>
+                      {selfieUrl ? 'Selfie Captured ✓' : 'Take Selfie'}
+                    </Text>
+                    <Text style={[styles.uploadButtonSubtext, { color: colors.textSecondary }]}>
+                      Face must be clearly visible
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
         </View>
+
+        {/* Upload Progress */}
+        {submitting && uploadProgress > 0 && (
+          <View style={[styles.progressCard, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
+            <Text style={[styles.progressText, { color: colors.text }]}>
+              Uploading... {uploadProgress}%
+            </Text>
+            <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+              <View 
+                style={[
+                  styles.progressFill, 
+                  { backgroundColor: colors.brandPrimary, width: `${uploadProgress}%` }
+                ]} 
+              />
+            </View>
+          </View>
+        )}
 
         {/* Security Notice */}
         <View style={[styles.securityNotice, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
@@ -653,6 +885,41 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 16,
   },
+  methodButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  methodButton: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 8,
+    position: 'relative',
+  },
+  methodTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  methodDescription: {
+    fontSize: 12,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  recommendedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  recommendedText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
   label: {
     fontSize: 14,
     fontWeight: '600',
@@ -698,6 +965,13 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderStyle: 'dashed',
     gap: 8,
+    minHeight: 150,
+    justifyContent: 'center',
+  },
+  uploadedImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
   },
   uploadButtonText: {
     fontSize: 16,
@@ -706,6 +980,27 @@ const styles = StyleSheet.create({
   uploadButtonSubtext: {
     fontSize: 12,
     fontWeight: '400',
+  },
+  progressCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 24,
+  },
+  progressText: {
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 4,
   },
   securityNotice: {
     flexDirection: 'row',
@@ -772,5 +1067,70 @@ const styles = StyleSheet.create({
   submittedDate: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  camera: {
+    flex: 1,
+  },
+  cameraOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'space-between',
+  },
+  cameraHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 60,
+    paddingHorizontal: 20,
+  },
+  cameraCloseButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  cameraInstructions: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  instructionText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  instructionSubtext: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+  },
+  cameraControls: {
+    alignItems: 'center',
+    paddingBottom: 40,
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: '#FFFFFF',
+  },
+  captureButtonInner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FFFFFF',
   },
 });

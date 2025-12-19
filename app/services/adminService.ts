@@ -47,16 +47,16 @@ interface UserPrivacyData {
   premium_active: boolean;
   
   // VIP Club data
-  vip_clubs: {
+  vip_clubs: Array<{
     club_name: string;
     badge_name: string;
     total_members: number;
-  }[];
-  vip_memberships: {
+  }>;
+  vip_memberships: Array<{
     club_name: string;
     vip_level: number;
     total_gifted_sek: number;
-  }[];
+  }>;
   
   // Financial data
   total_gifts_sent_sek: number;
@@ -768,8 +768,16 @@ class AdminService {
         return { success: false, error: logError.message };
       }
 
-      // Remove verification (assuming there's a verified field)
-      // Note: This would need to be implemented based on your verification system
+      // Revoke verification using identityVerificationService
+      const { success, error } = await identityVerificationService.revokeVerification(
+        targetUserId,
+        adminId,
+        reason
+      );
+
+      if (!success) {
+        return { success: false, error };
+      }
       
       return { success: true };
     } catch (error) {

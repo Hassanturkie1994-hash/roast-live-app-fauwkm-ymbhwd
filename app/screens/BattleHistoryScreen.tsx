@@ -107,7 +107,7 @@ export default function BattleHistoryScreen() {
 
   useEffect(() => {
     loadBattleHistory();
-  }, []);
+  }, [loadBattleHistory]);
 
   const getResultColor = (battle: BattleRecord) => {
     if (battle.winner_team === 'draw') return colors.textSecondary;

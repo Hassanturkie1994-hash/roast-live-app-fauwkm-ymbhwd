@@ -198,14 +198,15 @@ export default function CinematicGiftOverlay({
     isMountedRef.current = true;
     console.log('🎬 [CinematicGift] Starting:', gift.giftId);
 
+    // Copy ref value to local variable for cleanup
+    const currentTimelineRef = timelineRef.current;
+
     // Start cinematic sequence
     startCinematicSequence();
 
     return () => {
       isMountedRef.current = false;
-      // Copy ref value to local variable for cleanup
-      const currentTimeouts = timelineRef.current;
-      currentTimeouts.forEach(clearTimeout);
+      currentTimelineRef.forEach(clearTimeout);
     };
   }, [gift.giftId, startCinematicSequence]);
 

@@ -5,8 +5,10 @@ import { mediaUploadService } from './mediaUploadService';
 /**
  * Story Service
  * 
- * FIXED: Proper media persistence
- * - Uploads media to Supabase Storage
+ * ENHANCED: Proper media persistence with validation
+ * - Validates format, size, duration, aspect ratio
+ * - Shows upload progress
+ * - Retries on network failures
  * - Stores metadata in database
  * - Ensures stories persist beyond session
  * - Retrievable on all devices
@@ -16,13 +18,23 @@ export const storyService = {
     userId: string, 
     fileUri: string,
     caption?: string,
-    mediaType: 'photo' | 'video' = 'photo'
+    mediaType: 'photo' | 'video' = 'photo',
+    onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
   ) {
     try {
       console.log('📸 [StoryService] Creating story...');
 
-      // Upload media to storage
-      const uploadResult = await mediaUploadService.uploadMedia(userId, fileUri, 'story');
+      const isVideo = mediaUploadService.isVideoFile(fileUri);
+
+      // Upload media to storage with validation and progress
+      const uploadResult = await mediaUploadService.uploadMedia(
+        userId, 
+        fileUri, 
+        'story',
+        { caption, mediaType },
+        onProgress,
+        isVideo
+      );
 
       if (!uploadResult.success || !uploadResult.url) {
         console.error('❌ [StoryService] Media upload failed:', uploadResult.error);
@@ -109,10 +121,7 @@ export const storyService = {
       }
 
       // Increment view count
-      await supabase
-        .from('stories')
-        .update({ views_count: supabase.raw('views_count + 1') })
-        .eq('id', storyId);
+      await supabase.rpc('increment_story_views', { story_uuid: storyId });
 
       return { success: true };
     } catch (error) {

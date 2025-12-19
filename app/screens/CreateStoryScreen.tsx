@@ -25,16 +25,18 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 /**
  * Create Story Screen
  * 
- * FIXED: Proper media persistence
- * - Uses mediaUploadService for uploads
- * - Stores media in Supabase Storage
- * - Persists metadata in database
- * - Media retrievable on all devices
+ * ENHANCED:
+ * - Shows upload progress
+ * - Validates media format and size
+ * - Retries on network failures
+ * - Graceful error handling
+ * - No silent failures
  */
 export default function CreateStoryScreen() {
   const { user } = useAuth();
   const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [cameraType, setCameraType] = useState<CameraType>('back');
   const [flashMode, setFlashMode] = useState<FlashMode>('off');
@@ -105,15 +107,27 @@ export default function CreateStoryScreen() {
 
     setLoading(true);
     setPostType('story');
+    setUploadProgress(0);
 
     try {
       console.log('📸 [CreateStory] Posting to story...');
 
-      // Create story with media upload
-      const result = await storyService.createStory(user.id, mediaUri);
+      // Create story with media upload and progress tracking
+      const result = await storyService.createStory(
+        user.id, 
+        mediaUri,
+        undefined,
+        undefined,
+        (progress) => {
+          setUploadProgress(progress.percentage);
+        }
+      );
 
       if (!result.success) {
-        Alert.alert('Error', 'Failed to create story');
+        Alert.alert(
+          'Upload Failed', 
+          result.error || 'Failed to create story. Please check your network connection and try again.'
+        );
         setLoading(false);
         return;
       }
@@ -123,10 +137,11 @@ export default function CreateStoryScreen() {
       router.back();
     } catch (error) {
       console.error('❌ [CreateStory] Error in handlePostToStory:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      Alert.alert('Error', 'Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
       setPostType(null);
+      setUploadProgress(0);
     }
   };
 
@@ -138,15 +153,27 @@ export default function CreateStoryScreen() {
 
     setLoading(true);
     setPostType('post');
+    setUploadProgress(0);
 
     try {
       console.log('📸 [CreateStory] Posting to feed...');
 
-      // Create post with media upload
-      const result = await postService.createPost(user.id, mediaUri);
+      // Create post with media upload and progress tracking
+      const result = await postService.createPost(
+        user.id, 
+        mediaUri,
+        undefined,
+        undefined,
+        (progress) => {
+          setUploadProgress(progress.percentage);
+        }
+      );
 
       if (!result.success) {
-        Alert.alert('Error', 'Failed to create post');
+        Alert.alert(
+          'Upload Failed', 
+          result.error || 'Failed to create post. Please check your network connection and try again.'
+        );
         setLoading(false);
         return;
       }
@@ -156,10 +183,11 @@ export default function CreateStoryScreen() {
       router.back();
     } catch (error) {
       console.error('❌ [CreateStory] Error in handlePostToFeed:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      Alert.alert('Error', 'Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
       setPostType(null);
+      setUploadProgress(0);
     }
   };
 
@@ -308,8 +336,11 @@ export default function CreateStoryScreen() {
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={colors.gradientEnd} />
           <Text style={styles.loadingText}>
-            Uploading and storing media...
+            Uploading and storing media... {uploadProgress}%
           </Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+          </View>
           <Text style={styles.loadingSubtext}>
             Your media will be accessible on all devices
           </Text>
@@ -483,6 +514,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+  },
+  progressBar: {
+    width: '80%',
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.gradientEnd,
+    borderRadius: 4,
   },
   loadingSubtext: {
     fontSize: 12,

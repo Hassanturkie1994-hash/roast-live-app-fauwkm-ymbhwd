@@ -5,8 +5,10 @@ import { mediaUploadService } from './mediaUploadService';
 /**
  * Post Service
  * 
- * FIXED: Proper media persistence
- * - Uploads media to Supabase Storage
+ * ENHANCED: Proper media persistence with validation
+ * - Validates format, size, duration, aspect ratio
+ * - Shows upload progress
+ * - Retries on network failures
  * - Stores metadata in database
  * - Ensures posts persist beyond session
  * - Retrievable on all devices
@@ -16,13 +18,23 @@ export const postService = {
     userId: string,
     fileUri: string,
     caption?: string,
-    mediaType: 'photo' | 'video' = 'photo'
+    mediaType: 'photo' | 'video' = 'photo',
+    onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
   ) {
     try {
       console.log('📸 [PostService] Creating post...');
 
-      // Upload media to storage
-      const uploadResult = await mediaUploadService.uploadMedia(userId, fileUri, 'post');
+      const isVideo = mediaUploadService.isVideoFile(fileUri);
+
+      // Upload media to storage with validation and progress
+      const uploadResult = await mediaUploadService.uploadMedia(
+        userId,
+        fileUri,
+        'post',
+        { caption, mediaType },
+        onProgress,
+        isVideo
+      );
 
       if (!uploadResult.success || !uploadResult.url) {
         console.error('❌ [PostService] Media upload failed:', uploadResult.error);

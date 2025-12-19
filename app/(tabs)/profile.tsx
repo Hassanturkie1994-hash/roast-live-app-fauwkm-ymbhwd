@@ -288,8 +288,9 @@ export default function ProfileScreen() {
             />
             <View style={styles.storyOverlay}>
               <View style={styles.storyStats}>
-                <UnifiedRoastIcon
-                  name="eye"
+                <IconSymbol
+                  ios_icon_name="eye.fill"
+                  android_material_icon_name="visibility"
                   size={16}
                   color="#FFFFFF"
                 />
@@ -378,7 +379,7 @@ export default function ProfileScreen() {
                   Get Verified
                 </Text>
                 <Text style={[styles.verificationNoticeSubtitle, { color: colors.textSecondary }]}>
-                  Required to go live & receive payouts
+                  Required to receive payouts
                 </Text>
               </View>
               <UnifiedRoastIcon name="chevron-right" size={20} color="#1DA1F2" />

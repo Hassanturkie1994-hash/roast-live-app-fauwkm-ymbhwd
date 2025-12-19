@@ -22,20 +22,19 @@ import { postService } from '@/app/services/postService';
 /**
  * Create Post Screen
  * 
- * FIXED: Proper media persistence
- * - Uses mediaUploadService for uploads
- * - Stores media in Supabase Storage
- * - Persists metadata in database
- * - Media retrievable on all devices
- * 
- * FIXED: screenWidth is not defined
- * - Now uses useWindowDimensions() hook
- * - Reactive layout that responds to orientation changes
+ * ENHANCED:
+ * - Shows upload progress
+ * - Validates media format and size
+ * - Retries on network failures
+ * - Graceful error handling
+ * - No silent failures
+ * - Uses useWindowDimensions() for reactive layout
  */
 export default function CreatePostScreen() {
   const { user } = useAuth();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [caption, setCaption] = useState('');
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
@@ -62,15 +61,27 @@ export default function CreatePostScreen() {
     }
 
     setLoading(true);
+    setUploadProgress(0);
 
     try {
       console.log('📸 [CreatePost] Creating post...');
 
-      // Create post with media upload
-      const result = await postService.createPost(user.id, mediaUri, caption, mediaType === 'video' ? 'video' : 'photo');
+      // Create post with media upload and progress tracking
+      const result = await postService.createPost(
+        user.id, 
+        mediaUri, 
+        caption, 
+        mediaType === 'video' ? 'video' : 'photo',
+        (progress) => {
+          setUploadProgress(progress.percentage);
+        }
+      );
 
       if (!result.success) {
-        Alert.alert('Error', 'Failed to create post');
+        Alert.alert(
+          'Upload Failed', 
+          result.error || 'Failed to create post. Please check your network connection and try again.'
+        );
         setLoading(false);
         return;
       }
@@ -80,9 +91,10 @@ export default function CreatePostScreen() {
       router.back();
     } catch (error) {
       console.error('❌ [CreatePost] Error in handlePost:', error);
-      Alert.alert('Error', 'An unexpected error occurred');
+      Alert.alert('Error', 'Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -153,7 +165,10 @@ export default function CreatePostScreen() {
       {loading && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color={colors.gradientEnd} />
-          <Text style={styles.loadingText}>Uploading and storing media...</Text>
+          <Text style={styles.loadingText}>Uploading and storing media... {uploadProgress}%</Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+          </View>
           <Text style={styles.loadingSubtext}>Your post will be accessible on all devices</Text>
         </View>
       )}
@@ -279,6 +294,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.text,
+  },
+  progressBar: {
+    width: '80%',
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.gradientEnd,
+    borderRadius: 4,
   },
   loadingSubtext: {
     fontSize: 12,

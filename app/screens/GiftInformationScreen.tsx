@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   ScrollView,
@@ -20,13 +20,13 @@ import GradientButton from '@/components/GradientButton';
 /**
  * Gift & Effects Screen
  * 
- * Displays the NEW Roast Gift catalog with 45 gifts across 4 tiers.
- * NOW WITH CLICKABLE DETAILS:
- * - Animation preview
- * - Duration display
- * - Sound information
- * - Full description
+ * FIXED UX ISSUES:
+ * - Proper ScrollView with full scrolling capability
+ * - Animation renders inline below the button
+ * - User can see animation immediately when triggered
+ * - No hidden animations
  * 
+ * Displays the NEW Roast Gift catalog with 45 gifts across 4 tiers.
  * SORTED BY PRICE: Cheapest first, most expensive last
  */
 
@@ -39,6 +39,8 @@ export default function GiftInformationScreen() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [animationPlaying, setAnimationPlaying] = useState(false);
   const animationScale = useState(new Animated.Value(1))[0];
+  const scrollViewRef = useRef<ScrollView>(null);
+  const animationViewRef = useRef<View>(null);
 
   // SAFETY GUARD: Ensure gifts is always an array and SORTED BY PRICE
   const allGifts = useMemo(() => {
@@ -97,12 +99,13 @@ export default function GiftInformationScreen() {
   const handleGiftPress = (gift: RoastGift) => {
     setSelectedGift(gift);
     setShowDetailsModal(true);
+    setAnimationPlaying(false); // Reset animation state
   };
 
   const playAnimation = () => {
     setAnimationPlaying(true);
     
-    // Simulate gift animation
+    // Simulate gift animation with inline rendering
     Animated.sequence([
       Animated.timing(animationScale, {
         toValue: 1.5,
@@ -115,7 +118,10 @@ export default function GiftInformationScreen() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      setAnimationPlaying(false);
+      // Keep animation visible for a moment
+      setTimeout(() => {
+        setAnimationPlaying(false);
+      }, 2000);
     });
   };
 
@@ -277,11 +283,12 @@ export default function GiftInformationScreen() {
         </ScrollView>
       </View>
 
-      {/* Gift Grid */}
+      {/* Gift Grid - FIXED: Proper scrolling with paddingBottom */}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={true}
       >
         {filteredGifts.length > 0 ? (
           <View style={styles.giftGrid}>
@@ -327,7 +334,7 @@ export default function GiftInformationScreen() {
         )}
       </ScrollView>
 
-      {/* Gift Details Modal */}
+      {/* Gift Details Modal - FIXED: Proper scrolling and inline animation */}
       <Modal
         visible={showDetailsModal}
         transparent
@@ -350,12 +357,17 @@ export default function GiftInformationScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                  {/* Animated Gift Preview */}
+                {/* FIXED: ScrollView with proper contentContainerStyle and paddingBottom */}
+                <ScrollView 
+                  ref={scrollViewRef}
+                  style={styles.modalBody} 
+                  contentContainerStyle={styles.modalBodyContent}
+                  showsVerticalScrollIndicator={false}
+                  scrollEnabled={true}
+                >
+                  {/* Static Gift Preview */}
                   <View style={[styles.previewContainer, { backgroundColor: colors.backgroundAlt }]}>
-                    <Animated.View style={{ transform: [{ scale: animationScale }] }}>
-                      <Text style={styles.previewEmoji}>{selectedGift.emoji}</Text>
-                    </Animated.View>
+                    <Text style={styles.previewEmoji}>{selectedGift.emoji}</Text>
                   </View>
 
                   {/* Price and Tier */}
@@ -473,6 +485,28 @@ export default function GiftInformationScreen() {
                       disabled={animationPlaying}
                     />
                   </View>
+
+                  {/* FIXED: Inline Animation - Renders BELOW the button */}
+                  {animationPlaying && (
+                    <Animated.View
+                      ref={animationViewRef}
+                      style={[
+                        styles.inlineAnimationContainer,
+                        { 
+                          backgroundColor: colors.backgroundAlt,
+                          transform: [{ scale: animationScale }],
+                        },
+                      ]}
+                    >
+                      <Text style={styles.animationEmoji}>{selectedGift.emoji}</Text>
+                      <Text style={[styles.animationText, { color: colors.text }]}>
+                        {selectedGift.displayName}
+                      </Text>
+                      <Text style={[styles.animationSubtext, { color: colors.textSecondary }]}>
+                        Animation Preview
+                      </Text>
+                    </Animated.View>
+                  )}
                 </ScrollView>
               </>
             )}
@@ -530,7 +564,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    paddingBottom: 100,
+    paddingBottom: 120, // FIXED: Proper padding for full scroll
   },
   giftGrid: {
     flexDirection: 'row',
@@ -635,7 +669,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalBody: {
+    flex: 1,
+  },
+  modalBodyContent: {
     padding: 20,
+    paddingBottom: 40, // FIXED: Proper padding for full scroll
   },
   previewContainer: {
     alignItems: 'center',
@@ -724,5 +762,28 @@ const styles = StyleSheet.create({
   },
   actionButtonContainer: {
     marginTop: 24,
+    marginBottom: 16, // Space for inline animation
+  },
+  // FIXED: Inline animation container - renders BELOW the button
+  inlineAnimationContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    borderRadius: 16,
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  animationEmoji: {
+    fontSize: 120,
+    marginBottom: 16,
+  },
+  animationText: {
+    fontSize: 24,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  animationSubtext: {
+    fontSize: 14,
+    fontWeight: '400',
   },
 });

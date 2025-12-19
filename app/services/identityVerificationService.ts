@@ -1,5 +1,6 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
+import { mediaUploadService } from './mediaUploadService';
 
 export interface IdentityVerificationData {
   fullLegalName: string;
@@ -14,6 +15,7 @@ export interface IdentityVerificationData {
   documentUrl: string;
   documentNumber: string;
   documentExpiryDate?: string; // YYYY-MM-DD
+  selfieUrl?: string; // For automatic verification
   ipAddress?: string;
   deviceInfo?: Record<string, any>;
 }
@@ -33,7 +35,9 @@ export interface IdentityVerification {
   document_url: string;
   document_number: string;
   document_expiry_date: string | null;
+  selfie_url: string | null;
   verification_status: 'pending' | 'approved' | 'rejected' | 'revoked';
+  verification_method: 'manual' | 'automatic';
   verified_at: string | null;
   verified_by: string | null;
   rejection_reason: string | null;
@@ -47,24 +51,36 @@ export interface IdentityVerification {
   updated_at: string;
 }
 
+/**
+ * Identity Verification Service
+ * 
+ * UPDATED BEHAVIOR:
+ * - Verification is NOT required for streaming
+ * - Verification is ONLY required for payouts (Stripe/PayPal)
+ * - Supports automatic camera-based verification
+ * - Supports manual document upload verification
+ */
 class IdentityVerificationService {
   /**
-   * Check if user is verified
+   * Check if user is verified for payouts
    */
-  async isUserVerified(userId: string): Promise<boolean> {
+  async isUserVerifiedForPayouts(userId: string): Promise<boolean> {
     try {
-      const { data, error } = await supabase.rpc('is_user_verified', {
-        user_uuid: userId,
-      });
+      const { data, error } = await supabase
+        .from('identity_verifications')
+        .select('verification_status')
+        .eq('user_id', userId)
+        .eq('verification_status', 'approved')
+        .maybeSingle();
 
       if (error) {
         console.error('Error checking verification status:', error);
         return false;
       }
 
-      return data === true;
+      return !!data;
     } catch (error) {
-      console.error('Error in isUserVerified:', error);
+      console.error('Error in isUserVerifiedForPayouts:', error);
       return false;
     }
   }
@@ -97,7 +113,8 @@ class IdentityVerificationService {
    */
   async submitVerification(
     userId: string,
-    data: IdentityVerificationData
+    data: IdentityVerificationData,
+    verificationMethod: 'manual' | 'automatic' = 'manual'
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // Check if user already has a verification
@@ -127,7 +144,9 @@ class IdentityVerificationService {
           document_url: data.documentUrl,
           document_number: data.documentNumber,
           document_expiry_date: data.documentExpiryDate || null,
+          selfie_url: data.selfieUrl || null,
           verification_status: 'pending',
+          verification_method: verificationMethod,
           ip_address: data.ipAddress || null,
           device_info: data.deviceInfo || null,
           submitted_at: new Date().toISOString(),
@@ -151,54 +170,65 @@ class IdentityVerificationService {
   async uploadVerificationDocument(
     userId: string,
     fileUri: string,
-    documentType: string
+    documentType: string,
+    onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
   ): Promise<{ success: boolean; url?: string; error?: string }> {
     try {
-      // Fetch the file
-      const response = await fetch(fileUri);
-      if (!response.ok) {
-        throw new Error('Failed to fetch file');
+      console.log('📤 [VerificationService] Uploading document...');
+
+      const result = await mediaUploadService.uploadMedia(
+        userId,
+        fileUri,
+        'verification-document',
+        { documentType },
+        onProgress,
+        false
+      );
+
+      if (!result.success) {
+        console.error('❌ [VerificationService] Upload failed:', result.error);
+        return { success: false, error: result.error };
       }
 
-      const blob = await response.blob();
-      if (!blob || blob.size === 0) {
-        throw new Error('Invalid file');
-      }
-
-      // Generate unique filename
-      const timestamp = Date.now();
-      const fileExt = fileUri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `verification/${userId}/${documentType}_${timestamp}.${fileExt}`;
-
-      console.log('Uploading verification document:', fileName);
-
-      // Upload to Supabase Storage (secure bucket)
-      const { data, error } = await supabase.storage
-        .from('verification-documents')
-        .upload(fileName, blob, {
-          contentType: blob.type || 'application/octet-stream',
-          upsert: false, // Don't overwrite
-        });
-
-      if (error) {
-        console.error('Upload error:', error);
-        throw error;
-      }
-
-      // Get public URL (note: this bucket should have restricted access)
-      const { data: urlData } = supabase.storage
-        .from('verification-documents')
-        .getPublicUrl(fileName);
-
-      if (!urlData || !urlData.publicUrl) {
-        throw new Error('Failed to get public URL');
-      }
-
-      console.log('Document uploaded successfully:', urlData.publicUrl);
-      return { success: true, url: urlData.publicUrl };
+      console.log('✅ [VerificationService] Document uploaded:', result.url);
+      return { success: true, url: result.url };
     } catch (error) {
       console.error('Error uploading verification document:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to upload document';
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Upload selfie for automatic verification
+   */
+  async uploadVerificationSelfie(
+    userId: string,
+    fileUri: string,
+    onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
+  ): Promise<{ success: boolean; url?: string; error?: string }> {
+    try {
+      console.log('📤 [VerificationService] Uploading selfie...');
+
+      const result = await mediaUploadService.uploadMedia(
+        userId,
+        fileUri,
+        'verification-document',
+        { documentType: 'selfie' },
+        onProgress,
+        false
+      );
+
+      if (!result.success) {
+        console.error('❌ [VerificationService] Selfie upload failed:', result.error);
+        return { success: false, error: result.error };
+      }
+
+      console.log('✅ [VerificationService] Selfie uploaded:', result.url);
+      return { success: true, url: result.url };
+    } catch (error) {
+      console.error('Error uploading verification selfie:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload selfie';
       return { success: false, error: errorMessage };
     }
   }
@@ -388,32 +418,12 @@ class IdentityVerificationService {
   }
 
   /**
-   * Check if user can go live (must be verified)
-   */
-  async canGoLive(userId: string): Promise<{ canGoLive: boolean; reason?: string }> {
-    try {
-      const isVerified = await this.isUserVerified(userId);
-
-      if (!isVerified) {
-        return {
-          canGoLive: false,
-          reason: 'You must complete identity verification before going live',
-        };
-      }
-
-      return { canGoLive: true };
-    } catch (error) {
-      console.error('Error in canGoLive:', error);
-      return { canGoLive: false, reason: 'Failed to check verification status' };
-    }
-  }
-
-  /**
    * Check if user can receive payouts (must be verified)
+   * UPDATED: Streaming no longer requires verification
    */
   async canReceivePayouts(userId: string): Promise<{ canReceive: boolean; reason?: string }> {
     try {
-      const isVerified = await this.isUserVerified(userId);
+      const isVerified = await this.isUserVerifiedForPayouts(userId);
 
       if (!isVerified) {
         return {
@@ -428,6 +438,12 @@ class IdentityVerificationService {
       return { canReceive: false, reason: 'Failed to check verification status' };
     }
   }
+
+  /**
+   * REMOVED: canGoLive - streaming no longer requires verification
+   * Users can stream without verification
+   * Verification is only required for payouts
+   */
 }
 
 export const identityVerificationService = new IdentityVerificationService();
