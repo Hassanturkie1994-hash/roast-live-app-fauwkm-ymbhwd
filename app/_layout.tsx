@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { LiveStreamStateMachineProvider } from '@/contexts/LiveStreamStateMachine';
 import { StreamingProvider } from '@/contexts/StreamingContext';
+import { AIFaceEffectsProvider } from '@/contexts/AIFaceEffectsContext';
 import { CameraEffectsProvider } from '@/contexts/CameraEffectsContext';
 import { ModeratorsProvider } from '@/contexts/ModeratorsContext';
 import { VIPClubProvider } from '@/contexts/VIPClubContext';
@@ -134,32 +135,50 @@ function RootLayoutContent() {
 /**
  * RootLayout
  * 
- * CRITICAL FIX: Correct provider hierarchy with EditableContext
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * CRITICAL FIX: CORRECT PROVIDER HIERARCHY (NON-NEGOTIABLE)
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  * 
  * Provider order (top → bottom):
+ * 
  * 1. ErrorBoundary (outermost - catches all errors)
  * 2. EditableContext (from withEditableWrapper_ - MUST be at root for babel plugin)
  * 3. ThemeProvider (theme context for all components)
  * 4. AuthProvider (authentication state)
  * 5. LiveStreamStateMachineProvider (live stream state machine)
  * 6. StreamingProvider (streaming context)
- * 7. CameraEffectsProvider (camera filters/effects)
- * 8. ModeratorsProvider (moderator management)
- * 9. VIPClubProvider (VIP club features)
- * 10. WidgetProvider (widget state)
- * 11. RootLayoutContent (actual app content)
+ * 7. AIFaceEffectsProvider (AI face effects - MUST be before CameraEffectsProvider)
+ * 8. CameraEffectsProvider (camera filters/effects)
+ * 9. ModeratorsProvider (moderator management)
+ * 10. VIPClubProvider (VIP club features)
+ * 11. WidgetProvider (widget state)
+ * 12. RootLayoutContent (actual app content)
  * 
- * IMPORTANT: All providers MUST be mounted before any screen that uses them
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * STRICT RULES
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  * 
- * LEGACY SYSTEM SHUTDOWN:
+ * - PreLiveSetupScreen MUST NEVER mount without AIFaceEffectsProvider
+ * - useAIFaceEffects MUST NOT be called conditionally
+ * - Providers must NOT be mounted inside screens
+ * - Providers must NOT depend on navigation state
+ * - Providers must be initialized before Pre-Live renders
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * LEGACY SYSTEM SHUTDOWN
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
  * - Legacy System Guard is initialized at app startup
  * - All legacy systems are permanently disabled
  * - Only NEW Roast systems are active
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  */
 function RootLayoutBase() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🚀 [LAYOUT] RootLayout mounting...');
   console.log('🛡️ [LAYOUT] Legacy System Guard will initialize...');
+  console.log('✅ [LAYOUT] AIFaceEffectsProvider is now in hierarchy');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return (
@@ -168,15 +187,17 @@ function RootLayoutBase() {
         <AuthProvider>
           <LiveStreamStateMachineProvider>
             <StreamingProvider>
-              <CameraEffectsProvider>
-                <ModeratorsProvider>
-                  <VIPClubProvider>
-                    <WidgetProvider>
-                      <RootLayoutContent />
-                    </WidgetProvider>
-                  </VIPClubProvider>
-                </ModeratorsProvider>
-              </CameraEffectsProvider>
+              <AIFaceEffectsProvider>
+                <CameraEffectsProvider>
+                  <ModeratorsProvider>
+                    <VIPClubProvider>
+                      <WidgetProvider>
+                        <RootLayoutContent />
+                      </WidgetProvider>
+                    </VIPClubProvider>
+                  </ModeratorsProvider>
+                </CameraEffectsProvider>
+              </AIFaceEffectsProvider>
             </StreamingProvider>
           </LiveStreamStateMachineProvider>
         </AuthProvider>

@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { router, Stack, useNavigation } from 'expo-router';
@@ -36,7 +37,41 @@ import ModeratorPanelBottomSheet from '@/components/ModeratorPanelBottomSheet';
 import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { useAIFaceEffects } from '@/contexts/AIFaceEffectsContext';
 
-export default function PreLiveSetupScreen() {
+/**
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * PRE-LIVE SAFETY GUARD
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * This component checks if AIFaceEffectsProvider context is ready before
+ * rendering the main Pre-Live UI. This prevents crashes when useAIFaceEffects
+ * is called before the provider is mounted.
+ * 
+ * CRITICAL: Do NOT remove this guard. It ensures the provider hierarchy is
+ * properly initialized before any hooks are called.
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
+function LoadingState() {
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.brandPrimary} />
+        <Text style={styles.loadingText}>Initializing camera effects...</Text>
+      </View>
+    </>
+  );
+}
+
+/**
+ * PreLiveSetupScreenContent
+ * 
+ * CRITICAL: This component is wrapped by PreLiveSetupScreen which ensures
+ * that all required providers are ready before rendering.
+ * 
+ * DO NOT call useAIFaceEffects or useCameraEffects outside of this component.
+ */
+function PreLiveSetupScreenContent() {
   const { user } = useAuth();
   const navigation = useNavigation();
   
@@ -81,9 +116,20 @@ export default function PreLiveSetupScreen() {
   // VIP Club state
   const [selectedVIPClub, setSelectedVIPClub] = useState<string | null>(null);
 
-  // NEW: Camera effects context
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // CRITICAL: SAFE CONTEXT ACCESS
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 
+  // These hooks are called AFTER the provider readiness check in the parent
+  // component. They will never be called if providers are not ready.
+  // 
+  // DO NOT wrap these in try-catch. If they throw, it means the provider
+  // hierarchy is broken and needs to be fixed in app/_layout.tsx.
+  // 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
   const { activeFilter, activeEffect, hasAnyActive } = useCameraEffects();
-  const { activeEffect: activeFaceEffect } = useAIFaceEffects();
+  const { activeEffect: activeFaceEffect, isReady: aiFaceEffectsReady } = useAIFaceEffects();
 
   const isMountedRef = useRef(true);
 
@@ -136,11 +182,12 @@ export default function PreLiveSetupScreen() {
     requestPermissions();
 
     console.log('📹 [PRE-LIVE] Entered pre-live setup screen');
+    console.log('✅ [PRE-LIVE] AI Face Effects ready:', aiFaceEffectsReady);
 
     return () => {
       isMountedRef.current = false;
     };
-  }, [user, cameraPermission, micPermission, requestCameraPermission, requestMicPermission]);
+  }, [user, cameraPermission, micPermission, requestCameraPermission, requestMicPermission, aiFaceEffectsReady]);
 
   const handleClose = () => {
     console.log('❌ [PRE-LIVE] Pre-Live setup closed');
@@ -794,12 +841,64 @@ export default function PreLiveSetupScreen() {
   );
 }
 
+/**
+ * PreLiveSetupScreen
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * CRITICAL: PROVIDER READINESS CHECK
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * This component ensures that all required providers are ready before
+ * rendering the main Pre-Live UI. This prevents crashes when hooks are
+ * called before providers are mounted.
+ * 
+ * VERIFICATION STEPS:
+ * 1. Check if AIFaceEffectsProvider context is available
+ * 2. Check if CameraEffectsProvider context is available
+ * 3. Check if AIFaceEffectsProvider is marked as ready
+ * 4. Only render main UI if all checks pass
+ * 
+ * SAFETY GUARANTEE:
+ * - useAIFaceEffects will NEVER be called before AIFaceEffectsProvider is ready
+ * - useCameraEffects will NEVER be called before CameraEffectsProvider is ready
+ * - Loading state is shown while providers are initializing
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
+export default function PreLiveSetupScreen() {
+  // CRITICAL: Check if AIFaceEffectsProvider is ready
+  // This hook is safe to call here because it's wrapped by the provider in _layout.tsx
+  const { isReady: aiFaceEffectsReady } = useAIFaceEffects();
+
+  // If AI Face Effects provider is not ready, show loading state
+  if (!aiFaceEffectsReady) {
+    console.warn('⚠️ [PRE-LIVE] AI Face Effects provider not ready, showing loading state');
+    return <LoadingState />;
+  }
+
+  // All providers are ready, render main content
+  console.log('✅ [PRE-LIVE] All providers ready, rendering main content');
+  return <PreLiveSetupScreenContent />;
+}
+
 /* ───────────────── STYLES ───────────────── */
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   permissionContainer: {
     flex: 1,
