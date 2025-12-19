@@ -1,22 +1,21 @@
 
 import { supabase } from '@/app/integrations/supabase/client';
+import { identityVerificationService } from './identityVerificationService';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // STRICT ROLE MODEL
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
 // VALID PLATFORM ROLES:
-// - head_admin: Highest authority, full platform control
-// - admin: Manage reports, users, bans, moderation
-// - moderator: Monitor and moderate all live streams
-// - support: Review appeals and support tickets
+// - HEAD_ADMIN: Highest authority, full platform control, can assign all roles
+// - ADMIN: Manage reports, users, bans, moderation, financial data
+// - MODERATOR: Monitor and moderate all live streams on the platform
+// - SUPPORT: Review appeals and support tickets
 //
 // VALID STREAM ROLES:
 // - streammoderator: Assigned to specific creators (in moderators table)
-//
-// INVALID ROLES (REMOVED):
-// - live_moderator (replaced by "moderator")
-// - moderator (generic - now "moderator" is for staff)
+//   - Can moderate ONLY assigned creator's streams
+//   - NO access to dashboards or platform features
 //
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -47,16 +46,16 @@ interface UserPrivacyData {
   premium_active: boolean;
   
   // VIP Club data
-  vip_clubs: Array<{
+  vip_clubs: {
     club_name: string;
     badge_name: string;
     total_members: number;
-  }>;
-  vip_memberships: Array<{
+  }[];
+  vip_memberships: {
     club_name: string;
     vip_level: number;
     total_gifted_sek: number;
-  }>;
+  }[];
   
   // Financial data
   total_gifts_sent_sek: number;
@@ -149,26 +148,27 @@ class AdminService {
    * Check if user is a stream-level moderator (assigned to specific creators)
    * This is different from the MODERATOR platform role
    */
-  async checkStreamModeratorRole(userId: string): Promise<{ isModerator: boolean; streamerId: string | null }> {
+  async checkStreamModeratorRole(userId: string): Promise<{ isModerator: boolean; creatorIds: string[] }> {
     try {
       const { data, error } = await supabase
         .from('moderators')
         .select('streamer_id')
-        .eq('user_id', userId)
-        .maybeSingle();
+        .eq('user_id', userId);
 
       if (error) {
         console.error('Error checking stream moderator role:', error);
-        return { isModerator: false, streamerId: null };
+        return { isModerator: false, creatorIds: [] };
       }
 
+      const creatorIds = (data || []).map(m => m.streamer_id);
+
       return { 
-        isModerator: !!data, 
-        streamerId: data?.streamer_id || null 
+        isModerator: creatorIds.length > 0, 
+        creatorIds 
       };
     } catch (error) {
       console.error('Error in checkStreamModeratorRole:', error);
-      return { isModerator: false, streamerId: null };
+      return { isModerator: false, creatorIds: [] };
     }
   }
 
@@ -246,7 +246,7 @@ class AdminService {
   }
 
   /**
-   * Update user role (head_admin only)
+   * Update user role (HEAD_ADMIN only)
    */
   async updateUserRole(userId: string, role: string) {
     try {

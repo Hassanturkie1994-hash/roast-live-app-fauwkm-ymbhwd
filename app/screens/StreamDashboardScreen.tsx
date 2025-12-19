@@ -19,6 +19,7 @@ import { streamSettingsService } from '@/app/services/streamSettingsService';
 import { supabase } from '@/app/integrations/supabase/client';
 import GradientButton from '@/components/GradientButton';
 import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
+import ManageModeratorsModal from '@/components/ManageModeratorsModal';
 
 interface CreatorStats {
   level: number;
@@ -49,6 +50,7 @@ export default function StreamDashboardScreen() {
   const [enableSafetyHints, setEnableSafetyHints] = useState(true);
   const [autoModerateSpam, setAutoModerateSpam] = useState(false);
   const [chatPaused, setChatPaused] = useState(false);
+  const [showModeratorsModal, setShowModeratorsModal] = useState(false);
   const [creatorStats, setCreatorStats] = useState<CreatorStats>({
     level: 1,
     xp: 0,
@@ -305,7 +307,7 @@ export default function StreamDashboardScreen() {
           </View>
         </View>
 
-        {/* Seasons & Rankings - MOVED FROM PROFILE SETTINGS */}
+        {/* Seasons & Rankings */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <UnifiedRoastIcon name="crown" size={24} color="#FFD700" />
@@ -520,7 +522,24 @@ export default function StreamDashboardScreen() {
           </View>
         </View>
 
-        {/* Moderators Section */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            STREAM MODERATORS (CREATOR-ASSIGNED)
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            
+            CRITICAL SECURITY FIX:
+            - Removed "Manage Roles" which exposed global role management
+            - Replaced with "Stream Moderators" for stream-specific moderation
+            
+            Stream Moderators:
+            - Assigned by creators to their own streams
+            - Can mute, timeout, remove/pin messages in assigned streams ONLY
+            - NO access to dashboards, user data, or platform settings
+            - Stored as stream permissions, NOT global user roles
+            
+            This is DIFFERENT from:
+            - MODERATOR platform role (monitors all streams)
+            - Global role management (HEAD_ADMIN only)
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <View style={[styles.section, { borderBottomColor: colors.border }]}>
           <View style={styles.sectionHeader}>
             <IconSymbol
@@ -534,9 +553,17 @@ export default function StreamDashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => router.push('/screens/RoleManagementScreen' as any)}
+            onPress={() => setShowModeratorsModal(true)}
           >
-            <Text style={[styles.actionButtonText, { color: colors.text }]}>Manage Stream Moderators</Text>
+            <View style={styles.actionButtonContent}>
+              <IconSymbol
+                ios_icon_name="person.badge.shield.checkmark.fill"
+                android_material_icon_name="admin_panel_settings"
+                size={20}
+                color={colors.brandPrimary}
+              />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>Manage Stream Moderators</Text>
+            </View>
             <IconSymbol
               ios_icon_name="chevron.right"
               android_material_icon_name="chevron_right"
@@ -553,8 +580,8 @@ export default function StreamDashboardScreen() {
               color={colors.brandPrimary}
             />
             <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-              Stream Moderators can timeout, ban, and pin messages in your streams only. 
-              They are different from Staff Moderators who manage all streams.
+              Stream Moderators can mute, timeout, and manage messages in YOUR streams only. 
+              They are different from Platform Moderators who monitor all streams on the platform.
             </Text>
           </View>
         </View>
@@ -583,6 +610,15 @@ export default function StreamDashboardScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Stream Moderators Modal */}
+      {user && (
+        <ManageModeratorsModal
+          visible={showModeratorsModal}
+          onClose={() => setShowModeratorsModal(false)}
+          creatorId={user.id}
+        />
+      )}
     </View>
   );
 }
@@ -867,6 +903,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 12,
+  },
+  actionButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
   },
   actionButtonText: {
     fontSize: 16,

@@ -13,14 +13,41 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import { adminService } from '@/app/services/adminService';
-import { supabase } from '@/app/integrations/supabase/client';
 
+/**
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * ACCOUNT SETTINGS SCREEN
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ * 
+ * STRICT DASHBOARD VISIBILITY RULES:
+ * 
+ * HEAD_ADMIN:
+ *   - Head Admin Dashboard ONLY (aggregates all features)
+ * 
+ * ADMIN:
+ *   - Admin Dashboard ONLY
+ * 
+ * MODERATOR:
+ *   - Moderator Dashboard ONLY (platform-level, monitors all streams)
+ * 
+ * SUPPORT:
+ *   - Support Dashboard ONLY
+ * 
+ * Stream Moderator (assigned to creators):
+ *   - NO dashboards (only stream-level moderation)
+ * 
+ * Regular Users:
+ *   - NO dashboards
+ * 
+ * NO ROLE STACKING - Each role sees ONLY their designated dashboard.
+ * 
+ * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ */
 export default function AccountSettingsScreen() {
   const { colors } = useTheme();
   const { user, signOut } = useAuth();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState(true);
-  const [isStreamModerator, setIsStreamModerator] = useState(false);
 
   const checkUserRole = useCallback(async () => {
     if (!user) {
@@ -29,15 +56,15 @@ export default function AccountSettingsScreen() {
     }
 
     try {
+      console.log('🔍 Checking user role for:', user.id);
+      
       // Check platform role
       const result = await adminService.checkAdminRole(user.id);
+      console.log('✅ User role:', result.role);
+      
       setUserRole(result.role);
-
-      // Check if user is a stream moderator (assigned to specific creators)
-      const streamModResult = await adminService.checkStreamModeratorRole(user.id);
-      setIsStreamModerator(streamModResult.isModerator);
     } catch (error) {
-      console.error('Error checking user role:', error);
+      console.error('❌ Error checking user role:', error);
     } finally {
       setLoadingRole(false);
     }
@@ -117,18 +144,12 @@ export default function AccountSettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            ROLE-BASED DASHBOARD VISIBILITY
+            ROLE-BASED DASHBOARD VISIBILITY (STRICT)
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             
-            STRICT RULES:
-            - head_admin: Head Admin Dashboard ONLY (aggregates everything)
-            - admin: Admin Dashboard ONLY
-            - moderator: Moderator Dashboard ONLY
-            - support: Support Dashboard ONLY
-            - streammoderator: Moderator Dashboard ONLY (stream-level)
-            - Regular users: NO dashboards visible
+            Each role sees ONLY their designated dashboard.
+            NO role stacking visibility.
             
-            NO ROLE SHOULD SEE MULTIPLE DASHBOARDS
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         {loadingRole ? (
           <View style={styles.loadingContainer}>
@@ -188,7 +209,7 @@ export default function AccountSettingsScreen() {
               </View>
             )}
 
-            {/* MODERATOR - Shows ONLY Moderator Dashboard */}
+            {/* MODERATOR - Shows ONLY Moderator Dashboard (platform-level) */}
             {userRole === 'MODERATOR' && (
               <View style={[styles.section, { borderBottomColor: colors.border }]}>
                 <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Staff Dashboard</Text>
@@ -240,31 +261,7 @@ export default function AccountSettingsScreen() {
               </View>
             )}
 
-            {/* STREAM MODERATOR - Shows ONLY Moderator Dashboard (stream-level) */}
-            {!userRole && isStreamModerator && (
-              <View style={[styles.section, { borderBottomColor: colors.border }]}>
-                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Moderator Dashboard</Text>
-                
-                <TouchableOpacity
-                  style={[styles.dashboardItem, { backgroundColor: colors.card, borderColor: '#9B59B6' }]}
-                  onPress={() => router.push('/screens/ModeratorDashboardScreen' as any)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.settingLeft}>
-                    <View style={[styles.dashboardIcon, { backgroundColor: 'rgba(155, 89, 182, 0.1)' }]}>
-                      <UnifiedRoastIcon name="shield" size={24} color="#9B59B6" />
-                    </View>
-                    <View style={styles.dashboardInfo}>
-                      <Text style={[styles.dashboardLabel, { color: colors.text }]}>Moderator Dashboard</Text>
-                      <Text style={[styles.dashboardDescription, { color: colors.textSecondary }]}>
-                        Manage assigned creator streams
-                      </Text>
-                    </View>
-                  </View>
-                  <UnifiedRoastIcon name="chevron-right" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-            )}
+            {/* Stream Moderators and Regular Users - NO dashboards */}
           </>
         )}
 

@@ -49,12 +49,34 @@ function isValidUUID(str: string): boolean {
 
 class ModerationService {
   /**
-   * Get all moderators for a streamer
-   * DEFENSIVE: Returns empty array on error
+   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   * STREAM MODERATOR MANAGEMENT (CREATOR-ASSIGNED)
+   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   * 
+   * Stream moderators are assigned by creators to help moderate their streams.
+   * They have LIMITED permissions scoped to the creator's streams only.
+   * 
+   * Permissions:
+   * - Mute users in stream
+   * - Timeout users in stream
+   * - Remove messages
+   * - Pin messages
+   * 
+   * NO access to:
+   * - Dashboards
+   * - User data
+   * - Platform settings
+   * - Other creators' streams
+   * 
+   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    */
-  async getModerators(streamerId: string): Promise<Moderator[]> {
+
+  /**
+   * Get all stream moderators for a creator
+   */
+  async getStreamModerators(creatorId: string): Promise<Moderator[]> {
     try {
-      console.log('📥 [ModerationService] Fetching moderators for streamer:', streamerId);
+      console.log('📥 [ModerationService] Fetching stream moderators for creator:', creatorId);
 
       const { data, error } = await supabase
         .from('moderators')
@@ -62,7 +84,7 @@ class ModerationService {
           *,
           profiles:user_id(username, display_name, avatar_url)
         `)
-        .eq('streamer_id', streamerId)
+        .eq('streamer_id', creatorId)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -70,31 +92,39 @@ class ModerationService {
         return [];
       }
 
-      console.log('✅ [ModerationService] Fetched', data?.length || 0, 'moderators');
+      console.log('✅ [ModerationService] Fetched', data?.length || 0, 'stream moderators');
       return data || [];
     } catch (error) {
-      console.error('❌ [ModerationService] Exception in getModerators:', error);
+      console.error('❌ [ModerationService] Exception in getStreamModerators:', error);
       return [];
     }
   }
 
   /**
-   * Add a moderator (IDEMPOTENT - won't fail if already exists)
-   * FIXED: Now uses upsert to prevent duplicate key violations
+   * Add a stream moderator (creator-assigned)
    */
-  async addModerator(
-    streamerId: string,
-    userId: string,
-    addedBy?: string
+  async addStreamModerator(
+    creatorId: string,
+    userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('➕ [ModerationService] Adding moderator:', { streamerId, userId });
+      console.log('➕ [ModerationService] Adding stream moderator:', { creatorId, userId });
+
+      // Validate inputs
+      if (!creatorId || !userId) {
+        return { success: false, error: 'Invalid creator or user ID' };
+      }
+
+      // Prevent creator from adding themselves
+      if (creatorId === userId) {
+        return { success: false, error: 'Cannot add yourself as a moderator' };
+      }
 
       // Check if moderator already exists
       const { data: existing, error: checkError } = await supabase
         .from('moderators')
         .select('id')
-        .eq('streamer_id', streamerId)
+        .eq('streamer_id', creatorId)
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -104,7 +134,7 @@ class ModerationService {
       }
 
       if (existing) {
-        console.log('ℹ️ [ModerationService] Moderator already exists, returning success');
+        console.log('ℹ️ [ModerationService] Moderator already exists');
         return { success: true };
       }
 
@@ -112,7 +142,7 @@ class ModerationService {
       const { error: insertError } = await supabase
         .from('moderators')
         .insert({
-          streamer_id: streamerId,
+          streamer_id: creatorId,
           user_id: userId,
         });
 
@@ -127,29 +157,28 @@ class ModerationService {
         return { success: false, error: insertError.message };
       }
 
-      console.log('✅ [ModerationService] Moderator added successfully');
+      console.log('✅ [ModerationService] Stream moderator added successfully');
       return { success: true };
     } catch (error: any) {
-      console.error('❌ [ModerationService] Exception in addModerator:', error);
-      return { success: false, error: error.message || 'Failed to add moderator' };
+      console.error('❌ [ModerationService] Exception in addStreamModerator:', error);
+      return { success: false, error: error.message || 'Failed to add stream moderator' };
     }
   }
 
   /**
-   * Remove a moderator
+   * Remove a stream moderator
    */
-  async removeModerator(
-    streamerId: string,
-    userId: string,
-    removedBy?: string
+  async removeStreamModerator(
+    creatorId: string,
+    userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('➖ [ModerationService] Removing moderator:', { streamerId, userId });
+      console.log('➖ [ModerationService] Removing stream moderator:', { creatorId, userId });
 
       const { error } = await supabase
         .from('moderators')
         .delete()
-        .eq('streamer_id', streamerId)
+        .eq('streamer_id', creatorId)
         .eq('user_id', userId);
 
       if (error) {
@@ -157,18 +186,109 @@ class ModerationService {
         return { success: false, error: error.message };
       }
 
-      console.log('✅ [ModerationService] Moderator removed successfully');
+      console.log('✅ [ModerationService] Stream moderator removed successfully');
       return { success: true };
     } catch (error: any) {
-      console.error('❌ [ModerationService] Exception in removeModerator:', error);
-      return { success: false, error: error.message || 'Failed to remove moderator' };
+      console.error('❌ [ModerationService] Exception in removeStreamModerator:', error);
+      return { success: false, error: error.message || 'Failed to remove stream moderator' };
     }
   }
 
   /**
+   * Check if user is a stream moderator for a specific creator
+   */
+  async isStreamModerator(creatorId: string, userId: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('moderators')
+        .select('id')
+        .eq('streamer_id', creatorId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ [ModerationService] Error checking stream moderator status:', error);
+        return false;
+      }
+
+      return !!data;
+    } catch (error) {
+      console.error('❌ [ModerationService] Exception in isStreamModerator:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all creators that a user moderates for
+   */
+  async getModeratedCreators(userId: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('moderators')
+        .select(`
+          id,
+          streamer_id,
+          created_at,
+          profiles:streamer_id(username, display_name, avatar_url)
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ [ModerationService] Error fetching moderated creators:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ [ModerationService] Exception in getModeratedCreators:', error);
+      return [];
+    }
+  }
+
+  /**
+   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   * LEGACY MODERATOR FUNCTIONS (KEPT FOR BACKWARDS COMPATIBILITY)
+   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   */
+
+  /**
+   * Get all moderators for a streamer (LEGACY - use getStreamModerators instead)
+   */
+  async getModerators(streamerId: string): Promise<Moderator[]> {
+    return this.getStreamModerators(streamerId);
+  }
+
+  /**
+   * Add a moderator (LEGACY - use addStreamModerator instead)
+   */
+  async addModerator(
+    streamerId: string,
+    userId: string,
+    addedBy?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.addStreamModerator(streamerId, userId);
+  }
+
+  /**
+   * Remove a moderator (LEGACY - use removeStreamModerator instead)
+   */
+  async removeModerator(
+    streamerId: string,
+    userId: string,
+    removedBy?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.removeStreamModerator(streamerId, userId);
+  }
+
+  /**
+   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   * BAN & TIMEOUT MANAGEMENT
+   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   */
+
+  /**
    * Get all banned users for a streamer
-   * FIXED: Changed from 'bans' to 'banned_users' table
-   * DEFENSIVE: Returns empty array on error instead of throwing
    */
   async getBannedUsers(streamerId: string): Promise<BannedUser[]> {
     try {
@@ -185,7 +305,6 @@ class ModerationService {
 
       if (error) {
         console.error('❌ [ModerationService] Error fetching banned users:', error);
-        console.error('Error details:', error);
         return [];
       }
 
@@ -210,8 +329,7 @@ class ModerationService {
   }
 
   /**
-   * Ban a user
-   * FIXED: Changed from 'bans' to 'banned_users' table
+   * Ban a user from creator's streams
    */
   async banUser(
     streamerId: string,
@@ -245,7 +363,6 @@ class ModerationService {
 
   /**
    * Unban a user
-   * FIXED: Changed from 'bans' to 'banned_users' table
    */
   async unbanUser(
     streamerId: string,
@@ -311,7 +428,6 @@ class ModerationService {
 
   /**
    * Search users by username
-   * FIXED: Added UUID validation to prevent "invalid input syntax for type uuid" errors
    */
   async searchUsersByUsername(username: string): Promise<any[]> {
     try {
@@ -369,8 +485,6 @@ class ModerationService {
 
   /**
    * Check if user is banned
-   * FIXED: Changed from 'bans' to 'banned_users' table
-   * DEFENSIVE: Returns false on error
    */
   async isUserBanned(streamerId: string, userId: string): Promise<boolean> {
     try {
@@ -395,7 +509,6 @@ class ModerationService {
 
   /**
    * Check if user is timed out
-   * DEFENSIVE: Returns false on error
    */
   async isUserTimedOut(streamerId: string, userId: string): Promise<boolean> {
     try {
@@ -419,28 +532,10 @@ class ModerationService {
   }
 
   /**
-   * Check if user is a moderator
-   * DEFENSIVE: Returns false on error
+   * Check if user is a moderator (LEGACY - use isStreamModerator instead)
    */
   async isModerator(streamerId: string, userId: string): Promise<boolean> {
-    try {
-      const { data, error } = await supabase
-        .from('moderators')
-        .select('id')
-        .eq('streamer_id', streamerId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('❌ [ModerationService] Error checking moderator status:', error);
-        return false;
-      }
-
-      return !!data;
-    } catch (error) {
-      console.error('❌ [ModerationService] Exception in isModerator:', error);
-      return false;
-    }
+    return this.isStreamModerator(streamerId, userId);
   }
 }
 
