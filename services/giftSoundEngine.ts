@@ -9,6 +9,10 @@
  * Sound is as important as animation.
  * Sounds must amplify humiliation, drama, hype, and crowd energy.
  * 
+ * LEGACY SYSTEM CHECK:
+ * This is the NEW Roast Gift Sound Engine.
+ * The old gift sound system has been permanently disabled.
+ * 
  * NOTE: Sound files are currently disabled. To enable:
  * 1. Add .mp3 files to assets/sounds/ directory
  * 2. Uncomment the SOUND_FILES mappings below
@@ -16,6 +20,7 @@
  */
 
 import { Audio } from 'expo-av';
+import { LEGACY_SYSTEMS_ENABLED, assertLegacySystemDisabled } from '@/constants/LegacySystemConfig';
 
 export type SoundTier = 'LOW' | 'MID' | 'HIGH' | 'ULTRA';
 
@@ -51,19 +56,74 @@ class GiftSoundEngine {
     ULTRA: { maxDuration: 8000, ducking: -20, priority: 4 },
   };
 
+  // Sound files are currently disabled
+  // To enable sounds:
+  // 1. Create assets/sounds/ directory
+  // 2. Add .mp3 files to the directory
+  // 3. Uncomment the require() statements below
+  // 4. Rebuild the app
   private readonly SOUND_FILES: Record<string, any> = {
-    // Sound files are currently disabled
-    // To enable sounds:
-    // 1. Add .mp3 files to assets/sounds/ directory
-    // 2. Uncomment the require() statements below
-    // 3. Rebuild the app
-    
-    // Example:
+    // Example sound mappings (currently disabled):
     // crowd_boo: require('../assets/sounds/crowd_boo.mp3'),
     // cricket_chirp: require('../assets/sounds/crickets.mp3'),
+    // sad_trombone: require('../assets/sounds/sad_trombone.mp3'),
+    // slap_sound: require('../assets/sounds/facepalm.mp3'),
+    // yawn_sound: require('../assets/sounds/yawn.mp3'),
+    // clown_horn: require('../assets/sounds/clown_horn.mp3'),
+    // trash_dump: require('../assets/sounds/trash.mp3'),
+    // death_sound: require('../assets/sounds/death.mp3'),
+    // fart_sound: require('../assets/sounds/fart.mp3'),
+    // mic_drop_thud: require('../assets/sounds/mic_drop.mp3'),
+    // airhorn_blast: require('../assets/sounds/airhorn.mp3'),
+    // crowd_roar: require('../assets/sounds/crowd_roar.mp3'),
+    // boxing_bell: require('../assets/sounds/boxing_bell.mp3'),
+    // fire_whoosh: require('../assets/sounds/fire.mp3'),
+    // explosion_boom: require('../assets/sounds/explosion.mp3'),
+    // gasp_sound: require('../assets/sounds/gasp.mp3'),
+    // savage_sound: require('../assets/sounds/savage.mp3'),
+    // salt_pour: require('../assets/sounds/salt.mp3'),
+    // tea_spill: require('../assets/sounds/tea_spill.mp3'),
+    // flamethrower: require('../assets/sounds/flamethrower.mp3'),
+    // stamp_slam: require('../assets/sounds/stamp.mp3'),
+    // gavel_bang: require('../assets/sounds/gavel.mp3'),
+    // crown_fanfare: require('../assets/sounds/crown.mp3'),
+    // punch_knockout: require('../assets/sounds/punch.mp3'),
+    // bomb_explosion: require('../assets/sounds/bomb.mp3'),
+    // thunder_crack: require('../assets/sounds/thunder.mp3'),
+    // trophy_win: require('../assets/sounds/trophy.mp3'),
+    // earthquake_rumble: require('../assets/sounds/earthquake.mp3'),
+    // slow_motion: require('../assets/sounds/slow_mo.mp3'),
+    // spotlight_on: require('../assets/sounds/spotlight.mp3'),
+    // mute_sound: require('../assets/sounds/mute.mp3'),
+    // time_stop: require('../assets/sounds/time_stop.mp3'),
+    // nuke_explosion: require('../assets/sounds/nuke.mp3'),
+    // shame_bell_ring: require('../assets/sounds/shame_bell.mp3'),
+    // meteor_impact: require('../assets/sounds/meteor.mp3'),
+    // funeral_march: require('../assets/sounds/funeral.mp3'),
+    // riot_chaos: require('../assets/sounds/riot.mp3'),
+    // execution_sound: require('../assets/sounds/execution.mp3'),
+    // game_over: require('../assets/sounds/game_over.mp3'),
+    // apocalypse_sound: require('../assets/sounds/apocalypse.mp3'),
+    // sigh_sound: require('../assets/sounds/sigh.mp3'),
+    // snore_sound: require('../assets/sounds/snore.mp3'),
+    // cringe_sound: require('../assets/sounds/cringe.mp3'),
+    // hammer_slam: require('../assets/sounds/hammer.mp3'),
+    // sword_slash: require('../assets/sounds/sword.mp3'),
+    // shield_block: require('../assets/sounds/shield.mp3'),
+    // dragon_roar: require('../assets/sounds/dragon.mp3'),
+    // siren: require('../assets/sounds/siren.mp3'),
+    // crowd_chant: require('../assets/sounds/crowd_chant.mp3'),
+    // church_bell: require('../assets/sounds/church_bell.mp3'),
+    // tomato_splat: require('../assets/sounds/tomato_splat.mp3'),
+    // sitcom_laugh: require('../assets/sounds/sitcom_laugh.mp3'),
   };
 
   public async initialize(): Promise<void> {
+    // LEGACY SYSTEM CHECK
+    if (!LEGACY_SYSTEMS_ENABLED) {
+      console.log('✅ [GiftSoundEngine] NEW Roast Gift Sound Engine initializing...');
+    }
+
     if (this.initialized) {
       console.log('⚠️ [GiftSoundEngine] Already initialized');
       return;
@@ -78,7 +138,7 @@ class GiftSoundEngine {
         playThroughEarpieceAndroid: false,
       });
       this.initialized = true;
-      console.log('✅ [GiftSoundEngine] Audio initialized');
+      console.log('✅ [GiftSoundEngine] Audio initialized (NEW Roast System)');
     } catch (error) {
       console.error('❌ [GiftSoundEngine] Audio initialization failed:', error);
     }

@@ -8,6 +8,10 @@
  * - Automatically updates VIP levels after confirmed gifts
  * - Detects self-gifting (logged, not enforced)
  * - Detects VIP farming (logged, not enforced)
+ * 
+ * LEGACY SYSTEM CHECK:
+ * This is the NEW Roast Gift Service.
+ * The old gift system has been permanently disabled.
  */
 
 import { supabase } from '@/app/integrations/supabase/client';
@@ -16,6 +20,7 @@ import { battleGiftService } from '@/services/battleGiftService';
 import { roastRankingService } from '@/services/roastRankingService';
 import { vipLevelService } from './vipLevelService';
 import { getRoastGiftById } from '@/constants/RoastGiftManifest';
+import { validateServiceInitialization, filterEventBySource } from '@/utils/legacySystemGuard';
 
 export interface RoastGiftTransaction {
   id: string;
@@ -33,9 +38,16 @@ class RoastGiftService {
   private giftChannels: Map<string, any> = new Map();
 
   public initialize(): void {
+    // LEGACY SYSTEM CHECK
+    validateServiceInitialization('RoastGiftService');
+    
     if (this.initialized) return;
     
-    console.log('🎁 [RoastGiftService] Initializing...');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🎁 [RoastGiftService] Initializing NEW ROAST GIFT SYSTEM...');
+    console.log('🎁 [RoastGiftService] Legacy gift system is PERMANENTLY DISABLED');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     this.initialized = true;
   }
 
@@ -61,6 +73,11 @@ class RoastGiftService {
     streamId: string | null
   ): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate event source
+      if (!filterEventBySource('RoastGiftEngine', 'gift_sent')) {
+        return { success: false, error: 'Event source not allowed' };
+      }
+
       const gift = getRoastGiftById(giftId);
       if (!gift) {
         return { success: false, error: 'Gift not found' };
@@ -121,7 +138,7 @@ class RoastGiftService {
 
       await this.broadcastGiftAnimation(giftId, senderId, creatorId, streamId, gift);
 
-      console.log('✅ [RoastGiftService] Gift sent successfully');
+      console.log('✅ [RoastGiftService] Gift sent successfully (NEW ROAST SYSTEM)');
       return { success: true };
     } catch (error) {
       console.error('❌ [RoastGiftService] Exception sending gift:', error);
@@ -273,10 +290,11 @@ class RoastGiftService {
           tier: gift.tier,
           animationType: gift.animationType,
           timestamp: Date.now(),
+          source: 'RoastGiftEngine', // Event source identifier
         },
       });
 
-      console.log('✅ [RoastGiftService] Gift animation broadcasted');
+      console.log('✅ [RoastGiftService] Gift animation broadcasted (NEW ROAST SYSTEM)');
     } catch (error) {
       console.error('❌ [RoastGiftService] Error broadcasting gift:', error);
     }
@@ -291,12 +309,19 @@ class RoastGiftService {
       return () => {};
     }
 
-    console.log('🔌 [RoastGiftService] Subscribing to gifts for stream:', streamId);
+    console.log('🔌 [RoastGiftService] Subscribing to NEW ROAST GIFTS for stream:', streamId);
 
     const channel = supabase
       .channel(`roast_gifts:${streamId}`)
       .on('broadcast', { event: 'gift_sent' }, (payload) => {
-        console.log('🎁 [RoastGiftService] Gift received:', payload);
+        // Validate event source
+        const eventSource = payload.payload?.source || 'unknown';
+        if (!filterEventBySource(eventSource, 'gift_sent')) {
+          console.warn('⚠️ [RoastGiftService] Event dropped - invalid source:', eventSource);
+          return;
+        }
+        
+        console.log('🎁 [RoastGiftService] NEW ROAST GIFT received:', payload);
         callback(payload.payload);
       })
       .subscribe((status) => {

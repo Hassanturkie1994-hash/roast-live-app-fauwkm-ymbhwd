@@ -16,6 +16,7 @@ import { DeviceBanGuard } from '@/components/DeviceBanGuard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import withEditableWrapper_ from '@/babel-plugins/react/withEditableWrapper_';
+import { initializeLegacySystemGuard } from '@/utils/legacySystemGuard';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -102,6 +103,11 @@ function RootLayoutContent() {
     const dims = getWindowDimensions();
     console.log('📐 [LAYOUT] Window dimensions:', dims);
     
+    // Initialize Legacy System Guard
+    initializeLegacySystemGuard().catch((error) => {
+      console.error('❌ [LAYOUT] Failed to initialize Legacy System Guard:', error);
+    });
+    
     // Small delay to ensure all providers are mounted
     const timer = setTimeout(() => {
       setProvidersReady(true);
@@ -144,10 +150,16 @@ function RootLayoutContent() {
  * 11. RootLayoutContent (actual app content)
  * 
  * IMPORTANT: All providers MUST be mounted before any screen that uses them
+ * 
+ * LEGACY SYSTEM SHUTDOWN:
+ * - Legacy System Guard is initialized at app startup
+ * - All legacy systems are permanently disabled
+ * - Only NEW Roast systems are active
  */
 function RootLayoutBase() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🚀 [LAYOUT] RootLayout mounting...');
+  console.log('🛡️ [LAYOUT] Legacy System Guard will initialize...');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return (

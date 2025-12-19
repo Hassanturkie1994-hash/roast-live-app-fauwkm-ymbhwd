@@ -1,5 +1,11 @@
 
 // Export all services for easy importing
+// 
+// LEGACY SYSTEM SHUTDOWN:
+// - All legacy services have been removed
+// - Only NEW Roast systems are exported
+// - Legacy service imports will cause build errors
+
 export { achievementService } from './achievementService';
 export { adminService } from './adminService';
 export { aiModerationService } from './aiModerationService';
@@ -24,10 +30,10 @@ export { enhancedRecommendationService } from './enhancedRecommendationService';
 export { escalationService } from './escalationService';
 export { fanClubService } from './fanClubService';
 export { followService } from './followService';
-export { roastGiftService } from './roastGiftService';
-export { globalLeaderboardService } from './globalLeaderboardService';
+export { roastGiftService } from './roastGiftService'; // NEW: Roast Gift System
+export { globalLeaderboardService } from './globalLeaderboardService'; // NEW: Global Roast Rankings
 export { inboxService } from './inboxService';
-export { leaderboardService } from './leaderboardService';
+export { leaderboardService } from './leaderboardService'; // NEW: Roast Season Rankings
 export { leaderboardSnapshotService } from './leaderboardSnapshotService';
 export { likeService } from './likeService';
 export { liveStreamArchiveService } from './liveStreamArchiveService';
@@ -57,15 +63,15 @@ export { streamGuestService } from './streamGuestService';
 export { streamService } from './streamService';
 export { streamSettingsService } from './streamSettingsService';
 export { stripeService } from './stripeService';
-export { stripeVIPService } from './stripeVIPService';
+export { stripeVIPService } from './stripeVIPService'; // NEW: Roast VIP Stripe Integration
 export { termsPrivacyService } from './termsPrivacyService';
 export { twoFactorAuthService } from './twoFactorAuthService';
-export { unifiedVIPClubService } from './unifiedVIPClubService';
+export { unifiedVIPClubService } from './unifiedVIPClubService'; // NEW: Unified VIP Club Service
 export { userBlockingService } from './userBlockingService';
 export { userReportingService } from './userReportingService';
 export { viewerTrackingService } from './viewerTrackingService';
-export { vipLevelService } from './vipLevelService';
-export { vipMembershipService } from './vipMembershipService';
+export { vipLevelService } from './vipLevelService'; // NEW: VIP Level Service
+export { vipMembershipService } from './vipMembershipService'; // NEW: Roast VIP Membership
 export { walletService } from './walletService';
 export { walletTransactionService } from './walletTransactionService';
 

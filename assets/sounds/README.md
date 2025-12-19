@@ -1,174 +1,260 @@
 
-# Roast Gift Sound System
+# 🔊 Roast Gift Sound Files
 
-This directory contains all sound files for the Roast Gift System.
+## 📁 Directory Purpose
 
-## ⚠️ IMPORTANT: Sound Files Not Included
+This directory contains sound files for the **NEW Roast Gift System**.
 
-The actual `.mp3` sound files are **not included** in this repository. To enable sound playback:
+**Current Status**: ⚠️ **SOUNDS DISABLED**
 
-1. Add your `.mp3` sound files to this directory (`assets/sounds/`)
-2. Uncomment the sound file mappings in `services/giftSoundEngine.ts`
-3. Ensure file names match the mappings below
+---
 
-The app will work without sound files - it will simply skip sound playback gracefully.
+## 🚨 IMPORTANT: Sounds Are Currently Disabled
 
-## Sound Philosophy
+Sound files are **NOT INCLUDED** in the repository to keep the app size small and avoid build errors.
 
-Sound is as important as animation. Sounds must amplify humiliation, drama, hype, and crowd energy.
+To enable sounds, follow the instructions below.
 
-## Sound Categories
+---
 
-### LOW TIER (1-10 SEK)
-**Max Duration:** 0.5s  
-**Ducking:** -6 dB  
-**Can Batch:** Yes  
-**Can Be Interrupted:** Yes
+## 🎵 How to Enable Sounds
 
-- `crowd_boo.mp3` - Classic crowd disapproval
-- `crickets.mp3` - Awkward silence
-- `sad_trombone.mp3` - Classic fail sound
-- `facepalm.mp3` - Slap sound for disappointment
-- `tomato_splat.mp3` - Rotten tomato throw
-- `sitcom_laugh.mp3` - Fake laughter track
-- `yawn.mp3` - So boring...
-- `clown_horn.mp3` - You're a joke
-- `trash_dump.mp3` - Garbage take
-- `death.mp3` - You killed it (badly)
-- `fart.mp3` - That was crap
-- `sigh.mp3` - Seriously?
-- `snore.mp3` - Put me to sleep
+### Step 1: Add Sound Files
 
-### MID TIER (20-100 SEK)
-**Max Duration:** 1.2s  
-**Ducking:** -10 dB  
-**Can Batch:** No  
-**Can Be Interrupted:** Yes
+Add the following `.mp3` files to this directory (`assets/sounds/`):
 
-- `mic_drop.mp3` - Drop the mic on them
-- `airhorn.mp3` - Loud and obnoxious
-- `laugh_explosion.mp3` - Uncontrollable laughter
-- `boxing_bell.mp3` - Round 1, fight!
-- `fire_whoosh.mp3` - That was fire
-- `explosion.mp3` - Mind blown
-- `gasp.mp3` - Oh no they didn't
-- `savage.mp3` - Absolutely savage
-- `salt_pour.mp3` - So salty
-- `tea_spill.mp3` - Spill the tea
-- `cringe.mp3` - So cringe
+#### LOW TIER Sounds (1-10 SEK)
+- `crowd_boo.mp3` - Crowd booing
+- `crickets.mp3` - Cricket chirping
+- `sad_trombone.mp3` - Sad trombone
+- `facepalm.mp3` - Slap sound
+- `yawn.mp3` - Yawning sound
+- `clown_horn.mp3` - Clown horn
+- `trash.mp3` - Trash dump sound
+- `death.mp3` - Death sound
+- `fart.mp3` - Fart sound
+- `sigh.mp3` - Sigh sound
+- `snore.mp3` - Snoring sound
 
-### HIGH TIER (150-500 SEK)
-**Max Duration:** 2-3s  
-**Ducking:** -14 dB  
-**Can Batch:** No  
-**Can Be Interrupted:** No (interrupts LOW/MID)
+#### MID TIER Sounds (20-100 SEK)
+- `mic_drop.mp3` - Mic drop thud
+- `airhorn.mp3` - Airhorn blast
+- `crowd_roar.mp3` - Crowd roaring
+- `boxing_bell.mp3` - Boxing bell
+- `fire.mp3` - Fire whoosh
+- `explosion.mp3` - Explosion boom
+- `gasp.mp3` - Gasp sound
+- `savage.mp3` - Savage sound
+- `salt.mp3` - Salt pouring
+- `tea_spill.mp3` - Tea spilling
+- `cringe.mp3` - Cringe sound
 
-- `fire_blast.mp3` - Burn them to ashes
-- `stamp_slam.mp3` - Officially rejected
-- `judge_gavel.mp3` - Guilty as charged
-- `crown_fanfare.mp3` - King of roasts
-- `punch_knockout.mp3` - Knocked out cold
-- `bomb_explosion.mp3` - Dropped a bomb
-- `alarm_siren.mp3` - Struck by lightning
-- `trophy_win.mp3` - Champion roaster
-- `hammer_slam.mp3` - Hammer them down
-- `sword_slash.mp3` - Slice through their argument
-- `shield_block.mp3` - Block their roast
+#### HIGH TIER Sounds (150-500 SEK)
+- `flamethrower.mp3` - Flamethrower
+- `stamp.mp3` - Stamp slam
+- `gavel.mp3` - Gavel bang
+- `crown.mp3` - Crown fanfare
+- `punch.mp3` - Knockout punch
+- `bomb.mp3` - Bomb explosion
+- `thunder.mp3` - Thunder crack
+- `trophy.mp3` - Trophy win
+- `hammer.mp3` - Hammer slam
+- `sword.mp3` - Sword slash
+- `shield.mp3` - Shield block
 
-### ULTRA TIER (2000-4000 SEK)
-**Max Duration:** 5-8s  
-**Ducking:** -20 dB (Full)  
-**Can Batch:** No  
-**Can Be Interrupted:** No (Exclusive playback, cannot be skipped)
-
-- `funeral_choir.mp3` - Play funeral music
-- `riot_sirens.mp3` - Start a riot
-- `epic_bass_drop.mp3` - Game over
-- `siren.mp3` - Roast execution siren
-- `church_bell.mp3` - Funeral bell
+#### ULTRA TIER Sounds (700-4000 SEK)
+- `earthquake.mp3` - Earthquake rumble
+- `slow_mo.mp3` - Slow motion sound
+- `spotlight.mp3` - Spotlight on
+- `mute.mp3` - Mute sound
+- `time_stop.mp3` - Time freeze
+- `nuke.mp3` - Nuclear explosion
+- `shame_bell.mp3` - Shame bell ringing
+- `meteor.mp3` - Meteor impact
+- `funeral.mp3` - Funeral march
+- `riot.mp3` - Riot chaos
+- `execution.mp3` - Execution sound
+- `game_over.mp3` - Game over
+- `apocalypse.mp3` - Apocalypse sound
+- `dragon.mp3` - Dragon roar
+- `siren.mp3` - Siren
 - `crowd_chant.mp3` - Crowd chanting
-- `earthquake_rumble.mp3` - Shake the whole screen
-- `slow_motion.mp3` - Epic slow-mo moment
-- `spotlight_on.mp3` - Put them in the spotlight
-- `mute_sound.mp3` - Silence them
-- `time_stop.mp3` - Freeze time
-- `nuke_explosion.mp3` - Nuclear roast
-- `shame_bell_ring.mp3` - Shame! Shame! Shame!
-- `meteor_impact.mp3` - Meteor strike
-- `execution_sound.mp3` - Execute the roast
-- `apocalypse_sound.mp3` - End of the world
-- `dragon_roar.mp3` - Unleash the dragon
+- `church_bell.mp3` - Church bell
+- `tomato_splat.mp3` - Tomato splat
+- `sitcom_laugh.mp3` - Sitcom laugh track
 
-## System Rules
+### Step 2: Uncomment Sound Mappings
 
-1. **All sounds are played locally on device** - No sound data is sent in the stream
-2. **Sounds are metadata-triggered** - Gift events trigger sound playback
-3. **Sounds must be preloaded before live starts** - No runtime loading
-4. **Sounds must respect audio ducking rules** - Stream audio is ducked based on tier
-5. **Priority-based interruption** - Higher tier sounds can interrupt lower tier sounds
-6. **Performance fallback** - If FPS drops, sounds are skipped gracefully
-7. **Graceful degradation** - App works without sound files, just skips playback
-
-## Audio Ducking
-
-Audio ducking reduces the stream audio volume when gift sounds play:
-
-- **LOW:** -6 dB (minimal ducking)
-- **MID:** -10 dB (moderate ducking)
-- **HIGH:** -14 dB (strong ducking)
-- **ULTRA:** -20 dB (full ducking)
-
-## Implementation
-
-The sound system is implemented in `services/giftSoundEngine.ts` and uses `expo-av` for audio playback.
-
-### Usage
+Edit `services/giftSoundEngine.ts` and uncomment the `SOUND_FILES` object:
 
 ```typescript
-import { giftSoundEngine } from '@/services/giftSoundEngine';
+private readonly SOUND_FILES: Record<string, any> = {
+  crowd_boo: require('../assets/sounds/crowd_boo.mp3'),
+  cricket_chirp: require('../assets/sounds/crickets.mp3'),
+  // ... uncomment all sound mappings
+};
+```
 
-// Initialize (call once at app start)
-await giftSoundEngine.initialize();
+### Step 3: Rebuild the App
 
-// Play a sound
-await giftSoundEngine.playSound('crowd_boo', 'LOW');
+```bash
+npm start -- --clear
+# or
+expo start --clear
+```
 
-// Stop a sound
-await giftSoundEngine.stopSound('crowd_boo');
+---
+
+## 🎨 Sound Design Guidelines
+
+### Tier-Based Sound Design
+
+- **LOW TIER** (1-10 SEK): Short, simple sounds (< 500ms)
+- **MID TIER** (20-100 SEK): Medium sounds with impact (< 1200ms)
+- **HIGH TIER** (150-500 SEK): Dramatic sounds (< 3000ms)
+- **ULTRA TIER** (700-4000 SEK): Epic, cinematic sounds (< 8000ms)
+
+### Audio Ducking
+
+The sound engine automatically ducks stream audio when playing gift sounds:
+
+- **LOW TIER**: -6dB ducking
+- **MID TIER**: -10dB ducking
+- **HIGH TIER**: -14dB ducking
+- **ULTRA TIER**: -20dB ducking
+
+### Sound Interruption
+
+- **ULTRA sounds** block all other sounds
+- **HIGH sounds** interrupt LOW and MID sounds
+- **LOW sounds** can be batched together
+
+---
+
+## 📦 Recommended Sound Sources
+
+### Free Sound Libraries
+
+1. **Freesound.org** - Creative Commons sounds
+2. **Zapsplat.com** - Free sound effects
+3. **Mixkit.co** - Free sound effects
+4. **BBC Sound Effects** - Free for personal use
+
+### Commercial Sound Libraries
+
+1. **Epidemic Sound** - Subscription-based
+2. **AudioJungle** - Pay-per-sound
+3. **Soundstripe** - Subscription-based
+
+---
+
+## ⚠️ Legal Considerations
+
+### Licensing
+
+Ensure all sound files are:
+
+- ✅ Royalty-free
+- ✅ Licensed for commercial use
+- ✅ Licensed for mobile app distribution
+- ✅ Properly attributed (if required)
+
+### Attribution
+
+If sounds require attribution, add credits to:
+
+```
+app/screens/CreditsScreen.tsx
+```
+
+---
+
+## 🔧 Technical Specifications
+
+### File Format
+
+- **Format**: MP3
+- **Bitrate**: 128-192 kbps (recommended)
+- **Sample Rate**: 44.1 kHz
+- **Channels**: Mono or Stereo
+
+### File Size
+
+- **LOW TIER**: < 50 KB
+- **MID TIER**: < 100 KB
+- **HIGH TIER**: < 200 KB
+- **ULTRA TIER**: < 500 KB
+
+### Naming Convention
+
+Use lowercase with underscores:
+
+```
+crowd_boo.mp3
+cricket_chirp.mp3
+sad_trombone.mp3
+```
+
+---
+
+## 🎯 Sound Engine Features
+
+### Automatic Features
+
+- ✅ Audio ducking (stream audio reduction)
+- ✅ Priority management (ULTRA > HIGH > MID > LOW)
+- ✅ Sound interruption (higher tiers interrupt lower)
+- ✅ Performance fallback (disable sounds on low-end devices)
+- ✅ Automatic cleanup (sounds unload after playback)
+
+### Manual Controls
+
+```typescript
+// Enable performance fallback
+giftSoundEngine.enablePerformanceFallback();
+
+// Disable performance fallback
+giftSoundEngine.disablePerformanceFallback();
 
 // Stop all sounds
 await giftSoundEngine.stopAllSounds();
 
-// Enable performance fallback
-giftSoundEngine.enablePerformanceFallback();
-
-// Cleanup
-await giftSoundEngine.cleanup();
+// Get active sounds count
+const count = giftSoundEngine.getActiveSoundsCount();
 ```
 
-## File Format
+---
 
-All sound files should be:
-- **Format:** MP3
-- **Sample Rate:** 44.1 kHz
-- **Bit Rate:** 128-192 kbps
-- **Channels:** Stereo or Mono
-- **Normalized:** -3 dB peak to prevent clipping
+## 📊 Current Status
 
-## Adding New Sounds
+- ⚠️ **Sounds**: DISABLED (no .mp3 files)
+- ✅ **Sound Engine**: ACTIVE (ready for sounds)
+- ✅ **Sound Profiles**: DEFINED (45 gifts)
+- ✅ **Audio Ducking**: ACTIVE
+- ✅ **Priority System**: ACTIVE
 
-1. Add the sound file to this directory (`assets/sounds/`)
-2. Uncomment the corresponding line in `SOUND_FILES` mapping in `services/giftSoundEngine.ts`
-3. Update this README with the new sound description (if adding a new sound)
-4. Test the sound in the app to ensure proper ducking and timing
+---
 
-## Where to Get Sound Files
+## 🚀 Quick Enable
 
-You can source sound files from:
-- **Freesound.org** - Free sound effects library
-- **Zapsplat.com** - Free sound effects for commercial use
-- **Epidemic Sound** - Royalty-free sound effects (paid)
-- **AudioJungle** - Professional sound effects (paid)
-- **Create your own** - Record and edit custom sounds
+### Minimal Setup (3 sounds)
 
-Make sure you have the proper licenses for any sound files you use in production.
+To quickly test the sound system, add just these 3 files:
+
+1. `crowd_boo.mp3` - For LOW tier gifts
+2. `airhorn.mp3` - For MID tier gifts
+3. `nuke.mp3` - For ULTRA tier gifts
+
+Then uncomment these lines in `services/giftSoundEngine.ts`:
+
+```typescript
+private readonly SOUND_FILES: Record<string, any> = {
+  crowd_boo: require('../assets/sounds/crowd_boo.mp3'),
+  airhorn_blast: require('../assets/sounds/airhorn.mp3'),
+  nuke_explosion: require('../assets/sounds/nuke.mp3'),
+};
+```
+
+---
+
+**END OF README**

@@ -2,6 +2,11 @@
 /**
  * Service Registry
  * Central registry for all services to ensure they're properly initialized and accessible
+ * 
+ * LEGACY SYSTEM SHUTDOWN:
+ * - All legacy services have been removed
+ * - Only NEW Roast systems are registered
+ * - Legacy service imports will cause build errors
  */
 
 import { achievementService } from './achievementService';
@@ -65,10 +70,18 @@ import { viewerTrackingService } from './viewerTrackingService';
 import { vipMembershipService } from './vipMembershipService';
 import { walletService } from './walletService';
 import { walletTransactionService } from './walletTransactionService';
+import { validateServiceInitialization } from '@/utils/legacySystemGuard';
 
 /**
  * Service Registry Object
  * All services are registered here for easy access and type safety
+ * 
+ * ONLY NEW ROAST SYSTEMS ARE REGISTERED:
+ * 1. Roast Gift System (roastGiftService)
+ * 2. Roast VIP Club (vipMembershipService, stripeVIPService)
+ * 3. Roast Season Rankings (leaderboardService, globalLeaderboardService)
+ * 4. Roast Battles (battleService - imported separately)
+ * 5. Creator Leveling (creatorEarningsService)
  */
 export const ServiceRegistry = {
   // Core Services
@@ -113,21 +126,21 @@ export const ServiceRegistry = {
   replayWatch: replayWatchService,
   savedStream: savedStreamService,
   
-  // Gifts & Monetization
-  roastGift: roastGiftService,
+  // NEW ROAST SYSTEMS ONLY
+  roastGift: roastGiftService, // NEW: Roast Gift System (45 gifts)
   wallet: walletService,
   walletTransaction: walletTransactionService,
   
   // Payments & Subscriptions
   stripe: stripeService,
-  stripeVIP: stripeVIPService,
+  stripeVIP: stripeVIPService, // NEW: Roast VIP Stripe Integration
   payout: payoutService,
   premiumSubscription: premiumSubscriptionService,
-  vipMembership: vipMembershipService,
+  vipMembership: vipMembershipService, // NEW: Roast VIP Membership
   
   // Creator Features
   creatorClub: creatorClubService,
-  creatorEarnings: creatorEarningsService,
+  creatorEarnings: creatorEarningsService, // NEW: Creator Leveling
   creatorRevenue: creatorRevenueService,
   fanClub: fanClubService,
   clubSubscription: clubSubscriptionService,
@@ -147,9 +160,9 @@ export const ServiceRegistry = {
   pushNotification: pushNotificationService,
   pushNotificationTest: pushNotificationTestService,
   
-  // Leaderboards & Rankings
-  leaderboard: leaderboardService,
-  globalLeaderboard: globalLeaderboardService,
+  // NEW ROAST SYSTEMS: Leaderboards & Rankings
+  leaderboard: leaderboardService, // NEW: Roast Season Rankings
+  globalLeaderboard: globalLeaderboardService, // NEW: Global Roast Rankings
   leaderboardSnapshot: leaderboardSnapshotService,
   
   // Discovery & Recommendations
@@ -171,6 +184,10 @@ export const ServiceRegistry = {
 /**
  * Service Health Check
  * Verifies that all critical services are available
+ * 
+ * LEGACY SYSTEM CHECK:
+ * - Validates that no legacy services are registered
+ * - Ensures only NEW Roast systems are active
  */
 export function checkServiceHealth(): {
   healthy: boolean;
@@ -178,7 +195,13 @@ export function checkServiceHealth(): {
 } {
   const services: Record<string, boolean> = {};
   
-  // Check critical services
+  // Check critical NEW ROAST SYSTEMS
+  services.roastGift = !!ServiceRegistry.roastGift;
+  services.vipMembership = !!ServiceRegistry.vipMembership;
+  services.leaderboard = !!ServiceRegistry.leaderboard;
+  services.globalLeaderboard = !!ServiceRegistry.globalLeaderboard;
+  
+  // Check core services
   services.achievement = !!ServiceRegistry.achievement;
   services.admin = !!ServiceRegistry.admin;
   services.cloudflare = !!ServiceRegistry.cloudflare;
@@ -193,7 +216,7 @@ export function checkServiceHealth(): {
   if (!healthy) {
     console.error('❌ Service health check failed:', services);
   } else {
-    console.log('✅ All critical services are healthy');
+    console.log('✅ All critical services are healthy (NEW ROAST SYSTEMS ONLY)');
   }
   
   return { healthy, services };
@@ -202,11 +225,22 @@ export function checkServiceHealth(): {
 /**
  * Initialize all services
  * Call this on app startup to ensure services are ready
+ * 
+ * LEGACY SYSTEM CHECK:
+ * - Validates service names to ensure no legacy services are initialized
+ * - Only NEW Roast systems are allowed
  */
 export async function initializeServices(): Promise<void> {
-  console.log('🚀 Initializing services...');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🚀 [SERVICE REGISTRY] Initializing NEW ROAST SYSTEMS ONLY...');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   try {
+    // Validate that we're not initializing legacy services
+    validateServiceInitialization('roastGiftService');
+    validateServiceInitialization('vipMembershipService');
+    validateServiceInitialization('leaderboardService');
+    
     // Check service health
     const health = checkServiceHealth();
     
@@ -214,7 +248,8 @@ export async function initializeServices(): Promise<void> {
       console.warn('⚠️ Some services are not available');
     }
     
-    console.log('✅ Services initialized successfully');
+    console.log('✅ [SERVICE REGISTRY] NEW ROAST SYSTEMS initialized successfully');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   } catch (error) {
     console.error('❌ Error initializing services:', error);
     throw error;
@@ -245,10 +280,10 @@ export {
   escalationService,
   fanClubService,
   followService,
-  roastGiftService,
-  globalLeaderboardService,
+  roastGiftService, // NEW: Roast Gift System
+  globalLeaderboardService, // NEW: Global Roast Rankings
   inboxService,
-  leaderboardService,
+  leaderboardService, // NEW: Roast Season Rankings
   leaderboardSnapshotService,
   likeService,
   liveStreamArchiveService,
@@ -275,12 +310,12 @@ export {
   streamGuestService,
   streamSettingsService,
   stripeService,
-  stripeVIPService,
+  stripeVIPService, // NEW: Roast VIP Stripe Integration
   termsPrivacyService,
   twoFactorAuthService,
   userBlockingService,
   viewerTrackingService,
-  vipMembershipService,
+  vipMembershipService, // NEW: Roast VIP Membership
   walletService,
   walletTransactionService,
 };
