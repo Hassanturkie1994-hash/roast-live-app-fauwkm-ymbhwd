@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { creatorEarningsService } from '@/app/services/creatorEarningsService';
+import { identityVerificationService } from '@/app/services/identityVerificationService';
 import { colors } from '@/styles/commonStyles';
-import { GradientButton } from '@/components/GradientButton';
+import { IconSymbol } from '@/components/IconSymbol';
+import GradientButton from '@/components/GradientButton';
 import { useRouter } from 'expo-router';
 
 export default function CreatorEarningsScreen() {
@@ -22,6 +24,24 @@ export default function CreatorEarningsScreen() {
   const [summary, setSummary] = useState<any>(null);
   const [taxForm, setTaxForm] = useState<any>(null);
   const [payouts, setPayouts] = useState<any[]>([]);
+  const [canReceivePayouts, setCanReceivePayouts] = useState(false);
+  const [verificationReason, setVerificationReason] = useState<string | null>(null);
+
+  const checkVerificationStatus = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const verificationCheck = await identityVerificationService.canReceivePayouts(user.id);
+      setCanReceivePayouts(verificationCheck.canReceive);
+      if (!verificationCheck.canReceive) {
+        setVerificationReason(verificationCheck.reason || 'Identity verification required');
+      }
+    } catch (error) {
+      console.error('Error checking verification:', error);
+      setCanReceivePayouts(false);
+      setVerificationReason('Failed to check verification status');
+    }
+  }, [user]);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -53,10 +73,26 @@ export default function CreatorEarningsScreen() {
   }, [user]);
 
   useEffect(() => {
+    checkVerificationStatus();
     loadData();
-  }, [loadData]);
+  }, [checkVerificationStatus, loadData]);
 
   const handleRequestPayout = () => {
+    if (!canReceivePayouts) {
+      Alert.alert(
+        'Verification Required',
+        verificationReason || 'You must complete identity verification before requesting a payout.',
+        [
+          {
+            text: 'Verify Now',
+            onPress: () => router.push('/screens/IdentityVerificationScreen' as any),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
     if (!taxForm || !taxForm.verified) {
       Alert.alert(
         'Tax Form Required',
@@ -65,7 +101,6 @@ export default function CreatorEarningsScreen() {
           {
             text: 'Submit Tax Form',
             onPress: () => {
-              // Navigate to tax form submission
               Alert.alert('Tax Form', 'Tax form submission screen coming soon');
             },
           },
@@ -75,11 +110,7 @@ export default function CreatorEarningsScreen() {
       return;
     }
 
-    Alert.alert(
-      'Request Payout',
-      'Payout request functionality coming soon',
-      [{ text: 'OK' }]
-    );
+    router.push('/screens/WithdrawScreen' as any);
   };
 
   const formatCurrency = (amount: number) => {
@@ -98,6 +129,28 @@ export default function CreatorEarningsScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Creator Earnings</Text>
+
+        {/* Verification Warning */}
+        {!canReceivePayouts && (
+          <View style={styles.verificationWarning}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={24}
+              color="#FFA500"
+            />
+            <View style={styles.verificationWarningText}>
+              <Text style={styles.verificationWarningTitle}>Verification Required</Text>
+              <Text style={styles.verificationWarningMessage}>{verificationReason}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.verifyButton}
+              onPress={() => router.push('/screens/IdentityVerificationScreen' as any)}
+            >
+              <Text style={styles.verifyButtonText}>Verify Now</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Earnings Summary */}
         <View style={styles.summaryContainer}>
@@ -203,6 +256,7 @@ export default function CreatorEarningsScreen() {
           title="Request Payout"
           onPress={handleRequestPayout}
           style={styles.requestButton}
+          disabled={!canReceivePayouts}
         />
 
         {/* Download Statement Button */}
@@ -237,6 +291,42 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: 24,
+  },
+  verificationWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 165, 0, 0.1)',
+    borderColor: '#FFA500',
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    gap: 12,
+  },
+  verificationWarningText: {
+    flex: 1,
+    gap: 4,
+  },
+  verificationWarningTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  verificationWarningMessage: {
+    fontSize: 13,
+    fontWeight: '400',
+    color: colors.textSecondary,
+  },
+  verifyButton: {
+    backgroundColor: colors.brandPrimary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  verifyButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   summaryContainer: {
     flexDirection: 'row',

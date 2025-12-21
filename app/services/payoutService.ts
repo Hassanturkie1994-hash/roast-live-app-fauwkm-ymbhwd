@@ -3,6 +3,7 @@ import { supabase } from '@/app/integrations/supabase/client';
 import { walletService } from './walletService';
 import { creatorRevenueService } from './creatorRevenueService';
 import { notificationService } from './notificationService';
+import { identityVerificationService } from './identityVerificationService';
 
 export interface PayoutRequest {
   id: string;
@@ -22,6 +23,7 @@ export interface PayoutRequest {
 class PayoutService {
   /**
    * Create a payout request
+   * UPDATED: Enforces identity verification before creating payout
    */
   async createPayoutRequest(
     userId: string,
@@ -32,6 +34,16 @@ class PayoutService {
     bankAccount?: string
   ): Promise<{ success: boolean; error?: string; data?: PayoutRequest }> {
     try {
+      // CRITICAL: Check identity verification before allowing payout
+      const verificationCheck = await identityVerificationService.canReceivePayouts(userId);
+      if (!verificationCheck.canReceive) {
+        console.error('❌ Payout blocked: User not verified');
+        return { 
+          success: false, 
+          error: verificationCheck.reason || 'Identity verification required for payouts'
+        };
+      }
+
       // Check if user has sufficient balance
       const wallet = await walletService.getOrCreateWallet(userId);
       if (!wallet) {
@@ -79,7 +91,7 @@ class PayoutService {
       return { success: true, data: data as PayoutRequest };
     } catch (error) {
       console.error('Error in createPayoutRequest:', error);
-      return { success: false, error: 'Failed to create payout request' };
+      return { success: false, error: 'Failed to create payout request. Please try again later.' };
     }
   }
 
@@ -146,6 +158,7 @@ class PayoutService {
 
   /**
    * Update payout request status (admin only)
+   * UPDATED: Enforces identity verification before processing payout
    */
   async updatePayoutStatus(
     payoutId: string,
@@ -163,6 +176,18 @@ class PayoutService {
 
       if (fetchError || !payout) {
         return { success: false, error: 'Payout request not found' };
+      }
+
+      // CRITICAL: Verify identity before processing payout
+      if (status === 'paid') {
+        const verificationCheck = await identityVerificationService.canReceivePayouts(payout.user_id);
+        if (!verificationCheck.canReceive) {
+          console.error('❌ Payout processing blocked: User not verified');
+          return { 
+            success: false, 
+            error: verificationCheck.reason || 'User must complete identity verification before receiving payouts'
+          };
+        }
       }
 
       // Update payout request
@@ -238,7 +263,7 @@ class PayoutService {
       return { success: true };
     } catch (error) {
       console.error('Error in updatePayoutStatus:', error);
-      return { success: false, error: 'Failed to update payout status' };
+      return { success: false, error: 'Failed to update payout status. Please try again later.' };
     }
   }
 
