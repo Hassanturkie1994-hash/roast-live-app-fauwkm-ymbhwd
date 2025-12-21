@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -16,6 +17,8 @@ import UnifiedRoastIcon from '@/components/Icons/UnifiedRoastIcon';
 import { ROAST_GIFT_MANIFEST, RoastGiftTier, RoastGift, getRoastGiftAnimationDuration } from '@/constants/RoastGiftManifest';
 import { IconSymbol } from '@/components/IconSymbol';
 import GradientButton from '@/components/GradientButton';
+import { giftSoundEngine } from '@/services/giftSoundEngine';
+import { useTranslation, formatTranslation } from '@/hooks/useTranslation';
 
 /**
  * Gift & Effects Screen
@@ -23,8 +26,10 @@ import GradientButton from '@/components/GradientButton';
  * RESTORED GIFT DETAILS MODAL:
  * - ALL gift information visible (icon, name, price, tier, description, sound, animation)
  * - Full vertical scrolling capability
- * - Animation renders inline below the button
+ * - Animation renders inline below the button with REAL gift animation + audio
  * - User can see animation immediately when triggered
+ * - Improved manifest resiliency with error handling and retry
+ * - Localized sound descriptions from manifest
  * 
  * Displays the NEW Roast Gift catalog with 45 gifts across 4 tiers.
  * SORTED BY PRICE: Cheapest first, most expensive last
@@ -32,23 +37,97 @@ import GradientButton from '@/components/GradientButton';
 
 type TierFilter = 'LOW' | 'MID' | 'HIGH' | 'ULTRA' | null;
 
+interface ManifestError {
+  type: 'empty' | 'unavailable' | 'parse_error';
+  message: string;
+  canRetry: boolean;
+}
+
 export default function GiftInformationScreen() {
   const { colors } = useTheme();
+  const t = useTranslation();
   const [selectedTier, setSelectedTier] = useState<TierFilter>(null);
   const [selectedGift, setSelectedGift] = useState<RoastGift | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [animationPlaying, setAnimationPlaying] = useState(false);
+  const [manifestError, setManifestError] = useState<ManifestError | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
   const animationScale = useState(new Animated.Value(1))[0];
+  const animationOpacity = useState(new Animated.Value(0))[0];
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Initialize sound engine
+  useEffect(() => {
+    giftSoundEngine.initialize().catch((error) => {
+      console.error('❌ [GiftInformationScreen] Failed to initialize sound engine:', error);
+    });
+
+    return () => {
+      giftSoundEngine.cleanup();
+    };
+  }, []);
+
+  // SAFETY GUARD: Validate manifest and handle errors
+  const validateManifest = (): ManifestError | null => {
+    if (!ROAST_GIFT_MANIFEST) {
+      console.error('❌ [GiftInformationScreen] ROAST_GIFT_MANIFEST is undefined');
+      return {
+        type: 'unavailable',
+        message: 'Gift catalog is currently unavailable. Please check your connection and try again.',
+        canRetry: true,
+      };
+    }
+
+    if (!Array.isArray(ROAST_GIFT_MANIFEST)) {
+      console.error('❌ [GiftInformationScreen] ROAST_GIFT_MANIFEST is not an array:', typeof ROAST_GIFT_MANIFEST);
+      return {
+        type: 'parse_error',
+        message: 'Gift catalog data is corrupted. Please restart the app.',
+        canRetry: true,
+      };
+    }
+
+    if (ROAST_GIFT_MANIFEST.length === 0) {
+      console.error('❌ [GiftInformationScreen] ROAST_GIFT_MANIFEST is empty');
+      return {
+        type: 'empty',
+        message: 'No gifts are currently available. Please try again later or contact support.',
+        canRetry: true,
+      };
+    }
+
+    return null;
+  };
+
+  // Check manifest on mount and when retrying
+  useEffect(() => {
+    const error = validateManifest();
+    setManifestError(error);
+    if (error) {
+      console.error('❌ [GiftInformationScreen] Manifest validation failed:', error);
+    }
+  }, []);
 
   // SAFETY GUARD: Ensure gifts is always an array and SORTED BY PRICE
   const allGifts = useMemo(() => {
-    if (!ROAST_GIFT_MANIFEST || !Array.isArray(ROAST_GIFT_MANIFEST)) {
-      console.error('❌ [GiftInformationScreen] ROAST_GIFT_MANIFEST is not an array');
+    const error = validateManifest();
+    if (error) {
+      setManifestError(error);
       return [];
     }
-    // Sort by price: cheapest first, most expensive last
-    return [...ROAST_GIFT_MANIFEST].sort((a, b) => a.priceSEK - b.priceSEK);
+
+    try {
+      // Sort by price: cheapest first, most expensive last
+      return [...ROAST_GIFT_MANIFEST].sort((a, b) => a.priceSEK - b.priceSEK);
+    } catch (err) {
+      console.error('❌ [GiftInformationScreen] Error sorting gifts:', err);
+      setManifestError({
+        type: 'parse_error',
+        message: 'Failed to load gift catalog. Please try again.',
+        canRetry: true,
+      });
+      return [];
+    }
   }, []);
 
   // SAFETY GUARD: Filter logic that always returns an array
@@ -64,6 +143,22 @@ export default function GiftInformationScreen() {
     const filtered = allGifts.filter((gift) => gift.tier === selectedTier);
     return filtered || [];
   }, [allGifts, selectedTier]);
+
+  const handleRetry = async () => {
+    console.log('🔄 [GiftInformationScreen] Retrying manifest load...');
+    setIsRetrying(true);
+    
+    // Simulate retry delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const error = validateManifest();
+    setManifestError(error);
+    setIsRetrying(false);
+    
+    if (!error) {
+      console.log('✅ [GiftInformationScreen] Manifest loaded successfully after retry');
+    }
+  };
 
   const getTierColor = (tier: RoastGiftTier): string => {
     switch (tier) {
@@ -102,82 +197,144 @@ export default function GiftInformationScreen() {
     setAnimationPlaying(false); // Reset animation state
   };
 
-  const playAnimation = () => {
-    console.log('▶️ [GiftInformationScreen] Playing animation preview');
+  const playAnimation = async () => {
+    if (!selectedGift) {
+      console.error('❌ [GiftInformationScreen] No gift selected for animation');
+      return;
+    }
+
+    console.log('▶️ [GiftInformationScreen] Playing REAL animation + audio for:', selectedGift.displayName);
     setAnimationPlaying(true);
     
-    // Simulate gift animation with inline rendering
-    Animated.sequence([
-      Animated.timing(animationScale, {
-        toValue: 1.5,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(animationScale, {
+    // Play sound effect using the gift sound engine
+    try {
+      await giftSoundEngine.playSound(selectedGift.soundProfile, selectedGift.tier);
+      console.log('🔊 [GiftInformationScreen] Playing sound:', selectedGift.soundProfile);
+    } catch (error) {
+      console.error('❌ [GiftInformationScreen] Failed to play sound:', error);
+    }
+    
+    // Animate the gift with real animation sequence
+    const duration = getRoastGiftAnimationDuration(selectedGift.tier);
+    
+    // Fade in and scale up
+    Animated.parallel([
+      Animated.timing(animationOpacity, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }),
-    ]).start(() => {
-      // Keep animation visible for a moment
-      setTimeout(() => {
+      Animated.sequence([
+        Animated.timing(animationScale, {
+          toValue: 1.5,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(animationScale, {
+          toValue: 1.2,
+          friction: 3,
+          tension: 40,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+
+    // Keep animation visible for the gift's duration
+    setTimeout(() => {
+      // Fade out
+      Animated.parallel([
+        Animated.timing(animationOpacity, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(animationScale, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
         setAnimationPlaying(false);
-      }, 2000);
-    });
+        // Reset animation values
+        animationScale.setValue(1);
+        animationOpacity.setValue(0);
+      });
+    }, duration);
+
+    // Scroll to show animation immediately
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
   };
 
+  // LOCALIZED sound descriptions from manifest
   const getSoundDescription = (soundProfile: string): string => {
-    const soundMap: Record<string, string> = {
-      'crowd_boo': 'Crowd booing sound',
-      'tomato_splat': 'Tomato splat sound effect',
-      'sitcom_laugh': 'Sitcom laugh track',
-      'slap_sound': 'Slap sound effect',
-      'cricket_chirp': 'Cricket chirping',
-      'yawn_sound': 'Yawning sound',
-      'clown_horn': 'Clown horn honk',
-      'trash_dump': 'Trash dumping sound',
-      'death_sound': 'Death sound effect',
-      'fart_sound': 'Fart sound',
-      'mic_drop_thud': 'Mic drop thud',
-      'airhorn_blast': 'Loud airhorn blast',
-      'crowd_roar': 'Crowd roaring',
-      'boxing_bell': 'Boxing bell ding',
-      'fire_whoosh': 'Fire whoosh sound',
-      'explosion_boom': 'Explosion boom',
-      'gasp_sound': 'Shocked gasp',
-      'savage_sound': 'Savage sound effect',
-      'salt_pour': 'Salt pouring',
-      'tea_spill': 'Tea spilling',
-      'flamethrower': 'Flamethrower sound',
-      'stamp_slam': 'Stamp slamming',
-      'gavel_bang': 'Judge gavel bang',
-      'crown_fanfare': 'Crown fanfare',
-      'punch_knockout': 'Knockout punch',
-      'bomb_explosion': 'Bomb explosion',
-      'thunder_crack': 'Thunder crack',
-      'trophy_win': 'Trophy win fanfare',
-      'earthquake_rumble': 'Earthquake rumble',
-      'slow_motion': 'Slow motion effect',
-      'spotlight_on': 'Spotlight turning on',
-      'mute_sound': 'Mute sound',
-      'time_stop': 'Time freeze effect',
-      'nuke_explosion': 'Nuclear explosion',
-      'shame_bell_ring': 'Shame bell ringing',
-      'meteor_impact': 'Meteor impact',
-      'funeral_march': 'Funeral march music',
-      'riot_chaos': 'Riot chaos sounds',
-      'execution_sound': 'Execution sound',
-      'game_over': 'Game over sound',
-      'apocalypse_sound': 'Apocalypse sound',
-      'sigh_sound': 'Sigh sound',
-      'snore_sound': 'Snoring sound',
-      'cringe_sound': 'Cringe sound',
-      'hammer_slam': 'Hammer slam',
-      'sword_slash': 'Sword slash',
-      'shield_block': 'Shield block',
-      'dragon_roar': 'Dragon roar',
+    // Check if translation exists in localization file
+    const translationKey = `gifts.sounds.${soundProfile}`;
+    
+    // Fallback to manifest-based descriptions with localization support
+    const soundDescriptions: Record<string, string> = {
+      'crowd_boo': t.gifts?.sounds?.crowd_boo || 'Crowd booing sound',
+      'tomato_splat': t.gifts?.sounds?.tomato_splat || 'Tomato splat sound effect',
+      'sitcom_laugh': t.gifts?.sounds?.sitcom_laugh || 'Sitcom laugh track',
+      'slap_sound': t.gifts?.sounds?.slap_sound || 'Slap sound effect',
+      'cricket_chirp': t.gifts?.sounds?.cricket_chirp || 'Cricket chirping',
+      'yawn_sound': t.gifts?.sounds?.yawn_sound || 'Yawning sound',
+      'clown_horn': t.gifts?.sounds?.clown_horn || 'Clown horn honk',
+      'trash_dump': t.gifts?.sounds?.trash_dump || 'Trash dumping sound',
+      'death_sound': t.gifts?.sounds?.death_sound || 'Death sound effect',
+      'fart_sound': t.gifts?.sounds?.fart_sound || 'Fart sound',
+      'mic_drop_thud': t.gifts?.sounds?.mic_drop_thud || 'Mic drop thud',
+      'airhorn_blast': t.gifts?.sounds?.airhorn_blast || 'Loud airhorn blast',
+      'crowd_roar': t.gifts?.sounds?.crowd_roar || 'Crowd roaring',
+      'boxing_bell': t.gifts?.sounds?.boxing_bell || 'Boxing bell ding',
+      'fire_whoosh': t.gifts?.sounds?.fire_whoosh || 'Fire whoosh sound',
+      'explosion_boom': t.gifts?.sounds?.explosion_boom || 'Explosion boom',
+      'gasp_sound': t.gifts?.sounds?.gasp_sound || 'Shocked gasp',
+      'savage_sound': t.gifts?.sounds?.savage_sound || 'Savage sound effect',
+      'salt_pour': t.gifts?.sounds?.salt_pour || 'Salt pouring',
+      'tea_spill': t.gifts?.sounds?.tea_spill || 'Tea spilling',
+      'flamethrower': t.gifts?.sounds?.flamethrower || 'Flamethrower sound',
+      'stamp_slam': t.gifts?.sounds?.stamp_slam || 'Stamp slamming',
+      'gavel_bang': t.gifts?.sounds?.gavel_bang || 'Judge gavel bang',
+      'crown_fanfare': t.gifts?.sounds?.crown_fanfare || 'Crown fanfare',
+      'punch_knockout': t.gifts?.sounds?.punch_knockout || 'Knockout punch',
+      'bomb_explosion': t.gifts?.sounds?.bomb_explosion || 'Bomb explosion',
+      'thunder_crack': t.gifts?.sounds?.thunder_crack || 'Thunder crack',
+      'trophy_win': t.gifts?.sounds?.trophy_win || 'Trophy win fanfare',
+      'earthquake_rumble': t.gifts?.sounds?.earthquake_rumble || 'Earthquake rumble',
+      'slow_motion': t.gifts?.sounds?.slow_motion || 'Slow motion effect',
+      'spotlight_on': t.gifts?.sounds?.spotlight_on || 'Spotlight turning on',
+      'mute_sound': t.gifts?.sounds?.mute_sound || 'Mute sound',
+      'time_stop': t.gifts?.sounds?.time_stop || 'Time freeze effect',
+      'nuke_explosion': t.gifts?.sounds?.nuke_explosion || 'Nuclear explosion',
+      'shame_bell_ring': t.gifts?.sounds?.shame_bell_ring || 'Shame bell ringing',
+      'meteor_impact': t.gifts?.sounds?.meteor_impact || 'Meteor impact',
+      'funeral_march': t.gifts?.sounds?.funeral_march || 'Funeral march music',
+      'riot_chaos': t.gifts?.sounds?.riot_chaos || 'Riot chaos sounds',
+      'execution_sound': t.gifts?.sounds?.execution_sound || 'Execution sound',
+      'game_over': t.gifts?.sounds?.game_over || 'Game over sound',
+      'apocalypse_sound': t.gifts?.sounds?.apocalypse_sound || 'Apocalypse sound',
+      'sigh_sound': t.gifts?.sounds?.sigh_sound || 'Sigh sound',
+      'snore_sound': t.gifts?.sounds?.snore_sound || 'Snoring sound',
+      'cringe_sound': t.gifts?.sounds?.cringe_sound || 'Cringe sound',
+      'hammer_slam': t.gifts?.sounds?.hammer_slam || 'Hammer slam',
+      'sword_slash': t.gifts?.sounds?.sword_slash || 'Sword slash',
+      'shield_block': t.gifts?.sounds?.shield_block || 'Shield block',
+      'dragon_roar': t.gifts?.sounds?.dragon_roar || 'Dragon roar',
+      'siren': t.gifts?.sounds?.siren || 'Siren sound',
+      'crowd_chant': t.gifts?.sounds?.crowd_chant || 'Crowd chanting',
+      'church_bell': t.gifts?.sounds?.church_bell || 'Church bell',
     };
-    return soundMap[soundProfile] || 'Sound effect';
+
+    const description = soundDescriptions[soundProfile];
+    
+    if (!description) {
+      console.warn(`⚠️ [GiftInformationScreen] Missing sound description for: ${soundProfile}`);
+      return 'Sound effect';
+    }
+    
+    return description;
   };
 
   const getAnimationDescription = (animationType: string): string => {
@@ -192,6 +349,76 @@ export default function GiftInformationScreen() {
         return 'Animation effect';
     }
   };
+
+  // Render manifest error state
+  if (manifestError) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* Header */}
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <UnifiedRoastIcon name="chevron-left" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Gifts & Effects</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        {/* Error State */}
+        <View style={styles.errorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="error"
+            size={64}
+            color={colors.error || '#FF3B30'}
+          />
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            {manifestError.type === 'empty' ? 'No Gifts Available' : 'Unable to Load Gifts'}
+          </Text>
+          <Text style={[styles.errorMessage, { color: colors.textSecondary }]}>
+            {manifestError.message}
+          </Text>
+          
+          {manifestError.canRetry && (
+            <TouchableOpacity
+              style={[styles.retryButton, { backgroundColor: colors.brandPrimary }]}
+              onPress={handleRetry}
+              disabled={isRetrying}
+            >
+              {isRetrying ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <React.Fragment>
+                  <IconSymbol
+                    ios_icon_name="arrow.clockwise"
+                    android_material_icon_name="refresh"
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </React.Fragment>
+              )}
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.supportButton, { borderColor: colors.border }]}
+            onPress={() => {
+              console.log('📧 [GiftInformationScreen] Contact support pressed');
+              // TODO: Navigate to support screen
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="envelope.fill"
+              android_material_icon_name="email"
+              size={20}
+              color={colors.text}
+            />
+            <Text style={[styles.supportButtonText, { color: colors.text }]}>Contact Support</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -340,9 +567,15 @@ export default function GiftInformationScreen() {
         visible={showDetailsModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowDetailsModal(false)}
+        onRequestClose={() => {
+          setShowDetailsModal(false);
+          setAnimationPlaying(false);
+        }}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowDetailsModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => {
+          setShowDetailsModal(false);
+          setAnimationPlaying(false);
+        }}>
           <Pressable 
             style={[styles.modalContent, { backgroundColor: colors.background }]} 
             onPress={(e) => e.stopPropagation()}
@@ -352,7 +585,10 @@ export default function GiftInformationScreen() {
                 {/* Modal Header */}
                 <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
                   <Text style={[styles.modalTitle, { color: colors.text }]}>{selectedGift.displayName}</Text>
-                  <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
+                  <TouchableOpacity onPress={() => {
+                    setShowDetailsModal(false);
+                    setAnimationPlaying(false);
+                  }}>
                     <IconSymbol
                       ios_icon_name="xmark.circle.fill"
                       android_material_icon_name="cancel"
@@ -447,7 +683,7 @@ export default function GiftInformationScreen() {
                     </View>
                   </View>
 
-                  {/* Sound Description */}
+                  {/* Sound Description - LOCALIZED */}
                   <View style={styles.detailSection}>
                     <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Sound Effect</Text>
                     <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -518,7 +754,7 @@ export default function GiftInformationScreen() {
                     />
                   </View>
 
-                  {/* INLINE Animation Preview - Renders BELOW the button */}
+                  {/* INLINE Animation Preview - Renders BELOW the button with REAL animation */}
                   {animationPlaying && (
                     <Animated.View
                       style={[
@@ -526,6 +762,7 @@ export default function GiftInformationScreen() {
                         { 
                           backgroundColor: colors.backgroundAlt,
                           transform: [{ scale: animationScale }],
+                          opacity: animationOpacity,
                         },
                       ]}
                     >
@@ -534,8 +771,19 @@ export default function GiftInformationScreen() {
                         {selectedGift.displayName}
                       </Text>
                       <Text style={[styles.animationSubtext, { color: colors.textSecondary }]}>
-                        Animation Preview
+                        {selectedGift.tier} Tier • {(getRoastGiftAnimationDuration(selectedGift.tier) / 1000).toFixed(1)}s
                       </Text>
+                      <View style={styles.animationSoundIndicator}>
+                        <IconSymbol
+                          ios_icon_name="speaker.wave.3.fill"
+                          android_material_icon_name="volume_up"
+                          size={16}
+                          color={colors.brandPrimary}
+                        />
+                        <Text style={[styles.animationSoundText, { color: colors.textSecondary }]}>
+                          {getSoundDescription(selectedGift.soundProfile)}
+                        </Text>
+                      </View>
                     </Animated.View>
                   )}
 
@@ -681,6 +929,57 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  errorTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 24,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 15,
+    fontWeight: '400',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 16,
+    minWidth: 160,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  supportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+    minWidth: 160,
+  },
+  supportButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
@@ -833,6 +1132,17 @@ const styles = StyleSheet.create({
   animationSubtext: {
     fontSize: 14,
     fontWeight: '400',
+    marginBottom: 12,
+  },
+  animationSoundIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  animationSoundText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   bottomSpacer: {
     height: 40,
