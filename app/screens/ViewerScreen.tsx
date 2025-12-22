@@ -7,11 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useEvent } from 'expo';
 import { colors } from '@/styles/commonStyles';
@@ -53,23 +50,9 @@ const SAFETY_HINTS = [
   'Follow community guidelines',
 ];
 
-/**
- * ViewerScreen - Live Stream Viewer with Roast Gift System
- * 
- * UI/UX FIXES:
- * - SafeAreaView for proper inset handling
- * - KeyboardAvoidingView for chat input
- * - Proper z-index layering for UI overlay
- * - Video extends behind status bar for immersive experience
- */
 export default function ViewerScreen() {
-  const insets = useSafeAreaInsets();
   const { streamId } = useLocalSearchParams<{ streamId: string }>();
   const { user } = useAuth();
-  
-  console.log('🎬 [VIEWER] Screen mounted for stream:', streamId);
-  console.log('📐 [VIEWER] Safe area insets:', insets);
-  
   const [stream, setStream] = useState<Stream | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -329,6 +312,7 @@ export default function ViewerScreen() {
     channelRef.current = channel;
   }, [streamId, user]);
 
+  // NEW: Handle roast gift received
   const handleGiftReceived = useCallback((giftData: any) => {
     if (!isMountedRef.current) return;
     
@@ -379,6 +363,7 @@ export default function ViewerScreen() {
     }
   }, [stream, hasJoinedChannel, joinViewerChannel]);
 
+  // NEW: Subscribe to roast gifts
   useEffect(() => {
     if (!streamId) return;
 
@@ -498,16 +483,16 @@ export default function ViewerScreen() {
 
   if (!stream) {
     return (
-      <SafeAreaView style={[styles.container, styles.centerContent]} edges={['top', 'bottom']}>
+      <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color={colors.gradientEnd} />
         <Text style={styles.loadingText}>Loading stream...</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!stream.playback_url || !isValidPlaybackUrl(stream.playback_url) || isStreamOffline || playerError) {
     return (
-      <SafeAreaView style={[styles.container, styles.centerContent]} edges={['top', 'bottom']}>
+      <View style={[styles.container, styles.centerContent]}>
         <IconSymbol
           ios_icon_name="exclamationmark.triangle.fill"
           android_material_icon_name="warning"
@@ -534,15 +519,14 @@ export default function ViewerScreen() {
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Video View - Extends behind status bar for immersive experience */}
       <VideoView
-        style={StyleSheet.absoluteFill}
+        style={styles.video}
         player={player}
         allowsFullscreen
         allowsPictureInPicture
@@ -557,10 +541,9 @@ export default function ViewerScreen() {
         </View>
       )}
 
-      {/* UI Overlay with proper z-index */}
       <View style={styles.overlay} pointerEvents="box-none">
         {debugVisible && (
-          <View style={[styles.debugIndicator, { top: insets.top + 120 }]}>
+          <View style={styles.debugIndicator}>
             <Text style={styles.debugText}>
               📺 Overlay Active{'\n'}
               👥 Viewers: {isViewerChannelSubscribed ? '✅' : '⏳'}{'\n'}
@@ -569,8 +552,7 @@ export default function ViewerScreen() {
           </View>
         )}
         
-        {/* Top Bar - Within safe area */}
-        <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.topBar}>
           <TouchableOpacity style={styles.closeButton} onPress={() => router.back()}>
             <IconSymbol
               ios_icon_name="xmark"
@@ -651,21 +633,13 @@ export default function ViewerScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Chat Overlay with KeyboardAvoidingView */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.chatContainer}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        >
-          <ChatOverlay 
-            streamId={streamId} 
-            isBroadcaster={false}
-            streamDelay={streamDelay}
-          />
-        </KeyboardAvoidingView>
+        <ChatOverlay 
+          streamId={streamId} 
+          isBroadcaster={false}
+          streamDelay={streamDelay}
+        />
 
-        {/* Bottom Bar - Within safe area */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 20 }]}>
+        <View style={styles.bottomBar}>
           <View style={styles.broadcasterInfo}>
             <Text style={styles.broadcasterName}>{stream.users.display_name}</Text>
             <Text style={styles.streamTitle} numberOfLines={1}>
@@ -678,7 +652,7 @@ export default function ViewerScreen() {
         </View>
       </View>
 
-      {/* Gift Animations - Highest z-index */}
+      {/* NEW: Roast Gift Animations */}
       {giftAnimations.map((animation) => (
         <RoastGiftAnimationOverlay
           key={animation.id}
@@ -692,6 +666,7 @@ export default function ViewerScreen() {
         />
       ))}
 
+      {/* NEW: Roast Gift Selector */}
       {stream && (
         <RoastGiftSelector
           visible={showGiftSelector}
@@ -785,17 +760,22 @@ const styles = StyleSheet.create({
     zIndex: 10,
     gap: 16,
   },
+  video: {
+    width: '100%',
+    height: '100%',
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
-    zIndex: 100,
+    zIndex: 50,
   },
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingTop: 60,
     paddingHorizontal: 20,
-    zIndex: 110,
+    zIndex: 60,
   },
   closeButton: {
     width: 40,
@@ -836,14 +816,14 @@ const styles = StyleSheet.create({
     bottom: 200,
     right: 20,
     pointerEvents: 'none',
-    zIndex: 105,
+    zIndex: 60,
   },
   rightActions: {
     position: 'absolute',
     right: 16,
     bottom: 200,
     gap: 24,
-    zIndex: 105,
+    zIndex: 60,
   },
   actionButton: {
     alignItems: 'center',
@@ -854,19 +834,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
-  chatContainer: {
-    position: 'absolute',
-    bottom: 120,
-    left: 0,
-    right: 0,
-    zIndex: 105,
-  },
   bottomBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    zIndex: 110,
+    paddingBottom: 40,
+    zIndex: 60,
   },
   broadcasterInfo: {
     flex: 1,
@@ -885,6 +859,7 @@ const styles = StyleSheet.create({
   },
   debugIndicator: {
     position: 'absolute',
+    top: 120,
     left: 20,
     backgroundColor: 'rgba(164, 0, 40, 0.9)',
     paddingHorizontal: 12,

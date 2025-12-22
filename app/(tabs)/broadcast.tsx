@@ -8,11 +8,8 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -34,9 +31,7 @@ import ManagePinnedMessagesModal from '@/components/ManagePinnedMessagesModal';
 import NetworkStabilityIndicator from '@/components/NetworkStabilityIndicator';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import StreamHealthDashboard from '@/components/StreamHealthDashboard';
-import WebRTCLivePublisher from '@/components/WebRTCLivePublisher';
 import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
-import { cloudflareCallsService } from '@/app/services/cloudflareCallsService';
 import { supabase } from '@/app/integrations/supabase/client';
 import { savedStreamService } from '@/app/services/savedStreamService';
 import { roastGiftService } from '@/app/services/roastGiftService';
@@ -55,15 +50,9 @@ interface RoastGiftAnimationData {
 }
 
 /**
- * BroadcastScreen - Complete Feature Set with WebRTC Co-Hosting
+ * BroadcastScreen - Complete Feature Set with Roast Gift System + VIP Integration
  * 
- * NEW CO-HOSTING FEATURES:
- * 1. WebRTC Integration - Real-time audio/video with guests
- * 2. Cloudflare Calls - Session management for co-hosting
- * 3. Local Video Compositing - Mix host + guest feeds
- * 4. Guest Management - Invite, remove, mute guests
- * 
- * EXISTING FEATURES:
+ * FEATURES:
  * 1. Moderator Panel - Manage moderators and banned users
  * 2. Settings Panel - Stream settings, practice mode, who can watch
  * 3. Pinned Messages - Pin and manage important chat messages
@@ -75,20 +64,12 @@ interface RoastGiftAnimationData {
  * 9. Stream Health Dashboard - Comprehensive stream metrics
  * 10. Roast Gift System - 45 roast-themed gifts with animations
  * 11. VIP Level Updates - Automatic VIP level progression from gifts
- * 
- * UI/UX FIXES:
- * - SafeAreaView for proper inset handling
- * - KeyboardAvoidingView for chat input
- * - Proper z-index layering for UI overlay
  */
 export default function BroadcastScreen() {
   useKeepAwake();
   
-  const insets = useSafeAreaInsets();
-  
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📺 [BROADCAST] Component rendering with WebRTC CO-HOSTING');
-  console.log('📐 [BROADCAST] Safe area insets:', insets);
+  console.log('📺 [BROADCAST] Component rendering with VIP INTEGRATION');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   const { streamTitle, contentLabel } = useLocalSearchParams<{
@@ -136,11 +117,6 @@ export default function BroadcastScreen() {
   const [activeGuests, setActiveGuests] = useState<StreamGuestSeat[]>([]);
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
-  
-  // WebRTC State
-  const [useWebRTC, setUseWebRTC] = useState(false);
-  const [webRTCReady, setWebRTCReady] = useState(false);
-  const [callSessionId, setCallSessionId] = useState<string | null>(null);
   
   // Settings State
   const [aboutLive, setAboutLive] = useState('');
@@ -207,38 +183,11 @@ export default function BroadcastScreen() {
 
       setActiveGuests(guests);
       console.log('✅ [BROADCAST] Loaded', guests.length, 'active guests');
-      
-      // Enable WebRTC if there are guests
-      if (guests.length > 0 && !useWebRTC) {
-        console.log('🔗 [BROADCAST] Enabling WebRTC for co-hosting');
-        setUseWebRTC(true);
-      }
     } catch (error) {
       console.error('❌ [BROADCAST] Error loading active guests:', error);
       setActiveGuests([]);
     }
-  }, [streamId, useWebRTC]);
-
-  // Initialize Cloudflare Calls session when guests join
-  useEffect(() => {
-    if (!streamId || !useWebRTC || callSessionId) return;
-
-    const initCallSession = async () => {
-      console.log('📞 [BROADCAST] Initializing Cloudflare Calls session...');
-      
-      const result = await cloudflareCallsService.createSession(streamId);
-      
-      if (result.success && result.session) {
-        setCallSessionId(result.session.sessionId);
-        console.log('✅ [BROADCAST] Call session created:', result.session.sessionId);
-      } else {
-        console.error('❌ [BROADCAST] Failed to create call session:', result.error);
-        Alert.alert('Co-hosting Error', 'Failed to initialize co-hosting. Guests may not be able to join.');
-      }
-    };
-
-    initCallSession();
-  }, [streamId, useWebRTC, callSessionId]);
+  }, [streamId]);
 
   const handleSaveStream = useCallback(async () => {
     if (!streamId) {
@@ -368,27 +317,6 @@ export default function BroadcastScreen() {
     setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
   }, []);
 
-  const handleWebRTCReady = useCallback(() => {
-    console.log('✅ [BROADCAST] WebRTC ready for co-hosting');
-    setWebRTCReady(true);
-  }, []);
-
-  const handleWebRTCError = useCallback((error: Error) => {
-    console.error('❌ [BROADCAST] WebRTC error:', error);
-    Alert.alert('Co-hosting Error', 'Failed to initialize co-hosting. You can continue streaming without guests.');
-    setUseWebRTC(false);
-  }, []);
-
-  const handleGuestConnected = useCallback((guestUserId: string) => {
-    console.log('✅ [BROADCAST] Guest connected via WebRTC:', guestUserId);
-    loadActiveGuests();
-  }, [loadActiveGuests]);
-
-  const handleGuestDisconnected = useCallback((guestUserId: string) => {
-    console.log('🔌 [BROADCAST] Guest disconnected from WebRTC:', guestUserId);
-    loadActiveGuests();
-  }, [loadActiveGuests]);
-
   useEffect(() => {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
@@ -429,7 +357,7 @@ export default function BroadcastScreen() {
       initAttemptedRef.current = true;
       
       try {
-        console.log('🚀 [BROADCAST] Initializing stream with WebRTC CO-HOSTING...');
+        console.log('🚀 [BROADCAST] Initializing stream with VIP INTEGRATION...');
 
         if (!startStream) {
           console.error('❌ [BROADCAST] startStream is undefined');
@@ -601,7 +529,7 @@ export default function BroadcastScreen() {
 
   if (initError) {
     return (
-      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <IconSymbol
           ios_icon_name="exclamationmark.triangle"
           android_material_icon_name="error"
@@ -618,24 +546,24 @@ export default function BroadcastScreen() {
         >
           <Text style={styles.errorButtonText}>Go Back</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!cameraPermission || !micPermission) {
     return (
-      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
         <Text style={[styles.loadingText, { color: colors.text }]}>
           Checking permissions...
         </Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!cameraPermission.granted || !micPermission.granted) {
     return (
-      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <IconSymbol
           ios_icon_name="camera.fill"
           android_material_icon_name="camera"
@@ -658,24 +586,24 @@ export default function BroadcastScreen() {
         >
           <Text style={styles.permissionButtonText}>Grant Permissions</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (state === 'IDLE' || state === 'CREATING_STREAM') {
     return (
-      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
         <Text style={[styles.loadingText, { color: colors.text }]}>
           {state === 'CREATING_STREAM' ? 'Starting stream...' : 'Initializing...'}
         </Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (stateMachineErrorState) {
     return (
-      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
+      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
         <IconSymbol
           ios_icon_name="exclamationmark.triangle"
           android_material_icon_name="error"
@@ -692,35 +620,18 @@ export default function BroadcastScreen() {
         >
           <Text style={styles.errorButtonText}>Go Back</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Camera View or WebRTC View */}
-      {useWebRTC && streamId && user ? (
-        <WebRTCLivePublisher
-          streamId={streamId}
-          userId={user.id}
-          isHost={true}
-          guestUserIds={activeGuests.map((g) => g.user_id).filter((id): id is string => id !== null)}
-          onStreamReady={handleWebRTCReady}
-          onStreamError={handleWebRTCError}
-          onGuestConnected={handleGuestConnected}
-          onGuestDisconnected={handleGuestDisconnected}
-        />
-      ) : (
-        <CameraView
-          ref={cameraRef}
-          style={StyleSheet.absoluteFill}
-          facing="front"
-          mode="video"
-        />
-      )}
-
-      {/* UI Overlay with proper z-index */}
-      <View style={styles.uiOverlay} pointerEvents="box-none">
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        facing="front"
+        mode="video"
+      >
         <NetworkStabilityIndicator
           isStreaming={state === 'STREAMING'}
           streamId={streamId || undefined}
@@ -735,7 +646,7 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {activeGuests.length > 0 && user && streamId && !useWebRTC && (
+        {activeGuests.length > 0 && user && streamId && (
           <GuestSeatGrid
             hostName={user.user_metadata?.display_name || 'Host'}
             hostAvatarUrl={user.user_metadata?.avatar_url}
@@ -756,27 +667,11 @@ export default function BroadcastScreen() {
           />
         )}
 
-        {/* Top Bar - Within safe area */}
-        <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.topBar}>
           <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
             <View style={styles.liveDot} />
             <Text style={styles.viewerText}>{viewerCount}</Text>
           </View>
-
-          {/* WebRTC Status Indicator */}
-          {useWebRTC && (
-            <View style={[styles.webrtcBadge, { backgroundColor: webRTCReady ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 165, 0, 0.3)' }]}>
-              <IconSymbol
-                ios_icon_name="video.fill"
-                android_material_icon_name="videocam"
-                size={14}
-                color="#FFFFFF"
-              />
-              <Text style={styles.webrtcText}>
-                {webRTCReady ? 'Co-host Ready' : 'Connecting...'}
-              </Text>
-            </View>
-          )}
 
           <View style={styles.topBarRight}>
             <TouchableOpacity
@@ -853,24 +748,16 @@ export default function BroadcastScreen() {
           </View>
         </View>
 
-        {/* Chat Overlay with KeyboardAvoidingView */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.chatContainer}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        >
-          {showChat && streamId && user && (
-            <ChatOverlay
-              streamId={streamId}
-              isBroadcaster={true}
-              hostId={user.id}
-              hostName={user.user_metadata?.display_name || 'Host'}
-            />
-          )}
-        </KeyboardAvoidingView>
+        {showChat && streamId && user && (
+          <ChatOverlay
+            streamId={streamId}
+            isBroadcaster={true}
+            hostId={user.id}
+            hostName={user.user_metadata?.display_name || 'Host'}
+          />
+        )}
 
-        {/* Bottom Controls - Within safe area */}
-        <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 20 }]}>
+        <View style={styles.bottomControls}>
           <TouchableOpacity
             style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
             onPress={() => setShowChat(!showChat)}
@@ -919,82 +806,81 @@ export default function BroadcastScreen() {
             />
           </TouchableOpacity>
         </View>
-      </View>
 
-      {showGifts && user && (
-        <RoastGiftSelector
-          visible={showGifts}
-          onClose={() => setShowGifts(false)}
-          receiverId={user.id}
-          receiverName={user.user_metadata?.display_name || 'Host'}
-          streamId={streamId || undefined}
-        />
-      )}
+        {showGifts && user && (
+          <RoastGiftSelector
+            visible={showGifts}
+            onClose={() => setShowGifts(false)}
+            receiverId={user.id}
+            receiverName={user.user_metadata?.display_name || 'Host'}
+            streamId={streamId || undefined}
+          />
+        )}
 
-      {showGuestInvitation && streamId && (
-        <GuestInvitationModal
-          streamId={streamId}
-          onClose={() => setShowGuestInvitation(false)}
-          onInviteSent={() => {
-            setShowGuestInvitation(false);
-            loadActiveGuests();
-          }}
-        />
-      )}
+        {showGuestInvitation && streamId && (
+          <GuestInvitationModal
+            streamId={streamId}
+            onClose={() => setShowGuestInvitation(false)}
+            onInviteSent={() => {
+              setShowGuestInvitation(false);
+              loadActiveGuests();
+            }}
+          />
+        )}
 
-      {showHostControls && streamId && (
-        <HostControlDashboard
-          streamId={streamId}
-          guests={activeGuests}
-          onClose={() => setShowHostControls(false)}
-          onGuestsUpdate={loadActiveGuests}
-        />
-      )}
+        {showHostControls && streamId && (
+          <HostControlDashboard
+            streamId={streamId}
+            guests={activeGuests}
+            onClose={() => setShowHostControls(false)}
+            onGuestsUpdate={loadActiveGuests}
+          />
+        )}
 
-      {showModeratorPanel && streamId && user && (
-        <ModeratorControlPanel
-          visible={showModeratorPanel}
-          onClose={() => setShowModeratorPanel(false)}
-          streamId={streamId}
-          streamerId={user.id}
-          currentUserId={user.id}
-          isStreamer={true}
-        />
-      )}
+        {showModeratorPanel && streamId && user && (
+          <ModeratorControlPanel
+            visible={showModeratorPanel}
+            onClose={() => setShowModeratorPanel(false)}
+            streamId={streamId}
+            streamerId={user.id}
+            currentUserId={user.id}
+            isStreamer={true}
+          />
+        )}
 
-      {showSettingsPanel && (
-        <LiveSettingsPanel
-          visible={showSettingsPanel}
-          onClose={() => setShowSettingsPanel(false)}
-          aboutLive={aboutLive}
-          setAboutLive={setAboutLive}
-          practiceMode={practiceMode}
-          setPracticeMode={setPracticeMode}
-          whoCanWatch={whoCanWatch}
-          setWhoCanWatch={setWhoCanWatch}
-          selectedModerators={selectedModerators}
-          setSelectedModerators={setSelectedModerators}
-        />
-      )}
+        {showSettingsPanel && (
+          <LiveSettingsPanel
+            visible={showSettingsPanel}
+            onClose={() => setShowSettingsPanel(false)}
+            aboutLive={aboutLive}
+            setAboutLive={setAboutLive}
+            practiceMode={practiceMode}
+            setPracticeMode={setPracticeMode}
+            whoCanWatch={whoCanWatch}
+            setWhoCanWatch={setWhoCanWatch}
+            selectedModerators={selectedModerators}
+            setSelectedModerators={setSelectedModerators}
+          />
+        )}
 
-      {showPinnedMessagesModal && streamId && (
-        <ManagePinnedMessagesModal
-          visible={showPinnedMessagesModal}
-          onClose={() => setShowPinnedMessagesModal(false)}
-          streamId={streamId}
-        />
-      )}
+        {showPinnedMessagesModal && streamId && (
+          <ManagePinnedMessagesModal
+            visible={showPinnedMessagesModal}
+            onClose={() => setShowPinnedMessagesModal(false)}
+            streamId={streamId}
+          />
+        )}
 
-      {showVIPClubPanel && (
-        <VIPClubPanel
-          visible={showVIPClubPanel}
-          onClose={() => setShowVIPClubPanel(false)}
-          selectedClub={selectedVIPClub}
-          onSelectClub={setSelectedVIPClub}
-        />
-      )}
+        {showVIPClubPanel && (
+          <VIPClubPanel
+            visible={showVIPClubPanel}
+            onClose={() => setShowVIPClubPanel(false)}
+            selectedClub={selectedVIPClub}
+            onSelectClub={setSelectedVIPClub}
+          />
+        )}
+      </CameraView>
 
-      {/* Gift Animations - Highest z-index */}
       {giftAnimations.map((animation) => (
         <RoastGiftAnimationOverlay
           key={animation.id}
@@ -1042,22 +928,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  uiOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 100,
+  camera: {
+    flex: 1,
   },
   topBar: {
     position: 'absolute',
-    top: 0,
+    top: 60,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    zIndex: 110,
-    flexWrap: 'wrap',
-    gap: 8,
+    zIndex: 100,
   },
   viewerBadge: {
     flexDirection: 'row',
@@ -1078,19 +961,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  webrtcBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-  webrtcText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
   topBarRight: {
     flexDirection: 'row',
     gap: 8,
@@ -1103,23 +973,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chatContainer: {
-    position: 'absolute',
-    bottom: 120,
-    left: 0,
-    right: 0,
-    zIndex: 105,
-  },
   bottomControls: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 40,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 16,
     paddingHorizontal: 16,
-    zIndex: 110,
+    zIndex: 100,
   },
   controlButton: {
     width: 56,
