@@ -7,6 +7,8 @@ import {
   ClientRoleType,
   RtcConnection,
   UserOfflineReasonType,
+  VideoStreamType,
+  AudioVolumeInfo,
 } from 'react-native-agora';
 import { supabase } from '@/app/integrations/supabase/client';
 
@@ -28,23 +30,28 @@ interface UseAgoraEngineReturn {
   engine: IRtcEngine | null;
   isInitialized: boolean;
   isJoined: boolean;
-  remoteUid: number | null;
+  remoteUids: number[];
   error: string | null;
   streamId: string | null;
   channelName: string | null;
+  speakingUids: number[];
   leaveChannel: () => Promise<void>;
+  setRemoteVideoStreamType: (uid: number, streamType: VideoStreamType) => Promise<void>;
 }
 
 /**
  * useAgoraEngine Hook (Native - iOS/Android)
  * 
- * Manages Agora RTC Engine lifecycle for live streaming
+ * Manages Agora RTC Engine lifecycle for multi-guest live streaming
  * 
  * Features:
- * - Initializes Agora RTC Engine
+ * - Initializes Agora RTC Engine with dual-stream mode
  * - Fetches token from start-live edge function
  * - Joins channel as PUBLISHER
- * - Tracks remote users (for 1v1 battles)
+ * - Tracks multiple remote users (up to 10 simultaneous streamers)
+ * - Subscribes to Low quality streams by default for bandwidth optimization
+ * - Provides method to switch specific users to High quality
+ * - Tracks speaking users via audio volume indication
  * - Handles cleanup on unmount
  */
 export function useAgoraEngine({
@@ -56,13 +63,15 @@ export function useAgoraEngine({
   const [engine, setEngine] = useState<IRtcEngine | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
-  const [remoteUid, setRemoteUid] = useState<number | null>(null);
+  const [remoteUids, setRemoteUids] = useState<number[]>([]);
+  const [speakingUids, setSpeakingUids] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [channelName, setChannelName] = useState<string | null>(null);
   
   const engineRef = useRef<IRtcEngine | null>(null);
   const isMountedRef = useRef(true);
+  const speakingTimeoutsRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
 
   // Initialize Agora Engine
   useEffect(() => {
@@ -121,6 +130,21 @@ export function useAgoraEngine({
 
         console.log('✅ [useAgoraEngine] Engine initialized');
 
+        // Enable dual-stream mode (Simulcast)
+        agoraEngine.enableDualStreamMode(true);
+        console.log('✅ [useAgoraEngine] Dual-stream mode enabled');
+
+        // Set low-quality stream parameters
+        agoraEngine.setDualStreamMode({
+          streamConfig: {
+            width: 320,
+            height: 240,
+            framerate: 15,
+            bitrate: 200, // 200 kbps
+          },
+        });
+        console.log('✅ [useAgoraEngine] Low-quality stream configured');
+
         // Register event handlers
         agoraEngine.registerEventHandler({
           onJoinChannelSuccess: (connection: RtcConnection, elapsed: number) => {
@@ -133,7 +157,24 @@ export function useAgoraEngine({
           onUserJoined: (connection: RtcConnection, remoteUid: number, elapsed: number) => {
             console.log('👤 [useAgoraEngine] Remote user joined:', remoteUid);
             if (isMountedRef.current) {
-              setRemoteUid(remoteUid);
+              setRemoteUids(prev => {
+                if (!prev.includes(remoteUid)) {
+                  const newUids = [...prev, remoteUid];
+                  console.log('📊 [useAgoraEngine] Total remote users:', newUids.length);
+                  
+                  // Subscribe to low quality stream by default for bandwidth optimization
+                  if (newUids.length > 2) {
+                    console.log('🔄 [useAgoraEngine] Subscribing to LOW quality for UID:', remoteUid);
+                    agoraEngine.setRemoteVideoStreamType(remoteUid, VideoStreamType.VideoStreamLow);
+                  } else {
+                    console.log('🔄 [useAgoraEngine] Subscribing to HIGH quality for UID:', remoteUid);
+                    agoraEngine.setRemoteVideoStreamType(remoteUid, VideoStreamType.VideoStreamHigh);
+                  }
+                  
+                  return newUids;
+                }
+                return prev;
+              });
             }
           },
           onUserOffline: (
@@ -143,7 +184,54 @@ export function useAgoraEngine({
           ) => {
             console.log('👋 [useAgoraEngine] Remote user left:', remoteUid, 'reason:', reason);
             if (isMountedRef.current) {
-              setRemoteUid(null);
+              setRemoteUids(prev => {
+                const newUids = prev.filter(uid => uid !== remoteUid);
+                console.log('📊 [useAgoraEngine] Total remote users:', newUids.length);
+                return newUids;
+              });
+              
+              // Clear speaking indicator
+              setSpeakingUids(prev => prev.filter(uid => uid !== remoteUid));
+              
+              // Clear speaking timeout
+              const timeout = speakingTimeoutsRef.current.get(remoteUid);
+              if (timeout) {
+                clearTimeout(timeout);
+                speakingTimeoutsRef.current.delete(remoteUid);
+              }
+            }
+          },
+          onAudioVolumeIndication: (
+            connection: RtcConnection,
+            speakers: AudioVolumeInfo[],
+            speakerNumber: number,
+            totalVolume: number
+          ) => {
+            // Update speaking indicators based on audio volume
+            if (isMountedRef.current) {
+              const activeSpeakers = speakers
+                .filter(speaker => speaker.volume > 10) // Threshold for speaking
+                .map(speaker => speaker.uid);
+              
+              // Update speaking UIDs
+              setSpeakingUids(activeSpeakers);
+              
+              // Set timeouts to clear speaking indicators after 1 second of silence
+              activeSpeakers.forEach(uid => {
+                // Clear existing timeout
+                const existingTimeout = speakingTimeoutsRef.current.get(uid);
+                if (existingTimeout) {
+                  clearTimeout(existingTimeout);
+                }
+                
+                // Set new timeout
+                const timeout = setTimeout(() => {
+                  setSpeakingUids(prev => prev.filter(id => id !== uid));
+                  speakingTimeoutsRef.current.delete(uid);
+                }, 1000);
+                
+                speakingTimeoutsRef.current.set(uid, timeout);
+              });
             }
           },
           onError: (err: number, msg: string) => {
@@ -159,9 +247,12 @@ export function useAgoraEngine({
         agoraEngine.setChannelProfile(ChannelProfileType.ChannelProfileLiveBroadcasting);
         agoraEngine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
 
-        // Enable video
+        // Enable video and audio
         agoraEngine.enableVideo();
         agoraEngine.enableAudio();
+
+        // Enable audio volume indication (for speaking indicator)
+        agoraEngine.enableAudioVolumeIndication(200, 3, true); // 200ms interval, 3 smooth, report local
 
         // Start preview
         agoraEngine.startPreview();
@@ -200,6 +291,10 @@ export function useAgoraEngine({
 
     return () => {
       isMountedRef.current = false;
+      
+      // Clear all speaking timeouts
+      speakingTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
+      speakingTimeoutsRef.current.clear();
     };
   }, [streamTitle, userId, onStreamReady, onStreamError]);
 
@@ -229,7 +324,8 @@ export function useAgoraEngine({
         console.log('👋 [useAgoraEngine] Leaving channel...');
         await engineRef.current.leaveChannel();
         setIsJoined(false);
-        setRemoteUid(null);
+        setRemoteUids([]);
+        setSpeakingUids([]);
         console.log('✅ [useAgoraEngine] Left channel successfully');
       } catch (err) {
         console.error('❌ [useAgoraEngine] Error leaving channel:', err);
@@ -238,14 +334,27 @@ export function useAgoraEngine({
     }
   }, []);
 
+  const setRemoteVideoStreamType = useCallback(async (uid: number, streamType: VideoStreamType) => {
+    if (engineRef.current) {
+      try {
+        console.log(`🔄 [useAgoraEngine] Setting stream type for UID ${uid} to ${streamType === VideoStreamType.VideoStreamHigh ? 'HIGH' : 'LOW'}`);
+        await engineRef.current.setRemoteVideoStreamType(uid, streamType);
+      } catch (err) {
+        console.error('❌ [useAgoraEngine] Error setting stream type:', err);
+      }
+    }
+  }, []);
+
   return {
     engine,
     isInitialized,
     isJoined,
-    remoteUid,
+    remoteUids,
     error,
     streamId,
     channelName,
+    speakingUids,
     leaveChannel,
+    setRemoteVideoStreamType,
   };
 }
