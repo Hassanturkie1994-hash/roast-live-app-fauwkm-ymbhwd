@@ -2,6 +2,17 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+/**
+ * stop-live Edge Function - AGORA INTEGRATION
+ * 
+ * Migrated from Cloudflare Stream to Agora RTC
+ * 
+ * Features:
+ * - Updates stream status in database
+ * - No Cloudflare cleanup needed (Agora handles channel lifecycle)
+ * - Maintains backward compatibility with existing code
+ */
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -17,17 +28,17 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const live_input_id = body.live_input_id || body.liveInputId || body.stream_id || body.streamId;
+    const stream_id = body.stream_id || body.streamId || body.live_input_id || body.liveInputId;
 
-    console.log('🛑 stop-live called with:', { live_input_id, body });
+    console.log('🛑 [stop-live] AGORA called with:', { stream_id, body });
 
     // Validate required field
-    if (!live_input_id) {
-      console.error('❌ Missing live_input_id parameter');
+    if (!stream_id) {
+      console.error('❌ [stop-live] Missing stream_id parameter');
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Missing live_input_id parameter. Please provide live_input_id in the request body.",
+          error: "Missing stream_id parameter. Please provide stream_id in the request body.",
         }),
         { 
           status: 400, 
@@ -44,7 +55,7 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
-      console.error('❌ Missing Supabase credentials');
+      console.error('❌ [stop-live] Missing Supabase credentials');
       return new Response(
         JSON.stringify({
           success: false,
@@ -62,19 +73,19 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('📊 Updating stream record in database...');
+    console.log('📊 [stop-live] Updating stream record in database...');
 
-    // Update stream record in database - try both live_input_id and id
+    // Update stream record in database
     const { error: updateError } = await supabase
       .from('streams')
       .update({
         status: 'ended',
         ended_at: new Date().toISOString(),
       })
-      .or(`live_input_id.eq.${live_input_id},id.eq.${live_input_id}`);
+      .eq('id', stream_id);
 
     if (updateError) {
-      console.error('⚠️ Error updating stream record:', updateError);
+      console.error('⚠️ [stop-live] Error updating stream record:', updateError);
       return new Response(
         JSON.stringify({
           success: false,
@@ -90,141 +101,28 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('✅ Stream record updated successfully in database');
+    console.log('✅ [stop-live] Stream record updated successfully in database');
 
-    // Read Cloudflare credentials from secrets
-    const CF_ACCOUNT_ID = Deno.env.get("CF_ACCOUNT_ID") || Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
-    const CF_API_TOKEN = Deno.env.get("CF_API_TOKEN") || Deno.env.get("CLOUDFLARE_API_TOKEN");
+    // Note: Agora channels are automatically cleaned up when all users leave
+    // No need for manual cleanup like Cloudflare Stream
 
-    console.log('🔑 Cloudflare credentials check:', {
-      hasAccountId: !!CF_ACCOUNT_ID,
-      hasApiToken: !!CF_API_TOKEN,
-    });
+    console.log('✅ [stop-live] Stream stopped successfully (Agora)');
 
-    // If Cloudflare credentials are missing, return success anyway
-    // The database update is what matters most
-    if (!CF_ACCOUNT_ID || !CF_API_TOKEN) {
-      console.warn('⚠️ Missing Cloudflare credentials - skipping Cloudflare cleanup');
-      return new Response(
-        JSON.stringify({
-          success: true,
-          warning: 'Stream ended in database but Cloudflare cleanup was skipped (missing credentials)',
-        }),
-        { 
-          status: 200, 
-          headers: { 
-            "Content-Type": "application/json",
-            'Access-Control-Allow-Origin': '*',
-          } 
-        }
-      );
-    }
-
-    console.log('☁️ Attempting to stop Cloudflare live input...');
-
-    // Try to stop the Cloudflare live input
-    try {
-      // First try PATCH to disable recording
-      const stopInput = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs/${live_input_id}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${CF_API_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            recording: {
-              mode: "off"
-            }
-          }),
-        }
-      );
-
-      const cloudflareResponse = await stopInput.json();
-
-      console.log('☁️ Cloudflare PATCH response:', {
-        status: stopInput.status,
-        success: cloudflareResponse.success,
-        errors: cloudflareResponse.errors,
-      });
-
-      // If PATCH fails, try DELETE as fallback
-      if (!cloudflareResponse.success) {
-        console.log('⚠️ PATCH failed, trying DELETE as fallback...');
-        
-        const deleteInput = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/stream/live_inputs/${live_input_id}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${CF_API_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        const deleteResponse = await deleteInput.json();
-
-        console.log('☁️ Cloudflare DELETE response:', {
-          status: deleteInput.status,
-          success: deleteResponse.success,
-          errors: deleteResponse.errors,
-        });
-
-        if (!deleteResponse.success) {
-          console.warn('⚠️ Both PATCH and DELETE failed - but database was updated successfully');
-          
-          return new Response(
-            JSON.stringify({
-              success: true,
-              warning: 'Stream ended in database but Cloudflare cleanup may have failed',
-            }),
-            {
-              status: 200,
-              headers: { 
-                "Content-Type": "application/json",
-                'Access-Control-Allow-Origin': '*',
-              },
-            }
-          );
-        }
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Stream ended successfully',
+      }),
+      {
+        status: 200,
+        headers: { 
+          "Content-Type": "application/json",
+          'Access-Control-Allow-Origin': '*',
+        },
       }
-
-      console.log('✅ Stream stopped successfully (database + Cloudflare)');
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-        }),
-        {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json",
-            'Access-Control-Allow-Origin': '*',
-          },
-        }
-      );
-    } catch (cloudflareError) {
-      console.error('❌ Cloudflare API error:', cloudflareError);
-      console.log('✅ Database was updated successfully despite Cloudflare error');
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          warning: 'Stream ended in database but Cloudflare cleanup failed',
-        }),
-        {
-          status: 200,
-          headers: { 
-            "Content-Type": "application/json",
-            'Access-Control-Allow-Origin': '*',
-          },
-        }
-      );
-    }
+    );
   } catch (e) {
-    console.error('❌ Critical error in stop-live:', e);
+    console.error('❌ [stop-live] Critical error:', e);
     
     return new Response(
       JSON.stringify({ 

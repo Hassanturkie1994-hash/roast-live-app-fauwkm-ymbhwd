@@ -16,7 +16,7 @@
  * 
  * Usage:
  * ```tsx
- * import { ARView } from '@/modules/ar-filter-engine';
+ * import ARView, { ARFilterEngine } from '@/modules/ar-filter-engine';
  * 
  * function BroadcastScreen() {
  *   const [filterEngine, setFilterEngine] = useState<ARFilterEngine | null>(null);
@@ -32,6 +32,7 @@
  */
 
 export { ARView, ARFilterEngine } from './ARView';
+export { default } from './ARView';
 
 // Filter definitions
 export const FACE_FILTERS = {
