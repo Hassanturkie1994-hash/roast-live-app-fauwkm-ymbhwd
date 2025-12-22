@@ -12,10 +12,10 @@ interface SafeAgoraViewProps {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CRITICAL GUARD: EXPO GO DETECTION (PREVENTS WHITE SCREEN OF DEATH)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Check if we're in Expo Go using BOTH methods for maximum safety
+// Check if we're in Expo Go by checking if executionEnvironment is NOT bare or standalone
 const isExpoGo = 
-  Constants.executionEnvironment === 'storeClient' || 
-  Constants.appOwnership === 'expo';
+  Constants.executionEnvironment !== 'bare' && 
+  Constants.executionEnvironment !== 'standalone';
 
 console.log('🎭 [SafeAgoraView] Environment check:', {
   executionEnvironment: Constants.executionEnvironment,

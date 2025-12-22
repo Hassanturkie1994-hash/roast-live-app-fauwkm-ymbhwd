@@ -5,15 +5,16 @@ import Constants from 'expo-constants';
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CRITICAL GUARD: EXPO GO DETECTION (PREVENTS WHITE SCREEN OF DEATH)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// Check if we're in Expo Go using BOTH methods for maximum safety
+// Check if we're in Expo Go by checking if executionEnvironment is NOT bare or standalone
+// In Expo Go, executionEnvironment will be 'storeClient' or undefined
 const isExpoGo = 
-  Constants.executionEnvironment === 'storeClient' || 
-  Constants.appOwnership === 'expo';
+  Constants.executionEnvironment !== 'bare' && 
+  Constants.executionEnvironment !== 'standalone';
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 console.log('🎭 [useAgoraEngine] Environment check:');
 console.log('   executionEnvironment:', Constants.executionEnvironment);
-console.log('   appOwnership:', Constants.appOwnership);
+console.log('   appOwnership (deprecated):', Constants.appOwnership);
 console.log('   isExpoGo:', isExpoGo);
 console.log('   platform:', Constants.platform);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
