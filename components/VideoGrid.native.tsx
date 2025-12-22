@@ -2,7 +2,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Constants from 'expo-constants';
-import { RtcSurfaceView, VideoSourceType } from '@/hooks/useAgoraEngine';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -12,8 +11,23 @@ interface VideoGridProps {
   isMocked?: boolean;
 }
 
-// Check if we're in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+// Check if we're in Expo Go using executionEnvironment (recommended) or appOwnership (deprecated fallback)
+const isExpoGo = Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
+
+// Conditionally import RtcSurfaceView and VideoSourceType
+let RtcSurfaceView: any = null;
+let VideoSourceType: any = null;
+
+if (!isExpoGo) {
+  try {
+    const AgoraSDK = require('react-native-agora');
+    RtcSurfaceView = AgoraSDK.RtcSurfaceView;
+    VideoSourceType = AgoraSDK.VideoSourceType;
+    console.log('✅ [VideoGrid] Agora components loaded');
+  } catch (error) {
+    console.warn('⚠️ [VideoGrid] Failed to load Agora components:', error);
+  }
+}
 
 /**
  * VideoGrid Component (Native)
@@ -26,14 +40,18 @@ const isExpoGo = Constants.appOwnership === 'expo';
  */
 export default function VideoGrid({ localUid, remoteUids, isMocked = false }: VideoGridProps) {
   // If in Expo Go or mocked, show placeholder
-  if (isExpoGo || isMocked) {
+  if (isExpoGo || isMocked || !RtcSurfaceView) {
     return (
       <View style={styles.container}>
         <View style={styles.mockContainer}>
           <View style={styles.mockVideoBox}>
-            <Text style={styles.mockText}>⚠️ AGORA VIDEO PREVIEW</Text>
+            <Text style={styles.mockText}>⚠️ VIDEO DISABLED IN EXPO GO</Text>
             <Text style={styles.mockSubtext}>
-              (Not available in Expo Go.{'\n'}Build Dev Client to test.)
+              Agora video streaming requires native code.{'\n'}
+              Build a Development Client to test video.
+            </Text>
+            <Text style={styles.mockInfo}>
+              Local UID: {localUid}
             </Text>
           </View>
           {remoteUids.map((uid, index) => (
@@ -51,7 +69,7 @@ export default function VideoGrid({ localUid, remoteUids, isMocked = false }: Vi
   const totalUsers = 1 + remoteUids.length;
   const gridSize = Math.ceil(Math.sqrt(totalUsers));
   const videoWidth = SCREEN_WIDTH / gridSize;
-  const videoHeight = videoWidth * (4 / 3); // 4:3 aspect ratio
+  const videoHeight = videoWidth * (4 / 3);
 
   return (
     <View style={styles.container}>
@@ -125,7 +143,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 300,
     aspectRatio: 4 / 3,
-    backgroundColor: '#000000',
+    backgroundColor: '#1a1a1a',
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#FFA500',
@@ -146,5 +164,12 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     textAlign: 'center',
     lineHeight: 18,
+    marginBottom: 12,
+  },
+  mockInfo: {
+    color: '#FFA500',
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

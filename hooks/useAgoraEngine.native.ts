@@ -14,12 +14,19 @@ let AudioVolumeInfo: any;
 let RtcSurfaceView: any;
 let VideoSourceType: any;
 
-// Check if we're in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+// Check if we're in Expo Go using executionEnvironment (recommended) or appOwnership (deprecated fallback)
+const isExpoGo = Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
+
+console.log('🎭 [useAgoraEngine] Environment check:', {
+  executionEnvironment: Constants.executionEnvironment,
+  appOwnership: Constants.appOwnership,
+  isExpoGo,
+});
 
 if (!isExpoGo) {
   try {
     // Only import Agora in dev client or standalone builds
+    console.log('📦 [useAgoraEngine] Loading react-native-agora...');
     const AgoraSDK = require('react-native-agora');
     createAgoraRtcEngine = AgoraSDK.createAgoraRtcEngine;
     IRtcEngine = AgoraSDK.IRtcEngine;
@@ -31,6 +38,7 @@ if (!isExpoGo) {
     AudioVolumeInfo = AgoraSDK.AudioVolumeInfo;
     RtcSurfaceView = AgoraSDK.RtcSurfaceView;
     VideoSourceType = AgoraSDK.VideoSourceType;
+    console.log('✅ [useAgoraEngine] react-native-agora loaded successfully');
   } catch (error) {
     console.warn('⚠️ [useAgoraEngine] Failed to load react-native-agora:', error);
   }
@@ -137,7 +145,7 @@ function createMockAgoraEngine() {
  * Manages Agora RTC Engine lifecycle for multi-guest live streaming
  * 
  * EXPO GO SUPPORT:
- * - Detects Expo Go environment using Constants.appOwnership
+ * - Detects Expo Go environment using Constants.executionEnvironment
  * - Returns mock engine in Expo Go with isMocked: true
  * - Full Agora functionality in dev client or standalone builds
  * 
@@ -178,7 +186,7 @@ export function useAgoraEngine({
     const initializeAgora = async () => {
       try {
         console.log('🎯 [useAgoraEngine] Initializing Agora RTC Engine...');
-        console.log('🎯 [useAgoraEngine] Environment:', isExpoGo ? 'Expo Go' : 'Dev Client/Standalone');
+        console.log('🎯 [useAgoraEngine] Environment:', isExpoGo ? 'Expo Go (MOCKED)' : 'Dev Client/Standalone (REAL)');
 
         // Call start-live edge function to get token and channel info
         const { data: startLiveData, error: startLiveError } = await supabase.functions.invoke(
@@ -220,6 +228,7 @@ export function useAgoraEngine({
         // Check if we're in Expo Go
         if (isExpoGo) {
           console.log('🎭 [useAgoraEngine] Expo Go detected - using mock engine');
+          console.log('🎭 [MOCK AGORA] Agora Mocked for Expo Go');
           const mockEngine = createMockAgoraEngine();
           engineRef.current = mockEngine;
           setEngine(mockEngine);
@@ -275,6 +284,8 @@ export function useAgoraEngine({
           throw new Error('Agora SDK not available. Please build a dev client or standalone app.');
         }
 
+        console.log('🚀 [useAgoraEngine] Initializing REAL Agora engine...');
+
         // Create Agora RTC Engine
         const agoraEngine = createAgoraRtcEngine();
         engineRef.current = agoraEngine;
@@ -297,7 +308,7 @@ export function useAgoraEngine({
             width: 320,
             height: 240,
             framerate: 15,
-            bitrate: 200, // 200 kbps
+            bitrate: 200,
           },
         });
         console.log('✅ [useAgoraEngine] Low-quality stream configured');
@@ -367,7 +378,7 @@ export function useAgoraEngine({
             // Update speaking indicators based on audio volume
             if (isMountedRef.current) {
               const activeSpeakers = speakers
-                .filter(speaker => speaker.volume > 10) // Threshold for speaking
+                .filter(speaker => speaker.volume > 10)
                 .map(speaker => speaker.uid);
               
               // Update speaking UIDs
@@ -409,7 +420,7 @@ export function useAgoraEngine({
         agoraEngine.enableAudio();
 
         // Enable audio volume indication (for speaking indicator)
-        agoraEngine.enableAudioVolumeIndication(200, 3, true); // 200ms interval, 3 smooth, report local
+        agoraEngine.enableAudioVolumeIndication(200, 3, true);
 
         // Start preview
         agoraEngine.startPreview();
@@ -524,5 +535,5 @@ export function useAgoraEngine({
 }
 
 // Export Agora types and components for use in native screens
-// In Expo Go, these will be mock components
+// In Expo Go, these will be undefined/null
 export { RtcSurfaceView, VideoSourceType };
