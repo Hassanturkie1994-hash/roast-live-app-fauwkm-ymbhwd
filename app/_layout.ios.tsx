@@ -1,4 +1,5 @@
 
+import 'react-native-url-polyfill/auto';
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Slot, SplashScreen, useRouter, useSegments } from 'expo-router';
@@ -183,7 +184,7 @@ const styles = StyleSheet.create({
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'items',
     padding: 20,
   },
   errorContent: {
