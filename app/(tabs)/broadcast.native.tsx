@@ -14,10 +14,9 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
-import { RtcSurfaceView, VideoSourceType } from 'react-native-agora';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAgoraEngine } from '@/hooks/useAgoraEngine';
+import { useAgoraEngine, RtcSurfaceView, VideoSourceType } from '@/hooks/useAgoraEngine';
 import { IconSymbol } from '@/components/IconSymbol';
 import ChatOverlay from '@/components/ChatOverlay';
 import RoastGiftSelector from '@/components/RoastGiftSelector';
@@ -99,7 +98,7 @@ export default function BroadcastScreen() {
     engine,
     isInitialized,
     isJoined,
-    remoteUid,
+    remoteUids,
     error: agoraError,
     streamId,
     channelName,
@@ -115,6 +114,9 @@ export default function BroadcastScreen() {
       Alert.alert('Stream Error', error.message);
     },
   });
+  
+  // Get first remote UID for 1v1 display
+  const remoteUid = remoteUids.length > 0 ? remoteUids[0] : null;
   
   // UI State
   const [showChat, setShowChat] = useState(true);

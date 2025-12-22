@@ -358,3 +358,6 @@ export function useAgoraEngine({
     setRemoteVideoStreamType,
   };
 }
+
+// Export Agora types and components for use in native screens
+export { RtcSurfaceView, VideoSourceType } from 'react-native-agora';

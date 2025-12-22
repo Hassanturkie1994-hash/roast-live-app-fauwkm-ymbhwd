@@ -12,11 +12,13 @@ interface UseAgoraEngineReturn {
   engine: null;
   isInitialized: boolean;
   isJoined: boolean;
-  remoteUid: number | null;
+  remoteUids: number[];
   error: string | null;
   streamId: string | null;
   channelName: string | null;
+  speakingUids: number[];
   leaveChannel: () => Promise<void>;
+  setRemoteVideoStreamType: (uid: number, streamType: any) => Promise<void>;
 }
 
 /**
@@ -44,14 +46,27 @@ export function useAgoraEngine({
     console.log('⚠️ [useAgoraEngine] leaveChannel called on web (no-op)');
   }, []);
 
+  const setRemoteVideoStreamType = useCallback(async (uid: number, streamType: any) => {
+    console.log('⚠️ [useAgoraEngine] setRemoteVideoStreamType called on web (no-op)');
+  }, []);
+
   return {
     engine: null,
     isInitialized: false,
     isJoined: false,
-    remoteUid: null,
+    remoteUids: [],
     error,
     streamId: null,
     channelName: null,
+    speakingUids: [],
     leaveChannel,
+    setRemoteVideoStreamType,
   };
 }
+
+// Export dummy components for web compatibility
+export const RtcSurfaceView = () => null;
+export const VideoSourceType = {
+  VideoSourceCamera: 0,
+  VideoSourceRemote: 1,
+};
