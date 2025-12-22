@@ -1,3 +1,4 @@
+
 node_modules/
 
 .git/
@@ -37,3 +38,11 @@ netlify.toml
 
 pnpm-lock.yaml
 package-lock.json
+
+# Environment Variables - SECURITY CRITICAL
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.staging

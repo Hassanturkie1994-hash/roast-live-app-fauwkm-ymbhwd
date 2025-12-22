@@ -20,8 +20,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.hasselite.roastlive",
       "infoPlist": {
-        "NSCameraUsageDescription": "Roast Live needs access to your camera to broadcast live streams.",
-        "NSMicrophoneUsageDescription": "Roast Live needs access to your microphone to broadcast live audio.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Roast Live needs access to your camera to let you stream and use AR filters.",
+        "NSMicrophoneUsageDescription": "Roast Live needs access to your microphone so others can hear you during the roast.",
         "NSPhotoLibraryUsageDescription": "Roast Live needs access to your photo library to share images."
       }
     },
@@ -32,10 +33,10 @@
       },
       "package": "com.hasselite.roastlive",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
+        "CAMERA",
+        "RECORD_AUDIO",
+        "INTERNET",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_EXTERNAL_STORAGE"
@@ -50,8 +51,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Roast Live needs access to your camera to broadcast live streams.",
-          "microphonePermission": "Roast Live needs access to your microphone to broadcast live audio.",
+          "cameraPermission": "Roast Live needs access to your camera to let you stream and use AR filters.",
+          "microphonePermission": "Roast Live needs access to your microphone so others can hear you during the roast.",
           "recordAudioAndroid": true
         }
       ]
