@@ -41,6 +41,23 @@ async function callAgoraAPI(
   return await response.json();
 }
 
+// Helper function to map AWS region to Agora region code
+function getAgoraRegionCode(awsRegion: string): number {
+  const regionMap: Record<string, number> = {
+    'us-east-1': 0,
+    'us-east-2': 0,
+    'us-west-1': 0,
+    'us-west-2': 0,
+    'eu-west-1': 1,
+    'eu-central-1': 1,
+    'ap-southeast-1': 2,
+    'ap-northeast-1': 2,
+    'cn-north-1': 3,
+  };
+  
+  return regionMap[awsRegion] || 0; // Default to US
+}
+
 Deno.serve(async (req) => {
   try {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -100,18 +117,22 @@ Deno.serve(async (req) => {
     const AGORA_APP_CERTIFICATE = Deno.env.get("AGORA_APP_CERTIFICATE");
     const AGORA_CUSTOMER_KEY = Deno.env.get("AGORA_CUSTOMER_KEY");
     const AGORA_CUSTOMER_SECRET = Deno.env.get("AGORA_CUSTOMER_SECRET");
-    const AWS_S3_BUCKET = Deno.env.get("AWS_S3_BUCKET") || "roast-live-recordings";
+    
+    // Read AWS S3 credentials from environment
+    const AWS_ACCESS_KEY_ID = Deno.env.get("AWS_ACCESS_KEY_ID");
+    const AWS_SECRET_ACCESS_KEY = Deno.env.get("AWS_SECRET_ACCESS_KEY");
+    const AWS_BUCKET_NAME = Deno.env.get("AWS_BUCKET_NAME") || Deno.env.get("AWS_S3_BUCKET") || "roast-live-recordings";
     const AWS_S3_REGION = Deno.env.get("AWS_S3_REGION") || "us-east-1";
-    const AWS_ACCESS_KEY = Deno.env.get("AWS_ACCESS_KEY");
-    const AWS_SECRET_KEY = Deno.env.get("AWS_SECRET_KEY");
 
     console.log('🔑 [start-live] Credentials check:', {
       hasAppId: !!AGORA_APP_ID,
       hasAppCertificate: !!AGORA_APP_CERTIFICATE,
       hasCustomerKey: !!AGORA_CUSTOMER_KEY,
       hasCustomerSecret: !!AGORA_CUSTOMER_SECRET,
-      hasAwsAccessKey: !!AWS_ACCESS_KEY,
-      hasAwsSecretKey: !!AWS_SECRET_KEY,
+      hasAwsAccessKey: !!AWS_ACCESS_KEY_ID,
+      hasAwsSecretKey: !!AWS_SECRET_ACCESS_KEY,
+      awsBucket: AWS_BUCKET_NAME,
+      awsRegion: AWS_S3_REGION,
     });
 
     if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
@@ -200,8 +221,9 @@ Deno.serve(async (req) => {
     // Start Cloud Recording if credentials are available
     let recordingResourceId = null;
     let recordingSid = null;
+    let recordingError = null;
 
-    if (AGORA_CUSTOMER_KEY && AGORA_CUSTOMER_SECRET && AWS_ACCESS_KEY && AWS_SECRET_KEY) {
+    if (AGORA_CUSTOMER_KEY && AGORA_CUSTOMER_SECRET && AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY) {
       try {
         console.log('📹 [start-live] Starting Agora Cloud Recording...');
 
@@ -230,6 +252,10 @@ Deno.serve(async (req) => {
 
         // Step 2: Start recording
         const startEndpoint = `https://api.agora.io/v1/apps/${AGORA_APP_ID}/cloud_recording/resourceid/${recordingResourceId}/mode/mix/start`;
+        
+        // Map AWS region to Agora region code
+        const agoraRegionCode = getAgoraRegionCode(AWS_S3_REGION);
+        
         const startBody = {
           cname: finalChannelName,
           uid: `${finalUid}`,
@@ -249,16 +275,22 @@ Deno.serve(async (req) => {
             },
             storageConfig: {
               vendor: 1, // AWS S3
-              region: AWS_S3_REGION === 'us-east-1' ? 0 : 1, // Map region codes
-              bucket: AWS_S3_BUCKET,
-              accessKey: AWS_ACCESS_KEY,
-              secretKey: AWS_SECRET_KEY,
+              region: agoraRegionCode,
+              bucket: AWS_BUCKET_NAME,
+              accessKey: AWS_ACCESS_KEY_ID,
+              secretKey: AWS_SECRET_ACCESS_KEY,
               fileNamePrefix: [`recordings/${finalChannelName}`],
             },
           },
         };
 
-        console.log('🔄 [start-live] Starting recording...');
+        console.log('🔄 [start-live] Starting recording with config:', {
+          vendor: 1,
+          region: agoraRegionCode,
+          bucket: AWS_BUCKET_NAME,
+          fileNamePrefix: `recordings/${finalChannelName}`,
+        });
+
         const startResponse = await callAgoraAPI(
           startEndpoint,
           'POST',
@@ -286,9 +318,12 @@ Deno.serve(async (req) => {
         } else {
           console.log('✅ [start-live] Recording info saved to database');
         }
-      } catch (recordingError) {
+      } catch (error) {
+        recordingError = error instanceof Error ? error.message : 'Unknown recording error';
         console.error('⚠️ [start-live] Cloud recording failed:', recordingError);
-        // Don't fail the stream start if recording fails
+        console.error('⚠️ [start-live] Full error:', error);
+        
+        // Don't fail the stream start if recording fails - just log it
         await supabase
           .from('streams')
           .update({
@@ -297,7 +332,8 @@ Deno.serve(async (req) => {
           .eq('id', streamId);
       }
     } else {
-      console.log('⚠️ [start-live] Cloud recording skipped - missing credentials');
+      console.log('⚠️ [start-live] Cloud recording skipped - missing AWS credentials');
+      console.log('⚠️ [start-live] Required: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_BUCKET_NAME');
     }
 
     // Fetch moderators for this creator
@@ -331,6 +367,7 @@ Deno.serve(async (req) => {
           enabled: !!recordingResourceId,
           resource_id: recordingResourceId,
           sid: recordingSid,
+          error: recordingError,
         },
       },
       agora: {
@@ -342,6 +379,9 @@ Deno.serve(async (req) => {
     };
 
     console.log(`✅ [start-live] Stream started successfully with ${moderatorsArray.length} moderators`);
+    if (recordingError) {
+      console.log('⚠️ [start-live] Note: Recording failed but stream is live');
+    }
 
     // Send push notifications to followers (non-blocking)
     try {

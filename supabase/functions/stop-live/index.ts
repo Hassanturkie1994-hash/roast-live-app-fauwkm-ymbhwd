@@ -53,10 +53,14 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🛑 [stop-live] AGORA Edge Function invoked');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
     const body = await req.json();
     const stream_id = body.stream_id || body.streamId || body.live_input_id || body.liveInputId;
 
-    console.log('🛑 [stop-live] AGORA called with:', { stream_id, body });
+    console.log('🛑 [stop-live] Request payload:', { stream_id, body });
 
     // Validate required field
     if (!stream_id) {
@@ -104,7 +108,7 @@ Deno.serve(async (req) => {
     // Fetch stream record to get recording info
     const { data: streamData, error: fetchError } = await supabase
       .from('streams')
-      .select('recording_resource_id, recording_sid, channel_name, agora_uid')
+      .select('recording_resource_id, recording_sid, channel_name, agora_channel, agora_uid, recording_status')
       .eq('id', stream_id)
       .single();
 
@@ -112,30 +116,45 @@ Deno.serve(async (req) => {
       console.error('⚠️ [stop-live] Error fetching stream record:', fetchError);
     }
 
+    console.log('📊 [stop-live] Stream data:', {
+      hasResourceId: !!streamData?.recording_resource_id,
+      hasSid: !!streamData?.recording_sid,
+      recordingStatus: streamData?.recording_status,
+      channelName: streamData?.channel_name || streamData?.agora_channel,
+    });
+
     // Stop Cloud Recording if it was started
     let playbackUrl = null;
+    let recordingFiles: any[] = [];
 
-    if (streamData?.recording_resource_id && streamData?.recording_sid) {
+    if (streamData?.recording_resource_id && streamData?.recording_sid && streamData?.recording_status === 'recording') {
       try {
         console.log('📹 [stop-live] Stopping Agora Cloud Recording...');
 
         const AGORA_APP_ID = Deno.env.get("AGORA_APP_ID");
         const AGORA_CUSTOMER_KEY = Deno.env.get("AGORA_CUSTOMER_KEY");
         const AGORA_CUSTOMER_SECRET = Deno.env.get("AGORA_CUSTOMER_SECRET");
-        const AWS_S3_BUCKET = Deno.env.get("AWS_S3_BUCKET") || "roast-live-recordings";
+        const AWS_BUCKET_NAME = Deno.env.get("AWS_BUCKET_NAME") || Deno.env.get("AWS_S3_BUCKET") || "roast-live-recordings";
         const AWS_S3_REGION = Deno.env.get("AWS_S3_REGION") || "us-east-1";
 
         if (!AGORA_APP_ID || !AGORA_CUSTOMER_KEY || !AGORA_CUSTOMER_SECRET) {
           console.error('❌ [stop-live] Missing Agora credentials for stopping recording');
         } else {
+          const channelName = streamData.channel_name || streamData.agora_channel;
           const stopEndpoint = `https://api.agora.io/v1/apps/${AGORA_APP_ID}/cloud_recording/resourceid/${streamData.recording_resource_id}/sid/${streamData.recording_sid}/mode/mix/stop`;
           const stopBody = {
-            cname: streamData.channel_name,
+            cname: channelName,
             uid: `${streamData.agora_uid || 0}`,
             clientRequest: {},
           };
 
           console.log('🔄 [stop-live] Calling stop recording endpoint...');
+          console.log('🔄 [stop-live] Stop config:', {
+            resourceId: streamData.recording_resource_id,
+            sid: streamData.recording_sid,
+            channelName: channelName,
+          });
+
           const stopResponse = await callAgoraAPI(
             stopEndpoint,
             'POST',
@@ -149,20 +168,32 @@ Deno.serve(async (req) => {
 
           // Construct S3 URL from response
           if (stopResponse.serverResponse?.fileList && stopResponse.serverResponse.fileList.length > 0) {
-            const fileList = stopResponse.serverResponse.fileList;
-            // Find the MP4 file (preferred for playback)
-            const mp4File = fileList.find((f: any) => f.fileName.endsWith('.mp4'));
-            const file = mp4File || fileList[0];
+            recordingFiles = stopResponse.serverResponse.fileList;
+            console.log('📦 [stop-live] Found recording files:', recordingFiles.length);
+
+            // Find the M3U8 file (HLS playlist) for playback
+            const m3u8File = recordingFiles.find((f: any) => f.fileName.endsWith('.m3u8'));
             
-            // Construct S3 URL
-            playbackUrl = `https://${AWS_S3_BUCKET}.s3.${AWS_S3_REGION}.amazonaws.com/${file.fileName}`;
-            console.log('✅ [stop-live] Playback URL constructed:', playbackUrl);
+            // If no M3U8, try MP4
+            const mp4File = recordingFiles.find((f: any) => f.fileName.endsWith('.mp4'));
+            
+            const playbackFile = m3u8File || mp4File || recordingFiles[0];
+            
+            if (playbackFile) {
+              // Construct S3 URL
+              playbackUrl = `https://${AWS_BUCKET_NAME}.s3.${AWS_S3_REGION}.amazonaws.com/${playbackFile.fileName}`;
+              console.log('✅ [stop-live] Playback URL constructed:', playbackUrl);
+              console.log('✅ [stop-live] File type:', playbackFile.fileName.split('.').pop());
+            } else {
+              console.log('⚠️ [stop-live] No suitable playback file found');
+            }
           } else {
             console.log('⚠️ [stop-live] No files in recording response');
+            console.log('⚠️ [stop-live] Full response:', JSON.stringify(stopResponse, null, 2));
           }
 
           // Update stream record with recording stopped info
-          await supabase
+          const { error: updateRecordingError } = await supabase
             .from('streams')
             .update({
               recording_status: 'stopped',
@@ -170,9 +201,17 @@ Deno.serve(async (req) => {
               playback_url: playbackUrl,
             })
             .eq('id', stream_id);
+
+          if (updateRecordingError) {
+            console.error('⚠️ [stop-live] Error updating recording info:', updateRecordingError);
+          } else {
+            console.log('✅ [stop-live] Recording info updated in database');
+          }
         }
       } catch (recordingError) {
         console.error('⚠️ [stop-live] Error stopping cloud recording:', recordingError);
+        console.error('⚠️ [stop-live] Full error:', recordingError);
+        
         // Update status to failed
         await supabase
           .from('streams')
@@ -182,10 +221,15 @@ Deno.serve(async (req) => {
           .eq('id', stream_id);
       }
     } else {
-      console.log('⚠️ [stop-live] No recording info found, skipping recording stop');
+      console.log('⚠️ [stop-live] No active recording to stop');
+      console.log('⚠️ [stop-live] Reason:', {
+        hasResourceId: !!streamData?.recording_resource_id,
+        hasSid: !!streamData?.recording_sid,
+        status: streamData?.recording_status,
+      });
     }
 
-    console.log('📊 [stop-live] Updating stream record in database...');
+    console.log('📊 [stop-live] Updating stream status to ended...');
 
     // Update stream record in database
     const { error: updateError } = await supabase
@@ -215,12 +259,21 @@ Deno.serve(async (req) => {
 
     console.log('✅ [stop-live] Stream record updated successfully in database');
     console.log('✅ [stop-live] Stream stopped successfully (Agora)');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return new Response(
       JSON.stringify({
         success: true,
         message: 'Stream ended successfully',
         playback_url: playbackUrl,
+        recording_files: recordingFiles.map((f: any) => ({
+          fileName: f.fileName,
+          trackType: f.trackType,
+          uid: f.uid,
+          mixedAllUser: f.mixedAllUser,
+          isPlayable: f.isPlayable,
+          sliceStartTime: f.sliceStartTime,
+        })),
       }),
       {
         status: 200,
@@ -231,7 +284,11 @@ Deno.serve(async (req) => {
       }
     );
   } catch (e) {
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.error('❌ [stop-live] Critical error:', e);
+    console.error('❌ [stop-live] Error message:', e instanceof Error ? e.message : 'Unknown error');
+    console.error('❌ [stop-live] Error stack:', e instanceof Error ? e.stack : 'No stack trace');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     return new Response(
       JSON.stringify({ 
