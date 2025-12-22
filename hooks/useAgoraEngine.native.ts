@@ -53,7 +53,7 @@ if (!isExpoGo) {
     console.warn('⚠️ [useAgoraEngine] This is expected in Expo Go or if SDK is not installed');
   }
 } else {
-  console.log('🎭 [useAgoraEngine] Expo Go detected - Skipping Agora SDK import');
+  console.log('🎭 Expo Go detected - Skipping Agora SDK import');
 }
 
 interface AgoraConfig {
