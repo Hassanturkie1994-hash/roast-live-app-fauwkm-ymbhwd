@@ -2,7 +2,7 @@
 {
   "expo": {
     "name": "Roast Live",
-    "slug": "Roast Live",
+    "slug": "roast-live",
     "owner": "hasselite",
     "scheme": "roastlive",
     "version": "1.0.0",
@@ -79,6 +79,9 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "fb484f3b-ad66-438e-b8a8-0620a968d51b"
       }
     }
   }
