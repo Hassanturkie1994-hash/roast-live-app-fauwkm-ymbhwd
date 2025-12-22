@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
-import { cloudflareService } from '@/app/services/cloudflareService';
+import { agoraService } from '@/app/services/agoraService';
 import { supabase } from '@/app/integrations/supabase/client';
 
 type StreamState = 
@@ -54,35 +54,35 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
 
   // Verify service on mount
   React.useEffect(() => {
-    console.log('🔍 [STATE_MACHINE] Verifying cloudflareService on mount...');
+    console.log('🔍 [STATE_MACHINE] Verifying agoraService on mount...');
     
-    if (!cloudflareService) {
-      console.error('❌ [STATE_MACHINE] cloudflareService is undefined on mount!');
+    if (!agoraService) {
+      console.error('❌ [STATE_MACHINE] agoraService is undefined on mount!');
       serviceVerifiedRef.current = false;
       return;
     }
 
-    if (typeof cloudflareService.createLiveStream !== 'function') {
+    if (typeof agoraService.createLiveStream !== 'function') {
       console.error('❌ [STATE_MACHINE] createLiveStream method is missing!');
-      console.error('Available methods:', Object.keys(cloudflareService));
+      console.error('Available methods:', Object.keys(agoraService));
       serviceVerifiedRef.current = false;
       return;
     }
 
     // Call verification method if available
-    if (typeof cloudflareService.verifyService === 'function') {
-      const verified = cloudflareService.verifyService();
+    if (typeof agoraService.verifyService === 'function') {
+      const verified = agoraService.verifyService();
       serviceVerifiedRef.current = verified;
       
       if (verified) {
-        console.log('✅ [STATE_MACHINE] cloudflareService verified successfully');
+        console.log('✅ [STATE_MACHINE] agoraService verified successfully');
       } else {
-        console.error('❌ [STATE_MACHINE] cloudflareService verification failed');
+        console.error('❌ [STATE_MACHINE] agoraService verification failed');
       }
     } else {
       // Manual verification
       serviceVerifiedRef.current = true;
-      console.log('✅ [STATE_MACHINE] cloudflareService verified (manual check)');
+      console.log('✅ [STATE_MACHINE] agoraService verified (manual check)');
     }
   }, []);
 
@@ -91,45 +91,45 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
     console.log('🚀 [STATE_MACHINE] Starting stream creation...');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
-    // CRITICAL FIX: Runtime safety guards
-    console.log('🔍 [STATE_MACHINE] Step 1: Verifying cloudflareService...');
+    // Runtime safety guards
+    console.log('🔍 [STATE_MACHINE] Step 1: Verifying agoraService...');
     
     // Check 1: Service exists
-    if (!cloudflareService) {
-      const errorMsg = 'Cloudflare service is not available. Please restart the app.';
-      console.error('❌ [STATE_MACHINE] cloudflareService is undefined');
-      console.error('Type of cloudflareService:', typeof cloudflareService);
+    if (!agoraService) {
+      const errorMsg = 'Agora service is not available. Please restart the app.';
+      console.error('❌ [STATE_MACHINE] agoraService is undefined');
+      console.error('Type of agoraService:', typeof agoraService);
       setErrorState(errorMsg);
       return { success: false, error: errorMsg };
     }
-    console.log('✅ [STATE_MACHINE] cloudflareService exists');
+    console.log('✅ [STATE_MACHINE] agoraService exists');
 
     // Check 2: Service is an object
-    if (typeof cloudflareService !== 'object') {
-      const errorMsg = 'Cloudflare service is not properly initialized. Please restart the app.';
-      console.error('❌ [STATE_MACHINE] cloudflareService is not an object');
-      console.error('Type:', typeof cloudflareService);
+    if (typeof agoraService !== 'object') {
+      const errorMsg = 'Agora service is not properly initialized. Please restart the app.';
+      console.error('❌ [STATE_MACHINE] agoraService is not an object');
+      console.error('Type:', typeof agoraService);
       setErrorState(errorMsg);
       return { success: false, error: errorMsg };
     }
-    console.log('✅ [STATE_MACHINE] cloudflareService is an object');
+    console.log('✅ [STATE_MACHINE] agoraService is an object');
 
     // Check 3: createLiveStream method exists
-    if (!cloudflareService.createLiveStream) {
+    if (!agoraService.createLiveStream) {
       const errorMsg = 'Stream creation method is missing. Please restart the app.';
       console.error('❌ [STATE_MACHINE] createLiveStream property is missing');
-      console.error('Available properties:', Object.keys(cloudflareService));
+      console.error('Available properties:', Object.keys(agoraService));
       setErrorState(errorMsg);
       return { success: false, error: errorMsg };
     }
     console.log('✅ [STATE_MACHINE] createLiveStream property exists');
 
     // Check 4: createLiveStream is a function
-    if (typeof cloudflareService.createLiveStream !== 'function') {
+    if (typeof agoraService.createLiveStream !== 'function') {
       const errorMsg = 'Stream creation service is not properly configured. Please restart the app.';
       console.error('❌ [STATE_MACHINE] createLiveStream is not a function');
-      console.error('Type:', typeof cloudflareService.createLiveStream);
-      console.error('Available methods:', Object.keys(cloudflareService));
+      console.error('Type:', typeof agoraService.createLiveStream);
+      console.error('Available methods:', Object.keys(agoraService));
       setErrorState(errorMsg);
       return { success: false, error: errorMsg };
     }
@@ -139,8 +139,8 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
     if (!serviceVerifiedRef.current) {
       console.warn('⚠️ [STATE_MACHINE] Service was not verified on mount, attempting to verify now...');
       
-      if (typeof cloudflareService.verifyService === 'function') {
-        const verified = cloudflareService.verifyService();
+      if (typeof agoraService.verifyService === 'function') {
+        const verified = agoraService.verifyService();
         if (!verified) {
           const errorMsg = 'Service verification failed. Please restart the app.';
           console.error('❌ [STATE_MACHINE] Service verification failed');
@@ -177,18 +177,18 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
       }
       console.log('✅ [STATE_MACHINE] User authenticated:', user.id);
 
-      console.log('🔍 [STATE_MACHINE] Step 3: Creating Cloudflare stream...');
-      console.log('Calling cloudflareService.createLiveStream()...');
+      console.log('🔍 [STATE_MACHINE] Step 3: Creating Agora stream...');
+      console.log('Calling agoraService.createLiveStream()...');
       
-      // CRITICAL FIX: Wrap service call in try-catch with detailed error logging
-      let cloudflareResult;
+      // Wrap service call in try-catch with detailed error logging
+      let agoraResult;
       try {
         // Double-check right before calling
-        if (typeof cloudflareService.createLiveStream !== 'function') {
+        if (typeof agoraService.createLiveStream !== 'function') {
           throw new Error('createLiveStream became undefined right before call');
         }
         
-        cloudflareResult = await cloudflareService.createLiveStream();
+        agoraResult = await agoraService.createLiveStream();
         console.log('✅ [STATE_MACHINE] createLiveStream() call completed');
       } catch (serviceError: any) {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -201,25 +201,25 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
         return { success: false, error: errorMsg };
       }
 
-      if (!cloudflareResult) {
+      if (!agoraResult) {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         const errorMsg = 'No response from stream creation service';
-        console.error('❌ [STATE_MACHINE] cloudflareResult is null/undefined');
+        console.error('❌ [STATE_MACHINE] agoraResult is null/undefined');
         setErrorState(errorMsg);
         return { success: false, error: errorMsg };
       }
 
-      console.log('📡 [STATE_MACHINE] Cloudflare result:', cloudflareResult);
+      console.log('📡 [STATE_MACHINE] Agora result:', agoraResult);
 
-      if (!cloudflareResult.success || !cloudflareResult.data) {
+      if (!agoraResult.success || !agoraResult.data) {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        const errorMsg = cloudflareResult.error || 'Failed to create Cloudflare stream';
-        console.error('❌ [STATE_MACHINE] Cloudflare service returned failure:', errorMsg);
+        const errorMsg = agoraResult.error || 'Failed to create Agora stream';
+        console.error('❌ [STATE_MACHINE] Agora service returned failure:', errorMsg);
         setErrorState(errorMsg);
         return { success: false, error: errorMsg };
       }
 
-      console.log('✅ [STATE_MACHINE] Cloudflare stream created successfully');
+      console.log('✅ [STATE_MACHINE] Agora stream created successfully');
 
       console.log('🔍 [STATE_MACHINE] Step 4: Creating database stream record...');
       const { data: stream, error: dbError } = await supabase
@@ -228,10 +228,10 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
           broadcaster_id: user.id,
           title,
           status: 'live',
-          cloudflare_stream_id: cloudflareResult.data.uid,
-          playback_url: cloudflareResult.data.playback?.hls || null,
-          ingest_url: cloudflareResult.data.rtmps?.url || null,
-          stream_key: cloudflareResult.data.rtmps?.streamKey || null,
+          cloudflare_stream_id: agoraResult.data.uid,
+          playback_url: agoraResult.data.playback?.hls || null,
+          ingest_url: agoraResult.data.rtmps?.url || null,
+          stream_key: agoraResult.data.rtmps?.streamKey || null,
           content_label: contentLabel,
           viewer_count: 0,
         })
@@ -249,10 +249,10 @@ export function LiveStreamStateMachineProvider({ children }: { children: React.R
 
       const data: StreamData = {
         streamId: stream.id,
-        cloudflareStreamId: cloudflareResult.data.uid,
-        rtmpsUrl: cloudflareResult.data.rtmps?.url || '',
-        rtmpsStreamKey: cloudflareResult.data.rtmps?.streamKey || '',
-        playbackUrl: cloudflareResult.data.playback?.hls || '',
+        cloudflareStreamId: agoraResult.data.uid,
+        rtmpsUrl: agoraResult.data.rtmps?.url || '',
+        rtmpsStreamKey: agoraResult.data.rtmps?.streamKey || '',
+        playbackUrl: agoraResult.data.playback?.hls || '',
       };
 
       setStreamData(data);
