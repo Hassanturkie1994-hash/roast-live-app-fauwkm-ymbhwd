@@ -1,15 +1,41 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  createAgoraRtcEngine,
-  IRtcEngine,
-  ChannelProfileType,
-  ClientRoleType,
-  RtcConnection,
-  UserOfflineReasonType,
-  VideoStreamType,
-  AudioVolumeInfo,
-} from 'react-native-agora';
+import Constants from 'expo-constants';
+
+// Conditionally import Agora SDK
+let createAgoraRtcEngine: any;
+let IRtcEngine: any;
+let ChannelProfileType: any;
+let ClientRoleType: any;
+let RtcConnection: any;
+let UserOfflineReasonType: any;
+let VideoStreamType: any;
+let AudioVolumeInfo: any;
+let RtcSurfaceView: any;
+let VideoSourceType: any;
+
+// Check if we're in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
+if (!isExpoGo) {
+  try {
+    // Only import Agora in dev client or standalone builds
+    const AgoraSDK = require('react-native-agora');
+    createAgoraRtcEngine = AgoraSDK.createAgoraRtcEngine;
+    IRtcEngine = AgoraSDK.IRtcEngine;
+    ChannelProfileType = AgoraSDK.ChannelProfileType;
+    ClientRoleType = AgoraSDK.ClientRoleType;
+    RtcConnection = AgoraSDK.RtcConnection;
+    UserOfflineReasonType = AgoraSDK.UserOfflineReasonType;
+    VideoStreamType = AgoraSDK.VideoStreamType;
+    AudioVolumeInfo = AgoraSDK.AudioVolumeInfo;
+    RtcSurfaceView = AgoraSDK.RtcSurfaceView;
+    VideoSourceType = AgoraSDK.VideoSourceType;
+  } catch (error) {
+    console.warn('⚠️ [useAgoraEngine] Failed to load react-native-agora:', error);
+  }
+}
+
 import { supabase } from '@/app/integrations/supabase/client';
 
 interface AgoraConfig {
@@ -27,7 +53,7 @@ interface UseAgoraEngineProps {
 }
 
 interface UseAgoraEngineReturn {
-  engine: IRtcEngine | null;
+  engine: any | null;
   isInitialized: boolean;
   isJoined: boolean;
   remoteUids: number[];
@@ -35,14 +61,85 @@ interface UseAgoraEngineReturn {
   streamId: string | null;
   channelName: string | null;
   speakingUids: number[];
+  isMocked: boolean;
   leaveChannel: () => Promise<void>;
-  setRemoteVideoStreamType: (uid: number, streamType: VideoStreamType) => Promise<void>;
+  setRemoteVideoStreamType: (uid: number, streamType: any) => Promise<void>;
+}
+
+/**
+ * Mock Agora Engine for Expo Go
+ * 
+ * This mock engine logs all method calls to the console and provides
+ * a compatible interface for development in Expo Go.
+ */
+function createMockAgoraEngine() {
+  console.log('🎭 [MOCK AGORA] Creating mock Agora engine for Expo Go');
+  
+  return {
+    initialize: (config: any) => {
+      console.log('🎭 [MOCK AGORA] initialize() called with config:', config);
+    },
+    enableDualStreamMode: (enabled: boolean) => {
+      console.log('🎭 [MOCK AGORA] enableDualStreamMode() called:', enabled);
+    },
+    setDualStreamMode: (config: any) => {
+      console.log('🎭 [MOCK AGORA] setDualStreamMode() called with config:', config);
+    },
+    registerEventHandler: (handlers: any) => {
+      console.log('🎭 [MOCK AGORA] registerEventHandler() called');
+      // Simulate successful join after 1 second
+      setTimeout(() => {
+        if (handlers.onJoinChannelSuccess) {
+          console.log('🎭 [MOCK AGORA] Simulating onJoinChannelSuccess');
+          handlers.onJoinChannelSuccess({ channelId: 'mock-channel' }, 0);
+        }
+      }, 1000);
+    },
+    setChannelProfile: (profile: any) => {
+      console.log('🎭 [MOCK AGORA] setChannelProfile() called:', profile);
+    },
+    setClientRole: (role: any) => {
+      console.log('🎭 [MOCK AGORA] setClientRole() called:', role);
+    },
+    enableVideo: () => {
+      console.log('🎭 [MOCK AGORA] enableVideo() called');
+    },
+    enableAudio: () => {
+      console.log('🎭 [MOCK AGORA] enableAudio() called');
+    },
+    enableAudioVolumeIndication: (interval: number, smooth: number, reportLocal: boolean) => {
+      console.log('🎭 [MOCK AGORA] enableAudioVolumeIndication() called:', { interval, smooth, reportLocal });
+    },
+    startPreview: () => {
+      console.log('🎭 [MOCK AGORA] startPreview() called');
+    },
+    joinChannel: async (token: string, channelName: string, uid: number, options: any) => {
+      console.log('🎭 [MOCK AGORA] joinChannel() called:', { channelName, uid });
+      return Promise.resolve();
+    },
+    leaveChannel: async () => {
+      console.log('🎭 [MOCK AGORA] leaveChannel() called');
+      return Promise.resolve();
+    },
+    release: () => {
+      console.log('🎭 [MOCK AGORA] release() called');
+    },
+    setRemoteVideoStreamType: async (uid: number, streamType: any) => {
+      console.log('🎭 [MOCK AGORA] setRemoteVideoStreamType() called:', { uid, streamType });
+      return Promise.resolve();
+    },
+  };
 }
 
 /**
  * useAgoraEngine Hook (Native - iOS/Android)
  * 
  * Manages Agora RTC Engine lifecycle for multi-guest live streaming
+ * 
+ * EXPO GO SUPPORT:
+ * - Detects Expo Go environment using Constants.appOwnership
+ * - Returns mock engine in Expo Go with isMocked: true
+ * - Full Agora functionality in dev client or standalone builds
  * 
  * Features:
  * - Initializes Agora RTC Engine with dual-stream mode
@@ -60,7 +157,7 @@ export function useAgoraEngine({
   onStreamReady,
   onStreamError,
 }: UseAgoraEngineProps): UseAgoraEngineReturn {
-  const [engine, setEngine] = useState<IRtcEngine | null>(null);
+  const [engine, setEngine] = useState<any | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
   const [remoteUids, setRemoteUids] = useState<number[]>([]);
@@ -68,18 +165,20 @@ export function useAgoraEngine({
   const [error, setError] = useState<string | null>(null);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [channelName, setChannelName] = useState<string | null>(null);
+  const [isMocked, setIsMocked] = useState(false);
   
-  const engineRef = useRef<IRtcEngine | null>(null);
+  const engineRef = useRef<any | null>(null);
   const isMountedRef = useRef(true);
   const speakingTimeoutsRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
 
-  // Initialize Agora Engine
+  // Initialize Agora Engine (or mock in Expo Go)
   useEffect(() => {
     isMountedRef.current = true;
 
     const initializeAgora = async () => {
       try {
         console.log('🎯 [useAgoraEngine] Initializing Agora RTC Engine...');
+        console.log('🎯 [useAgoraEngine] Environment:', isExpoGo ? 'Expo Go' : 'Dev Client/Standalone');
 
         // Call start-live edge function to get token and channel info
         const { data: startLiveData, error: startLiveError } = await supabase.functions.invoke(
@@ -118,6 +217,64 @@ export function useAgoraEngine({
         setStreamId(startLiveData.stream.id);
         setChannelName(agoraConfig.channelName);
 
+        // Check if we're in Expo Go
+        if (isExpoGo) {
+          console.log('🎭 [useAgoraEngine] Expo Go detected - using mock engine');
+          const mockEngine = createMockAgoraEngine();
+          engineRef.current = mockEngine;
+          setEngine(mockEngine);
+          setIsMocked(true);
+          setIsInitialized(true);
+
+          // Initialize mock engine
+          mockEngine.initialize({
+            appId: agoraConfig.appId,
+            channelProfile: 'ChannelProfileLiveBroadcasting',
+          });
+
+          mockEngine.enableDualStreamMode(true);
+          mockEngine.setDualStreamMode({
+            streamConfig: {
+              width: 320,
+              height: 240,
+              framerate: 15,
+              bitrate: 200,
+            },
+          });
+
+          mockEngine.registerEventHandler({
+            onJoinChannelSuccess: (connection: any, elapsed: number) => {
+              console.log('✅ [MOCK AGORA] Joined channel successfully:', connection.channelId);
+              if (isMountedRef.current) {
+                setIsJoined(true);
+                onStreamReady?.(startLiveData.stream.id);
+              }
+            },
+          });
+
+          mockEngine.setChannelProfile('ChannelProfileLiveBroadcasting');
+          mockEngine.setClientRole('ClientRoleBroadcaster');
+          mockEngine.enableVideo();
+          mockEngine.enableAudio();
+          mockEngine.enableAudioVolumeIndication(200, 3, true);
+          mockEngine.startPreview();
+
+          await mockEngine.joinChannel(
+            agoraConfig.token,
+            agoraConfig.channelName,
+            agoraConfig.uid,
+            { clientRoleType: 'ClientRoleBroadcaster' }
+          );
+
+          console.log('✅ [MOCK AGORA] Mock engine initialized and joined');
+          return;
+        }
+
+        // Real Agora implementation for dev client/standalone
+        if (!createAgoraRtcEngine) {
+          throw new Error('Agora SDK not available. Please build a dev client or standalone app.');
+        }
+
         // Create Agora RTC Engine
         const agoraEngine = createAgoraRtcEngine();
         engineRef.current = agoraEngine;
@@ -147,14 +304,14 @@ export function useAgoraEngine({
 
         // Register event handlers
         agoraEngine.registerEventHandler({
-          onJoinChannelSuccess: (connection: RtcConnection, elapsed: number) => {
+          onJoinChannelSuccess: (connection: any, elapsed: number) => {
             console.log('✅ [useAgoraEngine] Joined channel successfully:', connection.channelId);
             if (isMountedRef.current) {
               setIsJoined(true);
               onStreamReady?.(startLiveData.stream.id);
             }
           },
-          onUserJoined: (connection: RtcConnection, remoteUid: number, elapsed: number) => {
+          onUserJoined: (connection: any, remoteUid: number, elapsed: number) => {
             console.log('👤 [useAgoraEngine] Remote user joined:', remoteUid);
             if (isMountedRef.current) {
               setRemoteUids(prev => {
@@ -178,9 +335,9 @@ export function useAgoraEngine({
             }
           },
           onUserOffline: (
-            connection: RtcConnection,
+            connection: any,
             remoteUid: number,
-            reason: UserOfflineReasonType
+            reason: any
           ) => {
             console.log('👋 [useAgoraEngine] Remote user left:', remoteUid, 'reason:', reason);
             if (isMountedRef.current) {
@@ -202,8 +359,8 @@ export function useAgoraEngine({
             }
           },
           onAudioVolumeIndication: (
-            connection: RtcConnection,
-            speakers: AudioVolumeInfo[],
+            connection: any,
+            speakers: any[],
             speakerNumber: number,
             totalVolume: number
           ) => {
@@ -303,7 +460,7 @@ export function useAgoraEngine({
   useEffect(() => {
     return () => {
       const cleanup = async () => {
-        if (engineRef.current) {
+        if (engineRef.current && !isMocked) {
           try {
             console.log('🧹 [useAgoraEngine] Cleaning up Agora engine...');
             await engineRef.current.leaveChannel();
@@ -312,12 +469,15 @@ export function useAgoraEngine({
           } catch (err) {
             console.error('❌ [useAgoraEngine] Cleanup error:', err);
           }
+        } else if (engineRef.current && isMocked) {
+          console.log('🧹 [MOCK AGORA] Cleaning up mock engine...');
+          await engineRef.current.leaveChannel();
         }
       };
 
       cleanup();
     };
-  }, []);
+  }, [isMocked]);
 
   const leaveChannel = useCallback(async () => {
     if (engineRef.current) {
@@ -335,16 +495,18 @@ export function useAgoraEngine({
     }
   }, []);
 
-  const setRemoteVideoStreamType = useCallback(async (uid: number, streamType: VideoStreamType) => {
-    if (engineRef.current) {
+  const setRemoteVideoStreamType = useCallback(async (uid: number, streamType: any) => {
+    if (engineRef.current && !isMocked) {
       try {
-        console.log(`🔄 [useAgoraEngine] Setting stream type for UID ${uid} to ${streamType === VideoStreamType.VideoStreamHigh ? 'HIGH' : 'LOW'}`);
+        console.log(`🔄 [useAgoraEngine] Setting stream type for UID ${uid} to ${streamType === VideoStreamType?.VideoStreamHigh ? 'HIGH' : 'LOW'}`);
         await engineRef.current.setRemoteVideoStreamType(uid, streamType);
       } catch (err) {
         console.error('❌ [useAgoraEngine] Error setting stream type:', err);
       }
+    } else if (isMocked) {
+      console.log(`🎭 [MOCK AGORA] setRemoteVideoStreamType called for UID ${uid}`);
     }
-  }, []);
+  }, [isMocked]);
 
   return {
     engine,
@@ -355,10 +517,12 @@ export function useAgoraEngine({
     streamId,
     channelName,
     speakingUids,
+    isMocked,
     leaveChannel,
     setRemoteVideoStreamType,
   };
 }
 
 // Export Agora types and components for use in native screens
-export { RtcSurfaceView, VideoSourceType } from 'react-native-agora';
+// In Expo Go, these will be mock components
+export { RtcSurfaceView, VideoSourceType };

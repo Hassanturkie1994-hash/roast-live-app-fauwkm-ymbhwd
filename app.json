@@ -56,6 +56,20 @@
           "microphonePermission": "Roast Live needs access to your microphone so others can hear you during the roast.",
           "recordAudioAndroid": true
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "buildToolsVersion": "34.0.0"
+          },
+          "ios": {
+            "deploymentTarget": "13.4"
+          }
+        }
       ]
     ],
     "experiments": {
@@ -66,5 +80,6 @@
         "origin": false
       }
     }
-  }
+  },
+  "scheme": "Roast Live"
 }

@@ -62,6 +62,26 @@ export interface IdentityVerification {
  */
 class IdentityVerificationService {
   /**
+   * Check if user can go live
+   * 
+   * UPDATED: Streaming no longer requires verification
+   * This method now always returns true for backward compatibility
+   */
+  async canGoLive(userId: string): Promise<{ canGoLive: boolean; reason?: string }> {
+    try {
+      console.log('✅ [IdentityVerification] canGoLive check - verification not required for streaming');
+      
+      // Streaming no longer requires verification
+      // Users can stream without identity verification
+      return { canGoLive: true };
+    } catch (error) {
+      console.error('Error in canGoLive:', error);
+      // Even on error, allow streaming (fail open)
+      return { canGoLive: true };
+    }
+  }
+
+  /**
    * Check if user is verified for payouts
    */
   async isUserVerifiedForPayouts(userId: string): Promise<boolean> {
@@ -438,12 +458,6 @@ class IdentityVerificationService {
       return { canReceive: false, reason: 'Failed to check verification status' };
     }
   }
-
-  /**
-   * REMOVED: canGoLive - streaming no longer requires verification
-   * Users can stream without verification
-   * Verification is only required for payouts
-   */
 }
 
 export const identityVerificationService = new IdentityVerificationService();

@@ -1,4 +1,3 @@
-
 {
   "name": "roast-live",
   "version": "1.0.0",
@@ -44,6 +43,7 @@
     "expo": "~54.0.1",
     "expo-av": "^16.0.8",
     "expo-blur": "^15.0.6",
+    "expo-build-properties": "^1.0.10",
     "expo-camera": "^17.0.10",
     "expo-constants": "~18.0.8",
     "expo-crypto": "^15.0.8",

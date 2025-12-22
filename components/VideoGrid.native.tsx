@@ -1,166 +1,89 @@
 
-import React, { useMemo } from 'react';
-import { View, StyleSheet, Dimensions, TouchableOpacity, Text } from 'react-native';
-import { RtcSurfaceView, VideoStreamType } from 'react-native-agora';
+import React from 'react';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import Constants from 'expo-constants';
+import { RtcSurfaceView, VideoSourceType } from '@/hooks/useAgoraEngine';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface VideoGridProps {
   localUid: number;
   remoteUids: number[];
-  onUserTap?: (uid: number) => void;
-  fullScreenUid?: number | null;
-  speakingUids?: number[];
+  isMocked?: boolean;
 }
 
+// Check if we're in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
+
 /**
- * VideoGrid Component (Native - iOS/Android)
+ * VideoGrid Component (Native)
  * 
- * Dynamically renders video feeds in an optimized grid layout using Agora RTC
+ * Displays video feeds in a grid layout for multi-guest streaming.
  * 
- * FEATURES:
- * - 1-2 users: Full screen / Split screen
- * - 3-4 users: 2x2 Grid
- * - 5+ users: 3-column Grid
- * - Subscribes to Low quality streams for bandwidth optimization
- * - Switches to High quality when user is tapped for full screen
- * - Visual "Speaking Indicator" (green border) for active speakers
- * 
- * ARCHITECTURE:
- * - Uses Agora's RtcSurfaceView for hardware-accelerated video rendering
- * - Automatically adjusts layout based on participant count
- * - Optimizes bandwidth by defaulting to low-quality streams
- * - Provides tap-to-focus functionality for full-screen viewing
+ * EXPO GO SUPPORT:
+ * - Shows placeholder views in Expo Go
+ * - Full video rendering in dev client or standalone builds
  */
-export function VideoGrid({
-  localUid,
-  remoteUids,
-  onUserTap,
-  fullScreenUid,
-  speakingUids = [],
-}: VideoGridProps) {
-  const { width, height } = Dimensions.get('window');
-
-  // Calculate layout based on number of users
-  const layout = useMemo(() => {
-    const totalUsers = 1 + remoteUids.length; // Local + remote users
-
-    if (fullScreenUid !== null && fullScreenUid !== undefined) {
-      // Full screen mode for selected user
-      return {
-        columns: 1,
-        rows: 1,
-        itemWidth: width,
-        itemHeight: height,
-        fullScreen: true,
-      };
-    }
-
-    if (totalUsers === 1) {
-      // Single user - full screen
-      return {
-        columns: 1,
-        rows: 1,
-        itemWidth: width,
-        itemHeight: height,
-      };
-    } else if (totalUsers === 2) {
-      // Split screen vertically
-      return {
-        columns: 1,
-        rows: 2,
-        itemWidth: width,
-        itemHeight: height / 2,
-      };
-    } else if (totalUsers <= 4) {
-      // 2x2 Grid
-      return {
-        columns: 2,
-        rows: 2,
-        itemWidth: width / 2,
-        itemHeight: height / 2,
-      };
-    } else if (totalUsers <= 6) {
-      // 2x3 Grid
-      return {
-        columns: 2,
-        rows: 3,
-        itemWidth: width / 2,
-        itemHeight: height / 3,
-      };
-    } else {
-      // 3-column Grid for 7+ users
-      const rows = Math.ceil(totalUsers / 3);
-      return {
-        columns: 3,
-        rows: rows,
-        itemWidth: width / 3,
-        itemHeight: height / rows,
-      };
-    }
-  }, [remoteUids.length, width, height, fullScreenUid]);
-
-  // Render a single video view
-  const renderVideoView = (uid: number, isLocal: boolean, index: number) => {
-    const isSpeaking = speakingUids.includes(uid);
-    const isFullScreen = fullScreenUid === uid;
-
-    return (
-      <TouchableOpacity
-        key={`${uid}-${index}`}
-        style={[
-          styles.videoContainer,
-          {
-            width: layout.itemWidth,
-            height: layout.itemHeight,
-            borderWidth: isSpeaking ? 3 : 0,
-            borderColor: isSpeaking ? '#00FF00' : 'transparent',
-          },
-        ]}
-        onPress={() => onUserTap?.(uid)}
-        activeOpacity={0.8}
-      >
-        <RtcSurfaceView
-          canvas={{
-            uid: uid,
-            sourceType: isLocal ? 0 : 1, // 0 = local, 1 = remote
-            renderMode: 1, // Hidden mode (fit)
-          }}
-          style={styles.video}
-        />
-        {isSpeaking && (
-          <View style={styles.speakingIndicator}>
-            <Text style={styles.speakingText}>🎤 Speaking</Text>
-          </View>
-        )}
-        {isLocal && (
-          <View style={styles.localBadge}>
-            <Text style={styles.localBadgeText}>You</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  // Render full screen mode
-  if (layout.fullScreen && fullScreenUid !== null && fullScreenUid !== undefined) {
-    const isLocal = fullScreenUid === localUid;
+export default function VideoGrid({ localUid, remoteUids, isMocked = false }: VideoGridProps) {
+  // If in Expo Go or mocked, show placeholder
+  if (isExpoGo || isMocked) {
     return (
       <View style={styles.container}>
-        {renderVideoView(fullScreenUid, isLocal, 0)}
+        <View style={styles.mockContainer}>
+          <View style={styles.mockVideoBox}>
+            <Text style={styles.mockText}>⚠️ AGORA VIDEO PREVIEW</Text>
+            <Text style={styles.mockSubtext}>
+              (Not available in Expo Go.{'\n'}Build Dev Client to test.)
+            </Text>
+          </View>
+          {remoteUids.map((uid, index) => (
+            <View key={uid} style={styles.mockVideoBox}>
+              <Text style={styles.mockText}>Remote User {index + 1}</Text>
+              <Text style={styles.mockSubtext}>UID: {uid}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     );
   }
 
-  // Render grid layout
-  const allUids = [localUid, ...remoteUids];
+  // Real Agora video rendering
+  const totalUsers = 1 + remoteUids.length;
+  const gridSize = Math.ceil(Math.sqrt(totalUsers));
+  const videoWidth = SCREEN_WIDTH / gridSize;
+  const videoHeight = videoWidth * (4 / 3); // 4:3 aspect ratio
 
   return (
     <View style={styles.container}>
-      <View style={styles.grid}>
-        {allUids.map((uid, index) => {
-          const isLocal = uid === localUid;
-          return renderVideoView(uid, isLocal, index);
-        })}
+      {/* Local User */}
+      <View style={[styles.videoContainer, { width: videoWidth, height: videoHeight }]}>
+        <RtcSurfaceView
+          style={StyleSheet.absoluteFill}
+          canvas={{
+            uid: localUid,
+            sourceType: VideoSourceType.VideoSourceCamera,
+          }}
+        />
+        <View style={styles.userLabel}>
+          <Text style={styles.userLabelText}>You</Text>
+        </View>
       </View>
+
+      {/* Remote Users */}
+      {remoteUids.map((uid) => (
+        <View key={uid} style={[styles.videoContainer, { width: videoWidth, height: videoHeight }]}>
+          <RtcSurfaceView
+            style={StyleSheet.absoluteFill}
+            canvas={{
+              uid,
+              sourceType: VideoSourceType.VideoSourceRemote,
+            }}
+          />
+          <View style={styles.userLabel}>
+            <Text style={styles.userLabelText}>User {uid}</Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -168,47 +91,60 @@ export function VideoGrid({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
-  },
-  grid: {
-    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    backgroundColor: '#000000',
   },
   videoContainer: {
     position: 'relative',
-    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333333',
   },
-  video: {
-    width: '100%',
-    height: '100%',
-  },
-  speakingIndicator: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    backgroundColor: 'rgba(0, 255, 0, 0.8)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  speakingText: {
-    color: '#000',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  localBadge: {
+  userLabel: {
     position: 'absolute',
     bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    left: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 8,
   },
-  localBadgeText: {
-    color: '#000',
+  userLabelText: {
+    color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '600',
+  },
+  mockContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    gap: 16,
+  },
+  mockVideoBox: {
+    width: '100%',
+    maxWidth: 300,
+    aspectRatio: 4 / 3,
+    backgroundColor: '#000000',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFA500',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  mockText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  mockSubtext: {
+    color: '#CCCCCC',
+    fontSize: 12,
+    fontWeight: '400',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
