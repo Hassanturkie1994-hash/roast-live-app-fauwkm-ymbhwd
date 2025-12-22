@@ -8,8 +8,11 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -64,12 +67,20 @@ interface RoastGiftAnimationData {
  * 9. Stream Health Dashboard - Comprehensive stream metrics
  * 10. Roast Gift System - 45 roast-themed gifts with animations
  * 11. VIP Level Updates - Automatic VIP level progression from gifts
+ * 
+ * UI/UX FIXES:
+ * - SafeAreaView for proper inset handling
+ * - KeyboardAvoidingView for chat input
+ * - Proper z-index layering for UI overlay
  */
 export default function BroadcastScreen() {
   useKeepAwake();
   
+  const insets = useSafeAreaInsets();
+  
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('📺 [BROADCAST] Component rendering with VIP INTEGRATION');
+  console.log('📐 [BROADCAST] Safe area insets:', insets);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   const { streamTitle, contentLabel } = useLocalSearchParams<{
@@ -529,7 +540,7 @@ export default function BroadcastScreen() {
 
   if (initError) {
     return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <IconSymbol
           ios_icon_name="exclamationmark.triangle"
           android_material_icon_name="error"
@@ -546,24 +557,24 @@ export default function BroadcastScreen() {
         >
           <Text style={styles.errorButtonText}>Go Back</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!cameraPermission || !micPermission) {
     return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
         <Text style={[styles.loadingText, { color: colors.text }]}>
           Checking permissions...
         </Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!cameraPermission.granted || !micPermission.granted) {
     return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <IconSymbol
           ios_icon_name="camera.fill"
           android_material_icon_name="camera"
@@ -586,24 +597,24 @@ export default function BroadcastScreen() {
         >
           <Text style={styles.permissionButtonText}>Grant Permissions</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (state === 'IDLE' || state === 'CREATING_STREAM') {
     return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <ActivityIndicator size="large" color={colors.brandPrimary} />
         <Text style={[styles.loadingText, { color: colors.text }]}>
           {state === 'CREATING_STREAM' ? 'Starting stream...' : 'Initializing...'}
         </Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (stateMachineErrorState) {
     return (
-      <View style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={[styles.container, styles.centerContent, { backgroundColor: colors.background }]} edges={['top', 'bottom']}>
         <IconSymbol
           ios_icon_name="exclamationmark.triangle"
           android_material_icon_name="error"
@@ -620,191 +631,204 @@ export default function BroadcastScreen() {
         >
           <Text style={styles.errorButtonText}>Go Back</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
     <View style={styles.container}>
+      {/* Camera View - Extends behind status bar for immersive experience */}
       <CameraView
         ref={cameraRef}
-        style={styles.camera}
+        style={StyleSheet.absoluteFill}
         facing="front"
         mode="video"
       >
-        <NetworkStabilityIndicator
-          isStreaming={state === 'STREAMING'}
-          streamId={streamId || undefined}
-          onReconnect={handleReconnect}
-        />
-
-        {showStreamHealth && (
-          <StreamHealthDashboard
-            viewerCount={viewerCount}
-            giftCount={giftCount}
-            isVisible={showStreamHealth}
+        {/* UI Overlay with proper z-index */}
+        <View style={styles.uiOverlay} pointerEvents="box-none">
+          <NetworkStabilityIndicator
+            isStreaming={state === 'STREAMING'}
+            streamId={streamId || undefined}
+            onReconnect={handleReconnect}
           />
-        )}
 
-        {activeGuests.length > 0 && user && streamId && (
-          <GuestSeatGrid
-            hostName={user.user_metadata?.display_name || 'Host'}
-            hostAvatarUrl={user.user_metadata?.avatar_url}
-            guests={activeGuests}
-            streamId={streamId}
-            hostId={user.id}
-            isHost={true}
-            onRefresh={loadActiveGuests}
-            onEmptySeatPress={() => setShowGuestInvitation(true)}
-          />
-        )}
+          {showStreamHealth && (
+            <StreamHealthDashboard
+              viewerCount={viewerCount}
+              giftCount={giftCount}
+              isVisible={showStreamHealth}
+            />
+          )}
 
-        {streamId && (
-          <PinnedMessageBanner
-            streamId={streamId}
-            canUnpin={true}
-            onUnpin={handleUnpinMessage}
-          />
-        )}
+          {activeGuests.length > 0 && user && streamId && (
+            <GuestSeatGrid
+              hostName={user.user_metadata?.display_name || 'Host'}
+              hostAvatarUrl={user.user_metadata?.avatar_url}
+              guests={activeGuests}
+              streamId={streamId}
+              hostId={user.id}
+              isHost={true}
+              onRefresh={loadActiveGuests}
+              onEmptySeatPress={() => setShowGuestInvitation(true)}
+            />
+          )}
 
-        <View style={styles.topBar}>
-          <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
-            <View style={styles.liveDot} />
-            <Text style={styles.viewerText}>{viewerCount}</Text>
+          {streamId && (
+            <PinnedMessageBanner
+              streamId={streamId}
+              canUnpin={true}
+              onUnpin={handleUnpinMessage}
+            />
+          )}
+
+          {/* Top Bar - Within safe area */}
+          <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
+            <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
+              <View style={styles.liveDot} />
+              <Text style={styles.viewerText}>{viewerCount}</Text>
+            </View>
+
+            <View style={styles.topBarRight}>
+              <TouchableOpacity
+                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+                onPress={() => setShowStreamHealth(!showStreamHealth)}
+              >
+                <IconSymbol
+                  ios_icon_name="chart.bar.fill"
+                  android_material_icon_name="bar_chart"
+                  size={20}
+                  color={showStreamHealth ? colors.brandPrimary : '#FFFFFF'}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+                onPress={() => setShowModeratorPanel(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="shield.fill"
+                  android_material_icon_name="shield"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+                onPress={() => setShowPinnedMessagesModal(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="pin.fill"
+                  android_material_icon_name="push_pin"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+                onPress={() => setShowHostControls(!showHostControls)}
+              >
+                <IconSymbol
+                  ios_icon_name="person.2.fill"
+                  android_material_icon_name="people"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+                onPress={() => setShowSettingsPanel(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="gearshape.fill"
+                  android_material_icon_name="settings"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.topBarButton, { backgroundColor: 'rgba(255, 0, 0, 0.8)' }]}
+                onPress={() => setShowEndModal(true)}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={20}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={styles.topBarRight}>
-            <TouchableOpacity
-              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowStreamHealth(!showStreamHealth)}
-            >
-              <IconSymbol
-                ios_icon_name="chart.bar.fill"
-                android_material_icon_name="bar_chart"
-                size={20}
-                color={showStreamHealth ? colors.brandPrimary : '#FFFFFF'}
+          {/* Chat Overlay with KeyboardAvoidingView */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.chatContainer}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            {showChat && streamId && user && (
+              <ChatOverlay
+                streamId={streamId}
+                isBroadcaster={true}
+                hostId={user.id}
+                hostName={user.user_metadata?.display_name || 'Host'}
               />
-            </TouchableOpacity>
+            )}
+          </KeyboardAvoidingView>
 
+          {/* Bottom Controls - Within safe area */}
+          <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 20 }]}>
             <TouchableOpacity
-              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowModeratorPanel(true)}
+              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowChat(!showChat)}
             >
               <IconSymbol
-                ios_icon_name="shield.fill"
-                android_material_icon_name="shield"
-                size={20}
+                ios_icon_name="bubble.left.fill"
+                android_material_icon_name="chat"
+                size={24}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowPinnedMessagesModal(true)}
+              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowGifts(!showGifts)}
             >
               <IconSymbol
-                ios_icon_name="pin.fill"
-                android_material_icon_name="push_pin"
-                size={20}
+                ios_icon_name="gift.fill"
+                android_material_icon_name="card_giftcard"
+                size={24}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowHostControls(!showHostControls)}
+              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowGuestInvitation(true)}
             >
               <IconSymbol
-                ios_icon_name="person.2.fill"
-                android_material_icon_name="people"
-                size={20}
+                ios_icon_name="person.badge.plus"
+                android_material_icon_name="person_add"
+                size={24}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowSettingsPanel(true)}
+              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowVIPClubPanel(true)}
             >
               <IconSymbol
-                ios_icon_name="gearshape.fill"
-                android_material_icon_name="settings"
-                size={20}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.topBarButton, { backgroundColor: 'rgba(255, 0, 0, 0.8)' }]}
-              onPress={() => setShowEndModal(true)}
-            >
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={20}
+                ios_icon_name="star.circle.fill"
+                android_material_icon_name="workspace_premium"
+                size={24}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
           </View>
-        </View>
-
-        {showChat && streamId && user && (
-          <ChatOverlay
-            streamId={streamId}
-            isBroadcaster={true}
-            hostId={user.id}
-            hostName={user.user_metadata?.display_name || 'Host'}
-          />
-        )}
-
-        <View style={styles.bottomControls}>
-          <TouchableOpacity
-            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-            onPress={() => setShowChat(!showChat)}
-          >
-            <IconSymbol
-              ios_icon_name="bubble.left.fill"
-              android_material_icon_name="chat"
-              size={24}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-            onPress={() => setShowGifts(!showGifts)}
-          >
-            <IconSymbol
-              ios_icon_name="gift.fill"
-              android_material_icon_name="card_giftcard"
-              size={24}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-            onPress={() => setShowGuestInvitation(true)}
-          >
-            <IconSymbol
-              ios_icon_name="person.badge.plus"
-              android_material_icon_name="person_add"
-              size={24}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-            onPress={() => setShowVIPClubPanel(true)}
-          >
-            <IconSymbol
-              ios_icon_name="star.circle.fill"
-              android_material_icon_name="workspace_premium"
-              size={24}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
         </View>
 
         {showGifts && user && (
@@ -881,6 +905,7 @@ export default function BroadcastScreen() {
         )}
       </CameraView>
 
+      {/* Gift Animations - Highest z-index */}
       {giftAnimations.map((animation) => (
         <RoastGiftAnimationOverlay
           key={animation.id}
@@ -928,19 +953,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  camera: {
-    flex: 1,
+  uiOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
   },
   topBar: {
     position: 'absolute',
-    top: 60,
+    top: 0,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    zIndex: 100,
+    zIndex: 110,
   },
   viewerBadge: {
     flexDirection: 'row',
@@ -973,16 +999,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  chatContainer: {
+    position: 'absolute',
+    bottom: 120,
+    left: 0,
+    right: 0,
+    zIndex: 105,
+  },
   bottomControls: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 0,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 16,
     paddingHorizontal: 16,
-    zIndex: 100,
+    zIndex: 110,
   },
   controlButton: {
     width: 56,
