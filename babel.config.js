@@ -19,6 +19,10 @@ module.exports = function (api) {
         {
           root: ["./"],
           extensions: [
+            ".web.tsx",
+            ".web.ts",
+            ".web.jsx",
+            ".web.js",
             ".native.tsx",
             ".native.ts",
             ".ios.tsx",
