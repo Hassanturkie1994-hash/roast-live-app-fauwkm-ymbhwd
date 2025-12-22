@@ -67,7 +67,7 @@ class IdentityVerificationService {
    * UPDATED: Streaming no longer requires verification
    * This method now always returns true for backward compatibility
    */
-  async canGoLive(userId: string): Promise<{ canGoLive: boolean; reason?: string }> {
+  canGoLive = async (userId: string): Promise<{ canGoLive: boolean; reason?: string }> => {
     try {
       console.log('✅ [IdentityVerification] canGoLive check - verification not required for streaming');
       
@@ -84,7 +84,7 @@ class IdentityVerificationService {
   /**
    * Check if user is verified for payouts
    */
-  async isUserVerifiedForPayouts(userId: string): Promise<boolean> {
+  isUserVerifiedForPayouts = async (userId: string): Promise<boolean> => {
     try {
       const { data, error } = await supabase
         .from('identity_verifications')
@@ -108,7 +108,7 @@ class IdentityVerificationService {
   /**
    * Get user's verification data
    */
-  async getUserVerification(userId: string): Promise<IdentityVerification | null> {
+  getUserVerification = async (userId: string): Promise<IdentityVerification | null> => {
     try {
       const { data, error } = await supabase
         .from('identity_verifications')
@@ -131,11 +131,11 @@ class IdentityVerificationService {
   /**
    * Submit identity verification
    */
-  async submitVerification(
+  submitVerification = async (
     userId: string,
     data: IdentityVerificationData,
     verificationMethod: 'manual' | 'automatic' = 'manual'
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       // Check if user already has a verification
       const existing = await this.getUserVerification(userId);
@@ -187,12 +187,12 @@ class IdentityVerificationService {
   /**
    * Upload verification document
    */
-  async uploadVerificationDocument(
+  uploadVerificationDocument = async (
     userId: string,
     fileUri: string,
     documentType: string,
     onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
-  ): Promise<{ success: boolean; url?: string; error?: string }> {
+  ): Promise<{ success: boolean; url?: string; error?: string }> => {
     try {
       console.log('📤 [VerificationService] Uploading document...');
 
@@ -222,11 +222,11 @@ class IdentityVerificationService {
   /**
    * Upload selfie for automatic verification
    */
-  async uploadVerificationSelfie(
+  uploadVerificationSelfie = async (
     userId: string,
     fileUri: string,
     onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
-  ): Promise<{ success: boolean; url?: string; error?: string }> {
+  ): Promise<{ success: boolean; url?: string; error?: string }> => {
     try {
       console.log('📤 [VerificationService] Uploading selfie...');
 
@@ -256,10 +256,10 @@ class IdentityVerificationService {
   /**
    * Approve verification (admin only)
    */
-  async approveVerification(
+  approveVerification = async (
     verificationId: string,
     adminId: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const { error } = await supabase
         .from('identity_verifications')
@@ -288,11 +288,11 @@ class IdentityVerificationService {
   /**
    * Reject verification (admin only)
    */
-  async rejectVerification(
+  rejectVerification = async (
     verificationId: string,
     adminId: string,
     reason: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const { error } = await supabase
         .from('identity_verifications')
@@ -320,11 +320,11 @@ class IdentityVerificationService {
   /**
    * Revoke verification (admin only)
    */
-  async revokeVerification(
+  revokeVerification = async (
     userId: string,
     adminId: string,
     reason: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       const { data: verification, error: fetchError } = await supabase
         .from('identity_verifications')
@@ -365,12 +365,12 @@ class IdentityVerificationService {
   /**
    * Log verification action to audit log
    */
-  private async logVerificationAction(
+  private logVerificationAction = async (
     verificationId: string,
     adminId: string,
     actionType: 'approved' | 'rejected' | 'revoked' | 'viewed',
     reason: string | null
-  ): Promise<void> {
+  ): Promise<void> => {
     try {
       await supabase.from('identity_verification_audit_log').insert({
         verification_id: verificationId,
@@ -387,7 +387,7 @@ class IdentityVerificationService {
   /**
    * Get pending verifications (admin only)
    */
-  async getPendingVerifications(): Promise<IdentityVerification[]> {
+  getPendingVerifications = async (): Promise<IdentityVerification[]> => {
     try {
       const { data, error } = await supabase
         .from('identity_verifications')
@@ -410,9 +410,9 @@ class IdentityVerificationService {
   /**
    * Get all verifications (admin only)
    */
-  async getAllVerifications(
+  getAllVerifications = async (
     status?: 'pending' | 'approved' | 'rejected' | 'revoked'
-  ): Promise<IdentityVerification[]> {
+  ): Promise<IdentityVerification[]> => {
     try {
       let query = supabase
         .from('identity_verifications')
@@ -441,7 +441,7 @@ class IdentityVerificationService {
    * Check if user can receive payouts (must be verified)
    * UPDATED: Streaming no longer requires verification
    */
-  async canReceivePayouts(userId: string): Promise<{ canReceive: boolean; reason?: string }> {
+  canReceivePayouts = async (userId: string): Promise<{ canReceive: boolean; reason?: string }> => {
     try {
       const isVerified = await this.isUserVerifiedForPayouts(userId);
 
@@ -460,4 +460,8 @@ class IdentityVerificationService {
   }
 }
 
-export const identityVerificationService = new IdentityVerificationService();
+// Export a singleton instance
+const identityVerificationService = new IdentityVerificationService();
+
+export { identityVerificationService };
+export default identityVerificationService;
