@@ -34,7 +34,9 @@ import ManagePinnedMessagesModal from '@/components/ManagePinnedMessagesModal';
 import NetworkStabilityIndicator from '@/components/NetworkStabilityIndicator';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import StreamHealthDashboard from '@/components/StreamHealthDashboard';
+import WebRTCLivePublisher from '@/components/WebRTCLivePublisher';
 import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
+import { cloudflareCallsService } from '@/app/services/cloudflareCallsService';
 import { supabase } from '@/app/integrations/supabase/client';
 import { savedStreamService } from '@/app/services/savedStreamService';
 import { roastGiftService } from '@/app/services/roastGiftService';
@@ -53,9 +55,15 @@ interface RoastGiftAnimationData {
 }
 
 /**
- * BroadcastScreen - Complete Feature Set with Roast Gift System + VIP Integration
+ * BroadcastScreen - Complete Feature Set with WebRTC Co-Hosting
  * 
- * FEATURES:
+ * NEW CO-HOSTING FEATURES:
+ * 1. WebRTC Integration - Real-time audio/video with guests
+ * 2. Cloudflare Calls - Session management for co-hosting
+ * 3. Local Video Compositing - Mix host + guest feeds
+ * 4. Guest Management - Invite, remove, mute guests
+ * 
+ * EXISTING FEATURES:
  * 1. Moderator Panel - Manage moderators and banned users
  * 2. Settings Panel - Stream settings, practice mode, who can watch
  * 3. Pinned Messages - Pin and manage important chat messages
@@ -79,7 +87,7 @@ export default function BroadcastScreen() {
   const insets = useSafeAreaInsets();
   
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📺 [BROADCAST] Component rendering with VIP INTEGRATION');
+  console.log('📺 [BROADCAST] Component rendering with WebRTC CO-HOSTING');
   console.log('📐 [BROADCAST] Safe area insets:', insets);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
@@ -128,6 +136,11 @@ export default function BroadcastScreen() {
   const [activeGuests, setActiveGuests] = useState<StreamGuestSeat[]>([]);
   const [showGuestInvitation, setShowGuestInvitation] = useState(false);
   const [showHostControls, setShowHostControls] = useState(false);
+  
+  // WebRTC State
+  const [useWebRTC, setUseWebRTC] = useState(false);
+  const [webRTCReady, setWebRTCReady] = useState(false);
+  const [callSessionId, setCallSessionId] = useState<string | null>(null);
   
   // Settings State
   const [aboutLive, setAboutLive] = useState('');
@@ -194,11 +207,38 @@ export default function BroadcastScreen() {
 
       setActiveGuests(guests);
       console.log('✅ [BROADCAST] Loaded', guests.length, 'active guests');
+      
+      // Enable WebRTC if there are guests
+      if (guests.length > 0 && !useWebRTC) {
+        console.log('🔗 [BROADCAST] Enabling WebRTC for co-hosting');
+        setUseWebRTC(true);
+      }
     } catch (error) {
       console.error('❌ [BROADCAST] Error loading active guests:', error);
       setActiveGuests([]);
     }
-  }, [streamId]);
+  }, [streamId, useWebRTC]);
+
+  // Initialize Cloudflare Calls session when guests join
+  useEffect(() => {
+    if (!streamId || !useWebRTC || callSessionId) return;
+
+    const initCallSession = async () => {
+      console.log('📞 [BROADCAST] Initializing Cloudflare Calls session...');
+      
+      const result = await cloudflareCallsService.createSession(streamId);
+      
+      if (result.success && result.session) {
+        setCallSessionId(result.session.sessionId);
+        console.log('✅ [BROADCAST] Call session created:', result.session.sessionId);
+      } else {
+        console.error('❌ [BROADCAST] Failed to create call session:', result.error);
+        Alert.alert('Co-hosting Error', 'Failed to initialize co-hosting. Guests may not be able to join.');
+      }
+    };
+
+    initCallSession();
+  }, [streamId, useWebRTC, callSessionId]);
 
   const handleSaveStream = useCallback(async () => {
     if (!streamId) {
@@ -328,6 +368,27 @@ export default function BroadcastScreen() {
     setGiftAnimations((prev) => prev.filter((anim) => anim.id !== animationId));
   }, []);
 
+  const handleWebRTCReady = useCallback(() => {
+    console.log('✅ [BROADCAST] WebRTC ready for co-hosting');
+    setWebRTCReady(true);
+  }, []);
+
+  const handleWebRTCError = useCallback((error: Error) => {
+    console.error('❌ [BROADCAST] WebRTC error:', error);
+    Alert.alert('Co-hosting Error', 'Failed to initialize co-hosting. You can continue streaming without guests.');
+    setUseWebRTC(false);
+  }, []);
+
+  const handleGuestConnected = useCallback((guestUserId: string) => {
+    console.log('✅ [BROADCAST] Guest connected via WebRTC:', guestUserId);
+    loadActiveGuests();
+  }, [loadActiveGuests]);
+
+  const handleGuestDisconnected = useCallback((guestUserId: string) => {
+    console.log('🔌 [BROADCAST] Guest disconnected from WebRTC:', guestUserId);
+    loadActiveGuests();
+  }, [loadActiveGuests]);
+
   useEffect(() => {
     const checkPermissions = async () => {
       console.log('🔐 [BROADCAST] Checking permissions...');
@@ -368,7 +429,7 @@ export default function BroadcastScreen() {
       initAttemptedRef.current = true;
       
       try {
-        console.log('🚀 [BROADCAST] Initializing stream with VIP INTEGRATION...');
+        console.log('🚀 [BROADCAST] Initializing stream with WebRTC CO-HOSTING...');
 
         if (!startStream) {
           console.error('❌ [BROADCAST] startStream is undefined');
@@ -637,273 +698,301 @@ export default function BroadcastScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Camera View - Extends behind status bar for immersive experience */}
-      <CameraView
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing="front"
-        mode="video"
-      >
-        {/* UI Overlay with proper z-index */}
-        <View style={styles.uiOverlay} pointerEvents="box-none">
-          <NetworkStabilityIndicator
-            isStreaming={state === 'STREAMING'}
-            streamId={streamId || undefined}
-            onReconnect={handleReconnect}
+      {/* Camera View or WebRTC View */}
+      {useWebRTC && streamId && user ? (
+        <WebRTCLivePublisher
+          streamId={streamId}
+          userId={user.id}
+          isHost={true}
+          guestUserIds={activeGuests.map((g) => g.user_id).filter((id): id is string => id !== null)}
+          onStreamReady={handleWebRTCReady}
+          onStreamError={handleWebRTCError}
+          onGuestConnected={handleGuestConnected}
+          onGuestDisconnected={handleGuestDisconnected}
+        />
+      ) : (
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing="front"
+          mode="video"
+        />
+      )}
+
+      {/* UI Overlay with proper z-index */}
+      <View style={styles.uiOverlay} pointerEvents="box-none">
+        <NetworkStabilityIndicator
+          isStreaming={state === 'STREAMING'}
+          streamId={streamId || undefined}
+          onReconnect={handleReconnect}
+        />
+
+        {showStreamHealth && (
+          <StreamHealthDashboard
+            viewerCount={viewerCount}
+            giftCount={giftCount}
+            isVisible={showStreamHealth}
           />
+        )}
 
-          {showStreamHealth && (
-            <StreamHealthDashboard
-              viewerCount={viewerCount}
-              giftCount={giftCount}
-              isVisible={showStreamHealth}
-            />
-          )}
+        {activeGuests.length > 0 && user && streamId && !useWebRTC && (
+          <GuestSeatGrid
+            hostName={user.user_metadata?.display_name || 'Host'}
+            hostAvatarUrl={user.user_metadata?.avatar_url}
+            guests={activeGuests}
+            streamId={streamId}
+            hostId={user.id}
+            isHost={true}
+            onRefresh={loadActiveGuests}
+            onEmptySeatPress={() => setShowGuestInvitation(true)}
+          />
+        )}
 
-          {activeGuests.length > 0 && user && streamId && (
-            <GuestSeatGrid
-              hostName={user.user_metadata?.display_name || 'Host'}
-              hostAvatarUrl={user.user_metadata?.avatar_url}
-              guests={activeGuests}
-              streamId={streamId}
-              hostId={user.id}
-              isHost={true}
-              onRefresh={loadActiveGuests}
-              onEmptySeatPress={() => setShowGuestInvitation(true)}
-            />
-          )}
+        {streamId && (
+          <PinnedMessageBanner
+            streamId={streamId}
+            canUnpin={true}
+            onUnpin={handleUnpinMessage}
+          />
+        )}
 
-          {streamId && (
-            <PinnedMessageBanner
-              streamId={streamId}
-              canUnpin={true}
-              onUnpin={handleUnpinMessage}
-            />
-          )}
-
-          {/* Top Bar - Within safe area */}
-          <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
-            <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
-              <View style={styles.liveDot} />
-              <Text style={styles.viewerText}>{viewerCount}</Text>
-            </View>
-
-            <View style={styles.topBarRight}>
-              <TouchableOpacity
-                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-                onPress={() => setShowStreamHealth(!showStreamHealth)}
-              >
-                <IconSymbol
-                  ios_icon_name="chart.bar.fill"
-                  android_material_icon_name="bar_chart"
-                  size={20}
-                  color={showStreamHealth ? colors.brandPrimary : '#FFFFFF'}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-                onPress={() => setShowModeratorPanel(true)}
-              >
-                <IconSymbol
-                  ios_icon_name="shield.fill"
-                  android_material_icon_name="shield"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-                onPress={() => setShowPinnedMessagesModal(true)}
-              >
-                <IconSymbol
-                  ios_icon_name="pin.fill"
-                  android_material_icon_name="push_pin"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-                onPress={() => setShowHostControls(!showHostControls)}
-              >
-                <IconSymbol
-                  ios_icon_name="person.2.fill"
-                  android_material_icon_name="people"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-                onPress={() => setShowSettingsPanel(true)}
-              >
-                <IconSymbol
-                  ios_icon_name="gearshape.fill"
-                  android_material_icon_name="settings"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.topBarButton, { backgroundColor: 'rgba(255, 0, 0, 0.8)' }]}
-                onPress={() => setShowEndModal(true)}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark"
-                  android_material_icon_name="close"
-                  size={20}
-                  color="#FFFFFF"
-                />
-              </TouchableOpacity>
-            </View>
+        {/* Top Bar - Within safe area */}
+        <View style={[styles.topBar, { paddingTop: insets.top + 10 }]}>
+          <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
+            <View style={styles.liveDot} />
+            <Text style={styles.viewerText}>{viewerCount}</Text>
           </View>
 
-          {/* Chat Overlay with KeyboardAvoidingView */}
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.chatContainer}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-          >
-            {showChat && streamId && user && (
-              <ChatOverlay
-                streamId={streamId}
-                isBroadcaster={true}
-                hostId={user.id}
-                hostName={user.user_metadata?.display_name || 'Host'}
+          {/* WebRTC Status Indicator */}
+          {useWebRTC && (
+            <View style={[styles.webrtcBadge, { backgroundColor: webRTCReady ? 'rgba(0, 255, 0, 0.3)' : 'rgba(255, 165, 0, 0.3)' }]}>
+              <IconSymbol
+                ios_icon_name="video.fill"
+                android_material_icon_name="videocam"
+                size={14}
+                color="#FFFFFF"
               />
-            )}
-          </KeyboardAvoidingView>
+              <Text style={styles.webrtcText}>
+                {webRTCReady ? 'Co-host Ready' : 'Connecting...'}
+              </Text>
+            </View>
+          )}
 
-          {/* Bottom Controls - Within safe area */}
-          <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.topBarRight}>
             <TouchableOpacity
-              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowChat(!showChat)}
+              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowStreamHealth(!showStreamHealth)}
             >
               <IconSymbol
-                ios_icon_name="bubble.left.fill"
-                android_material_icon_name="chat"
-                size={24}
+                ios_icon_name="chart.bar.fill"
+                android_material_icon_name="bar_chart"
+                size={20}
+                color={showStreamHealth ? colors.brandPrimary : '#FFFFFF'}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowModeratorPanel(true)}
+            >
+              <IconSymbol
+                ios_icon_name="shield.fill"
+                android_material_icon_name="shield"
+                size={20}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowGifts(!showGifts)}
+              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowPinnedMessagesModal(true)}
             >
               <IconSymbol
-                ios_icon_name="gift.fill"
-                android_material_icon_name="card_giftcard"
-                size={24}
+                ios_icon_name="pin.fill"
+                android_material_icon_name="push_pin"
+                size={20}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowGuestInvitation(true)}
+              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowHostControls(!showHostControls)}
             >
               <IconSymbol
-                ios_icon_name="person.badge.plus"
-                android_material_icon_name="person_add"
-                size={24}
+                ios_icon_name="person.2.fill"
+                android_material_icon_name="people"
+                size={20}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
-              onPress={() => setShowVIPClubPanel(true)}
+              style={[styles.topBarButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+              onPress={() => setShowSettingsPanel(true)}
             >
               <IconSymbol
-                ios_icon_name="star.circle.fill"
-                android_material_icon_name="workspace_premium"
-                size={24}
+                ios_icon_name="gearshape.fill"
+                android_material_icon_name="settings"
+                size={20}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.topBarButton, { backgroundColor: 'rgba(255, 0, 0, 0.8)' }]}
+              onPress={() => setShowEndModal(true)}
+            >
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={20}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
           </View>
         </View>
 
-        {showGifts && user && (
-          <RoastGiftSelector
-            visible={showGifts}
-            onClose={() => setShowGifts(false)}
-            receiverId={user.id}
-            receiverName={user.user_metadata?.display_name || 'Host'}
-            streamId={streamId || undefined}
-          />
-        )}
+        {/* Chat Overlay with KeyboardAvoidingView */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.chatContainer}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          {showChat && streamId && user && (
+            <ChatOverlay
+              streamId={streamId}
+              isBroadcaster={true}
+              hostId={user.id}
+              hostName={user.user_metadata?.display_name || 'Host'}
+            />
+          )}
+        </KeyboardAvoidingView>
 
-        {showGuestInvitation && streamId && (
-          <GuestInvitationModal
-            streamId={streamId}
-            onClose={() => setShowGuestInvitation(false)}
-            onInviteSent={() => {
-              setShowGuestInvitation(false);
-              loadActiveGuests();
-            }}
-          />
-        )}
+        {/* Bottom Controls - Within safe area */}
+        <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 20 }]}>
+          <TouchableOpacity
+            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+            onPress={() => setShowChat(!showChat)}
+          >
+            <IconSymbol
+              ios_icon_name="bubble.left.fill"
+              android_material_icon_name="chat"
+              size={24}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
 
-        {showHostControls && streamId && (
-          <HostControlDashboard
-            streamId={streamId}
-            guests={activeGuests}
-            onClose={() => setShowHostControls(false)}
-            onGuestsUpdate={loadActiveGuests}
-          />
-        )}
+          <TouchableOpacity
+            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+            onPress={() => setShowGifts(!showGifts)}
+          >
+            <IconSymbol
+              ios_icon_name="gift.fill"
+              android_material_icon_name="card_giftcard"
+              size={24}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
 
-        {showModeratorPanel && streamId && user && (
-          <ModeratorControlPanel
-            visible={showModeratorPanel}
-            onClose={() => setShowModeratorPanel(false)}
-            streamId={streamId}
-            streamerId={user.id}
-            currentUserId={user.id}
-            isStreamer={true}
-          />
-        )}
+          <TouchableOpacity
+            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+            onPress={() => setShowGuestInvitation(true)}
+          >
+            <IconSymbol
+              ios_icon_name="person.badge.plus"
+              android_material_icon_name="person_add"
+              size={24}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
 
-        {showSettingsPanel && (
-          <LiveSettingsPanel
-            visible={showSettingsPanel}
-            onClose={() => setShowSettingsPanel(false)}
-            aboutLive={aboutLive}
-            setAboutLive={setAboutLive}
-            practiceMode={practiceMode}
-            setPracticeMode={setPracticeMode}
-            whoCanWatch={whoCanWatch}
-            setWhoCanWatch={setWhoCanWatch}
-            selectedModerators={selectedModerators}
-            setSelectedModerators={setSelectedModerators}
-          />
-        )}
+          <TouchableOpacity
+            style={[styles.controlButton, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}
+            onPress={() => setShowVIPClubPanel(true)}
+          >
+            <IconSymbol
+              ios_icon_name="star.circle.fill"
+              android_material_icon_name="workspace_premium"
+              size={24}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
 
-        {showPinnedMessagesModal && streamId && (
-          <ManagePinnedMessagesModal
-            visible={showPinnedMessagesModal}
-            onClose={() => setShowPinnedMessagesModal(false)}
-            streamId={streamId}
-          />
-        )}
+      {showGifts && user && (
+        <RoastGiftSelector
+          visible={showGifts}
+          onClose={() => setShowGifts(false)}
+          receiverId={user.id}
+          receiverName={user.user_metadata?.display_name || 'Host'}
+          streamId={streamId || undefined}
+        />
+      )}
 
-        {showVIPClubPanel && (
-          <VIPClubPanel
-            visible={showVIPClubPanel}
-            onClose={() => setShowVIPClubPanel(false)}
-            selectedClub={selectedVIPClub}
-            onSelectClub={setSelectedVIPClub}
-          />
-        )}
-      </CameraView>
+      {showGuestInvitation && streamId && (
+        <GuestInvitationModal
+          streamId={streamId}
+          onClose={() => setShowGuestInvitation(false)}
+          onInviteSent={() => {
+            setShowGuestInvitation(false);
+            loadActiveGuests();
+          }}
+        />
+      )}
+
+      {showHostControls && streamId && (
+        <HostControlDashboard
+          streamId={streamId}
+          guests={activeGuests}
+          onClose={() => setShowHostControls(false)}
+          onGuestsUpdate={loadActiveGuests}
+        />
+      )}
+
+      {showModeratorPanel && streamId && user && (
+        <ModeratorControlPanel
+          visible={showModeratorPanel}
+          onClose={() => setShowModeratorPanel(false)}
+          streamId={streamId}
+          streamerId={user.id}
+          currentUserId={user.id}
+          isStreamer={true}
+        />
+      )}
+
+      {showSettingsPanel && (
+        <LiveSettingsPanel
+          visible={showSettingsPanel}
+          onClose={() => setShowSettingsPanel(false)}
+          aboutLive={aboutLive}
+          setAboutLive={setAboutLive}
+          practiceMode={practiceMode}
+          setPracticeMode={setPracticeMode}
+          whoCanWatch={whoCanWatch}
+          setWhoCanWatch={setWhoCanWatch}
+          selectedModerators={selectedModerators}
+          setSelectedModerators={setSelectedModerators}
+        />
+      )}
+
+      {showPinnedMessagesModal && streamId && (
+        <ManagePinnedMessagesModal
+          visible={showPinnedMessagesModal}
+          onClose={() => setShowPinnedMessagesModal(false)}
+          streamId={streamId}
+        />
+      )}
+
+      {showVIPClubPanel && (
+        <VIPClubPanel
+          visible={showVIPClubPanel}
+          onClose={() => setShowVIPClubPanel(false)}
+          selectedClub={selectedVIPClub}
+          onSelectClub={setSelectedVIPClub}
+        />
+      )}
 
       {/* Gift Animations - Highest z-index */}
       {giftAnimations.map((animation) => (
@@ -967,6 +1056,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     zIndex: 110,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   viewerBadge: {
     flexDirection: 'row',
@@ -986,6 +1077,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  webrtcBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  webrtcText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   topBarRight: {
     flexDirection: 'row',
