@@ -79,6 +79,7 @@ export default function SafeAgoraView({ uid, sourceType, style }: SafeAgoraViewP
     console.log('🚀 [SafeAgoraView] Attempting to load Agora SDK...');
     
     // Dynamic require - only executed in dev client/standalone
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const AgoraSDK = require('react-native-agora');
     
     if (!AgoraSDK || !AgoraSDK.RtcSurfaceView || !AgoraSDK.VideoSourceType) {
