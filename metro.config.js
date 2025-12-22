@@ -61,11 +61,34 @@ const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   // For web platform, block native-only modules
   if (platform === 'web') {
+    // Block react-native-agora entirely on web
+    if (
+      moduleName === 'react-native-agora' ||
+      moduleName.startsWith('react-native-agora/')
+    ) {
+      console.log(`[Metro] Blocking native-only module on web: ${moduleName}`);
+      return {
+        type: 'empty',
+      };
+    }
+
+    // Block react-native internal codegenNativeComponent
+    if (
+      moduleName.includes('codegenNativeComponent') ||
+      moduleName.includes('react-native/Libraries/Utilities/codegenNativeComponent')
+    ) {
+      console.log(`[Metro] Blocking codegenNativeComponent on web: ${moduleName}`);
+      return {
+        type: 'empty',
+      };
+    }
+
     // Block react-native internal modules
     if (
       moduleName.includes('react-native/Libraries/ReactPrivate') ||
       moduleName.includes('ReactNativePrivateInitializeCore')
     ) {
+      console.log(`[Metro] Blocking React Native private module on web: ${moduleName}`);
       return {
         type: 'empty',
       };
@@ -73,6 +96,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     
     // Block @expo/metro-runtime native imports
     if (moduleName.includes('@expo/metro-runtime') && moduleName.includes('.native')) {
+      console.log(`[Metro] Blocking @expo/metro-runtime native import on web: ${moduleName}`);
       return {
         type: 'empty',
       };
@@ -80,6 +104,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 
     // Block react-native/Libraries/Core/InitializeCore on web
     if (moduleName.includes('react-native/Libraries/Core/InitializeCore')) {
+      console.log(`[Metro] Blocking InitializeCore on web: ${moduleName}`);
       return {
         type: 'empty',
       };
@@ -90,6 +115,15 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       moduleName.includes('react-native/Libraries/Renderer') ||
       moduleName.includes('ReactNativeRenderer')
     ) {
+      console.log(`[Metro] Blocking React Native renderer on web: ${moduleName}`);
+      return {
+        type: 'empty',
+      };
+    }
+
+    // Block any other react-native/Libraries/Utilities imports on web
+    if (moduleName.includes('react-native/Libraries/Utilities')) {
+      console.log(`[Metro] Blocking React Native utilities on web: ${moduleName}`);
       return {
         type: 'empty',
       };
