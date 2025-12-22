@@ -20,11 +20,11 @@ import { supabase } from '@/app/integrations/supabase/client';
  */
 
 interface PeerConnectionConfig {
-  iceServers: Array<{
+  iceServers: {
     urls: string | string[];
     username?: string;
     credential?: string;
-  }>;
+  }[];
 }
 
 interface GuestConnection {
@@ -570,8 +570,8 @@ class WebRTCService {
   /**
    * Get connection status for all guests
    */
-  getConnectionStatus(): Array<{ userId: string; isConnected: boolean }> {
-    const status: Array<{ userId: string; isConnected: boolean }> = [];
+  getConnectionStatus(): { userId: string; isConnected: boolean }[] {
+    const status: { userId: string; isConnected: boolean }[] = [];
     
     this.peerConnections.forEach((connection) => {
       status.push({

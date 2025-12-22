@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { cloudflareService } from '@/app/services/cloudflareService';
+import { agoraService } from '@/app/services/agoraService';
 
 interface DiagnosticResult {
   timestamp: string;
@@ -28,30 +28,30 @@ export function ServiceDiagnostic() {
     console.log('🔍 [ServiceDiagnostic] Running diagnostic...');
 
     const checks = {
-      serviceExists: typeof cloudflareService !== 'undefined',
-      serviceIsObject: typeof cloudflareService === 'object' && cloudflareService !== null,
-      hasCreateLiveStream: cloudflareService && 'createLiveStream' in cloudflareService,
-      createLiveStreamIsFunction: cloudflareService && typeof cloudflareService.createLiveStream === 'function',
-      hasStartLive: cloudflareService && 'startLive' in cloudflareService,
-      startLiveIsFunction: cloudflareService && typeof cloudflareService.startLive === 'function',
-      hasStopLive: cloudflareService && 'stopLive' in cloudflareService,
-      stopLiveIsFunction: cloudflareService && typeof cloudflareService.stopLive === 'function',
-      hasVerifyService: cloudflareService && 'verifyService' in cloudflareService,
+      serviceExists: typeof agoraService !== 'undefined',
+      serviceIsObject: typeof agoraService === 'object' && agoraService !== null,
+      hasCreateLiveStream: agoraService && 'createLiveStream' in agoraService,
+      createLiveStreamIsFunction: agoraService && typeof agoraService.createLiveStream === 'function',
+      hasStartLive: agoraService && 'startLive' in agoraService,
+      startLiveIsFunction: agoraService && typeof agoraService.startLive === 'function',
+      hasStopLive: agoraService && 'stopLive' in agoraService,
+      stopLiveIsFunction: agoraService && typeof agoraService.stopLive === 'function',
+      hasVerifyService: agoraService && 'verifyService' in agoraService,
       verifyServiceResult: null as boolean | null,
     };
 
     // Run verifyService if available
-    if (checks.hasVerifyService && typeof cloudflareService.verifyService === 'function') {
+    if (checks.hasVerifyService && typeof agoraService.verifyService === 'function') {
       try {
-        checks.verifyServiceResult = cloudflareService.verifyService();
+        checks.verifyServiceResult = agoraService.verifyService();
       } catch (error) {
         console.error('Error running verifyService:', error);
         checks.verifyServiceResult = false;
       }
     }
 
-    const availableMethods = cloudflareService ? Object.keys(cloudflareService) : [];
-    const serviceType = typeof cloudflareService;
+    const availableMethods = agoraService ? Object.keys(agoraService) : [];
+    const serviceType = typeof agoraService;
 
     const diagnosticResult: DiagnosticResult = {
       timestamp: new Date().toISOString(),

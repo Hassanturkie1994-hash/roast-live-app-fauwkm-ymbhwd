@@ -293,8 +293,9 @@ export function useAgoraEngine({
       isMountedRef.current = false;
       
       // Clear all speaking timeouts
-      speakingTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-      speakingTimeoutsRef.current.clear();
+      const timeouts = speakingTimeoutsRef.current;
+      timeouts.forEach(timeout => clearTimeout(timeout));
+      timeouts.clear();
     };
   }, [streamTitle, userId, onStreamReady, onStreamError]);
 

@@ -18,7 +18,7 @@ import { automatedSafetyService } from './automatedSafetyService';
 import { banExpirationService } from './banExpirationService';
 import { behavioralSafetyService } from './behavioralSafetyService';
 import { cdnService } from './cdnService';
-import { cloudflareService } from './cloudflareService';
+import { agoraService } from './agoraService';
 import { clubSubscriptionService } from './clubSubscriptionService';
 import { commentService } from './commentService';
 import { contentSafetyService } from './contentSafetyService';
@@ -96,7 +96,7 @@ export const ServiceRegistry = {
   
   // Media & CDN
   cdn: cdnService,
-  cloudflare: cloudflareService,
+  agora: agoraService,
   media: mediaService,
   r2: r2Service,
   
@@ -204,7 +204,7 @@ export function checkServiceHealth(): {
   // Check core services
   services.achievement = !!ServiceRegistry.achievement;
   services.admin = !!ServiceRegistry.admin;
-  services.cloudflare = !!ServiceRegistry.cloudflare;
+  services.agora = !!ServiceRegistry.agora;
   services.stream = !!ServiceRegistry.stream;
   services.wallet = !!ServiceRegistry.wallet;
   services.stripe = !!ServiceRegistry.stripe;
@@ -267,7 +267,7 @@ export {
   banExpirationService,
   behavioralSafetyService,
   cdnService,
-  cloudflareService,
+  agoraService,
   clubSubscriptionService,
   commentService,
   contentSafetyService,
