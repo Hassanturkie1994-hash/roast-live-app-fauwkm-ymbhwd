@@ -2,6 +2,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Constants from 'expo-constants';
+import SafeAgoraView from './SafeAgoraView';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -14,58 +15,27 @@ interface VideoGridProps {
 // Check if we're in Expo Go using executionEnvironment (recommended) or appOwnership (deprecated fallback)
 const isExpoGo = Constants.executionEnvironment === 'storeClient' || Constants.appOwnership === 'expo';
 
-// Conditionally import RtcSurfaceView and VideoSourceType
-let RtcSurfaceView: any = null;
-let VideoSourceType: any = null;
-
-if (!isExpoGo) {
-  try {
-    const AgoraSDK = require('react-native-agora');
-    RtcSurfaceView = AgoraSDK.RtcSurfaceView;
-    VideoSourceType = AgoraSDK.VideoSourceType;
-    console.log('✅ [VideoGrid] Agora components loaded');
-  } catch (error) {
-    console.warn('⚠️ [VideoGrid] Failed to load Agora components:', error);
-  }
-}
-
 /**
  * VideoGrid Component (Native)
  * 
  * Displays video feeds in a grid layout for multi-guest streaming.
  * 
  * EXPO GO SUPPORT:
+ * - Uses SafeAgoraView component for safe rendering
  * - Shows placeholder views in Expo Go
  * - Full video rendering in dev client or standalone builds
+ * 
+ * CRITICAL: Uses SafeAgoraView to prevent white screen crashes
  */
 export default function VideoGrid({ localUid, remoteUids, isMocked = false }: VideoGridProps) {
-  // If in Expo Go or mocked, show placeholder
-  if (isExpoGo || isMocked || !RtcSurfaceView) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.mockContainer}>
-          <View style={styles.mockVideoBox}>
-            <Text style={styles.mockText}>⚠️ VIDEO DISABLED IN EXPO GO</Text>
-            <Text style={styles.mockSubtext}>
-              Agora video streaming requires native code.{'\n'}
-              Build a Development Client to test video.
-            </Text>
-            <Text style={styles.mockInfo}>
-              Local UID: {localUid}
-            </Text>
-          </View>
-          {remoteUids.map((uid, index) => (
-            <View key={uid} style={styles.mockVideoBox}>
-              <Text style={styles.mockText}>Remote User {index + 1}</Text>
-              <Text style={styles.mockSubtext}>UID: {uid}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    );
-  }
+  console.log('📺 [VideoGrid] Rendering with:', {
+    localUid,
+    remoteUids,
+    isMocked,
+    isExpoGo,
+  });
 
-  // Real Agora video rendering
+  // Calculate grid layout
   const totalUsers = 1 + remoteUids.length;
   const gridSize = Math.ceil(Math.sqrt(totalUsers));
   const videoWidth = SCREEN_WIDTH / gridSize;
@@ -75,30 +45,32 @@ export default function VideoGrid({ localUid, remoteUids, isMocked = false }: Vi
     <View style={styles.container}>
       {/* Local User */}
       <View style={[styles.videoContainer, { width: videoWidth, height: videoHeight }]}>
-        <RtcSurfaceView
+        <SafeAgoraView
+          uid={localUid}
+          sourceType="camera"
           style={StyleSheet.absoluteFill}
-          canvas={{
-            uid: localUid,
-            sourceType: VideoSourceType.VideoSourceCamera,
-          }}
         />
         <View style={styles.userLabel}>
           <Text style={styles.userLabelText}>You</Text>
+          {(isExpoGo || isMocked) && (
+            <Text style={styles.mockIndicator}>MOCK</Text>
+          )}
         </View>
       </View>
 
       {/* Remote Users */}
       {remoteUids.map((uid) => (
         <View key={uid} style={[styles.videoContainer, { width: videoWidth, height: videoHeight }]}>
-          <RtcSurfaceView
+          <SafeAgoraView
+            uid={uid}
+            sourceType="remote"
             style={StyleSheet.absoluteFill}
-            canvas={{
-              uid,
-              sourceType: VideoSourceType.VideoSourceRemote,
-            }}
           />
           <View style={styles.userLabel}>
             <Text style={styles.userLabelText}>User {uid}</Text>
+            {(isExpoGo || isMocked) && (
+              <Text style={styles.mockIndicator}>MOCK</Text>
+            )}
           </View>
         </View>
       ))}
@@ -126,50 +98,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   userLabelText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
   },
-  mockContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    gap: 16,
-  },
-  mockVideoBox: {
-    width: '100%',
-    maxWidth: 300,
-    aspectRatio: 4 / 3,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#FFA500',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  mockText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  mockSubtext: {
-    color: '#CCCCCC',
-    fontSize: 12,
-    fontWeight: '400',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  mockInfo: {
+  mockIndicator: {
     color: '#FFA500',
-    fontSize: 11,
-    fontWeight: '500',
-    textAlign: 'center',
+    fontSize: 9,
+    fontWeight: '700',
   },
 });
