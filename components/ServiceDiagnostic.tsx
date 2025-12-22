@@ -21,6 +21,17 @@ interface DiagnosticResult {
   serviceType: string;
 }
 
+/**
+ * ServiceDiagnostic Component
+ * 
+ * Diagnostic tool for verifying Agora service integration.
+ * This component checks that the Agora service is properly initialized
+ * and all required methods are available.
+ * 
+ * LEGACY CLEANUP:
+ * - Removed cloudflareService import (deprecated)
+ * - Only checks Agora service (current implementation)
+ */
 export function ServiceDiagnostic() {
   const [result, setResult] = useState<DiagnosticResult | null>(null);
 
@@ -79,7 +90,7 @@ export function ServiceDiagnostic() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Service Diagnostic</Text>
+      <Text style={styles.title}>Agora Service Diagnostic</Text>
       <Text style={styles.timestamp}>{result.timestamp}</Text>
 
       <View style={[styles.statusBadge, allChecksPassed ? styles.statusSuccess : styles.statusError]}>
@@ -109,6 +120,15 @@ export function ServiceDiagnostic() {
         {result.availableMethods.map((method) => (
           <Text key={method} style={styles.methodItem}>• {method}</Text>
         ))}
+      </View>
+
+      <View style={styles.infoSection}>
+        <Text style={styles.infoTitle}>ℹ️ Migration Complete</Text>
+        <Text style={styles.infoText}>
+          All streaming functionality now uses Agora RTC SDK.
+          {'\n\n'}
+          Legacy WebRTC and Cloudflare services have been removed.
+        </Text>
       </View>
     </ScrollView>
   );
@@ -187,5 +207,24 @@ const styles = StyleSheet.create({
     color: '#333333',
     marginBottom: 4,
     fontFamily: 'monospace',
+  },
+  infoSection: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1976D2',
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#424242',
+    lineHeight: 20,
   },
 });

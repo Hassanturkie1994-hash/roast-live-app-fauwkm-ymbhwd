@@ -7,6 +7,11 @@
  * - All legacy services have been removed
  * - Only NEW Roast systems are registered
  * - Legacy service imports will cause build errors
+ * 
+ * WEBRTC CLEANUP:
+ * - react-native-webrtc has been completely removed
+ * - All streaming now uses Agora RTC SDK
+ * - webRTCService is deprecated (stub only)
  */
 
 import { achievementService } from './achievementService';
@@ -82,6 +87,7 @@ import { validateServiceInitialization } from '@/utils/legacySystemGuard';
  * 3. Roast Season Rankings (leaderboardService, globalLeaderboardService)
  * 4. Roast Battles (battleService - imported separately)
  * 5. Creator Leveling (creatorEarningsService)
+ * 6. Agora RTC Streaming (agoraService - replaces WebRTC)
  */
 export const ServiceRegistry = {
   // Core Services
@@ -96,7 +102,7 @@ export const ServiceRegistry = {
   
   // Media & CDN
   cdn: cdnService,
-  agora: agoraService,
+  agora: agoraService, // NEW: Agora RTC (replaces WebRTC)
   media: mediaService,
   r2: r2Service,
   
@@ -188,6 +194,7 @@ export const ServiceRegistry = {
  * LEGACY SYSTEM CHECK:
  * - Validates that no legacy services are registered
  * - Ensures only NEW Roast systems are active
+ * - Verifies Agora RTC is available (replaces WebRTC)
  */
 export function checkServiceHealth(): {
   healthy: boolean;
@@ -204,7 +211,7 @@ export function checkServiceHealth(): {
   // Check core services
   services.achievement = !!ServiceRegistry.achievement;
   services.admin = !!ServiceRegistry.admin;
-  services.agora = !!ServiceRegistry.agora;
+  services.agora = !!ServiceRegistry.agora; // NEW: Agora RTC check
   services.stream = !!ServiceRegistry.stream;
   services.wallet = !!ServiceRegistry.wallet;
   services.stripe = !!ServiceRegistry.stripe;
@@ -216,7 +223,7 @@ export function checkServiceHealth(): {
   if (!healthy) {
     console.error('❌ Service health check failed:', services);
   } else {
-    console.log('✅ All critical services are healthy (NEW ROAST SYSTEMS ONLY)');
+    console.log('✅ All critical services are healthy (NEW ROAST SYSTEMS + AGORA RTC)');
   }
   
   return { healthy, services };
@@ -229,10 +236,11 @@ export function checkServiceHealth(): {
  * LEGACY SYSTEM CHECK:
  * - Validates service names to ensure no legacy services are initialized
  * - Only NEW Roast systems are allowed
+ * - Verifies Agora RTC is initialized (replaces WebRTC)
  */
 export async function initializeServices(): Promise<void> {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('🚀 [SERVICE REGISTRY] Initializing NEW ROAST SYSTEMS ONLY...');
+  console.log('🚀 [SERVICE REGISTRY] Initializing NEW ROAST SYSTEMS + AGORA RTC...');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   try {
@@ -240,6 +248,7 @@ export async function initializeServices(): Promise<void> {
     validateServiceInitialization('roastGiftService');
     validateServiceInitialization('vipMembershipService');
     validateServiceInitialization('leaderboardService');
+    validateServiceInitialization('agoraService'); // NEW: Validate Agora
     
     // Check service health
     const health = checkServiceHealth();
@@ -248,7 +257,7 @@ export async function initializeServices(): Promise<void> {
       console.warn('⚠️ Some services are not available');
     }
     
-    console.log('✅ [SERVICE REGISTRY] NEW ROAST SYSTEMS initialized successfully');
+    console.log('✅ [SERVICE REGISTRY] NEW ROAST SYSTEMS + AGORA RTC initialized successfully');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   } catch (error) {
     console.error('❌ Error initializing services:', error);
@@ -267,7 +276,7 @@ export {
   banExpirationService,
   behavioralSafetyService,
   cdnService,
-  agoraService,
+  agoraService, // NEW: Agora RTC (replaces WebRTC)
   clubSubscriptionService,
   commentService,
   contentSafetyService,
