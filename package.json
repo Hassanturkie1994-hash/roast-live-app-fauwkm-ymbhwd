@@ -41,7 +41,6 @@
     "difflib": "^0.2.4",
     "eas": "^0.1.0",
     "expo": "~54.0.1",
-    "expo-dev-client": "~6.0.0",
     "expo-av": "^16.0.8",
     "expo-blur": "^15.0.6",
     "expo-camera": "^17.0.10",
@@ -99,11 +98,8 @@
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react": "^7.37.4",
     "globals": "^15.14.0",
-    "typescript": "^5.3.3",
+    "typescript": "^5.9.3",
     "webpack-cli": "^6.0.1"
-  },
-  "overrides": {
-    "typescript": "5.3.3"
   },
   "resolutions": {
     "@expo/prebuild-config": "latest"
