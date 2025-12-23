@@ -16,9 +16,7 @@ export { banExpirationService } from './banExpirationService';
 export { battleService } from './battleService';
 export { behavioralSafetyService } from './behavioralSafetyService';
 export { cdnService } from './cdnService';
-export { agoraService } from './agoraService';
-// Legacy export for backward compatibility
-export { cloudflareService } from './agoraService';
+export { cloudflareService } from './cloudflareService';
 export { clubSubscriptionService } from './clubSubscriptionService';
 export { commentService } from './commentService';
 export { communityGuidelinesService } from './communityGuidelinesService';

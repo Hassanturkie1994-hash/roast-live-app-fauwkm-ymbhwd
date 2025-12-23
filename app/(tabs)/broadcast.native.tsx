@@ -14,9 +14,10 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
+import Constants from 'expo-constants';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAgoraEngine, RtcSurfaceView, VideoSourceType } from '@/hooks/useAgoraEngine';
+import { useAgoraEngine } from '@/hooks/useAgoraEngine';
 import { IconSymbol } from '@/components/IconSymbol';
 import ChatOverlay from '@/components/ChatOverlay';
 import RoastGiftSelector from '@/components/RoastGiftSelector';
@@ -33,13 +34,16 @@ import ManagePinnedMessagesModal from '@/components/ManagePinnedMessagesModal';
 import NetworkStabilityIndicator from '@/components/NetworkStabilityIndicator';
 import VIPClubPanel from '@/components/VIPClubPanel';
 import StreamHealthDashboard from '@/components/StreamHealthDashboard';
-import ARView from '@/modules/ar-filter-engine';
+import VideoGrid from '@/components/VideoGrid';
 import { streamGuestService, StreamGuestSeat } from '@/app/services/streamGuestService';
 import { supabase } from '@/app/integrations/supabase/client';
 import { savedStreamService } from '@/app/services/savedStreamService';
 import { roastGiftService } from '@/app/services/roastGiftService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Check if we're in Expo Go
+const isExpoGo = Constants.appOwnership === 'expo';
 
 interface RoastGiftAnimationData {
   id: string;
@@ -54,6 +58,11 @@ interface RoastGiftAnimationData {
 
 /**
  * BroadcastScreen - AGORA INTEGRATION for 1v1 Roast Battles (Native)
+ * 
+ * EXPO GO SUPPORT:
+ * ✅ Detects Expo Go environment
+ * ✅ Shows mock video preview in Expo Go
+ * ✅ Full Agora functionality in dev client/standalone
  * 
  * MIGRATION COMPLETE:
  * ✅ Removed Cloudflare Stream logic
@@ -83,6 +92,7 @@ export default function BroadcastScreen() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('📺 [BROADCAST] AGORA Component rendering (Native)');
   console.log('📐 [BROADCAST] Safe area insets:', insets);
+  console.log('🎭 [BROADCAST] Environment:', isExpoGo ? 'Expo Go' : 'Dev Client/Standalone');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   const { streamTitle, contentLabel } = useLocalSearchParams<{
@@ -102,6 +112,7 @@ export default function BroadcastScreen() {
     error: agoraError,
     streamId,
     channelName,
+    isMocked,
     leaveChannel,
   } = useAgoraEngine({
     streamTitle: streamTitle || 'Untitled Stream',
@@ -462,54 +473,23 @@ export default function BroadcastScreen() {
         <Text style={[styles.loadingText, { color: colors.text }]}>
           {!isInitialized ? 'Initializing Agora...' : 'Joining channel...'}
         </Text>
+        {isMocked && (
+          <Text style={[styles.mockWarning, { color: colors.textSecondary }]}>
+            Running in Expo Go - Mock mode active
+          </Text>
+        )}
       </SafeAreaView>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Video Views - Split screen for 1v1 battles */}
-      {remoteUid ? (
-        // 1v1 Battle Mode - Split Screen
-        <View style={styles.splitScreenContainer}>
-          {/* Local User (Host) - Top Half */}
-          <View style={styles.splitScreenTop}>
-            <RtcSurfaceView
-              style={StyleSheet.absoluteFill}
-              canvas={{
-                uid: 0,
-                sourceType: VideoSourceType.VideoSourceCamera,
-              }}
-            />
-            <View style={styles.userLabel}>
-              <Text style={styles.userLabelText}>You (Host)</Text>
-            </View>
-          </View>
-
-          {/* Remote User (Guest) - Bottom Half */}
-          <View style={styles.splitScreenBottom}>
-            <RtcSurfaceView
-              style={StyleSheet.absoluteFill}
-              canvas={{
-                uid: remoteUid,
-                sourceType: VideoSourceType.VideoSourceRemote,
-              }}
-            />
-            <View style={styles.userLabel}>
-              <Text style={styles.userLabelText}>Guest</Text>
-            </View>
-          </View>
-        </View>
-      ) : (
-        // Solo Mode - Full Screen
-        <RtcSurfaceView
-          style={StyleSheet.absoluteFill}
-          canvas={{
-            uid: 0,
-            sourceType: VideoSourceType.VideoSourceCamera,
-          }}
-        />
-      )}
+      {/* Video Views - Use VideoGrid component for proper Expo Go handling */}
+      <VideoGrid
+        localUid={0}
+        remoteUids={remoteUids}
+        isMocked={isMocked}
+      />
 
       {/* UI Overlay with proper z-index */}
       <View style={styles.uiOverlay} pointerEvents="box-none">
@@ -553,6 +533,7 @@ export default function BroadcastScreen() {
           <View style={[styles.viewerBadge, { backgroundColor: 'rgba(0, 0, 0, 0.6)' }]}>
             <View style={styles.liveDot} />
             <Text style={styles.viewerText}>{viewerCount}</Text>
+            {isMocked && <Text style={styles.mockBadge}>MOCK</Text>}
           </View>
 
           <View style={styles.topBarRight}>
@@ -820,31 +801,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  splitScreenContainer: {
-    flex: 1,
-  },
-  splitScreenTop: {
-    flex: 1,
-    position: 'relative',
-  },
-  splitScreenBottom: {
-    flex: 1,
-    position: 'relative',
-  },
-  userLabel: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  userLabelText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   uiOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 100,
@@ -878,6 +834,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  mockBadge: {
+    color: '#FFA500',
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 4,
   },
   topBarRight: {
     flexDirection: 'row',
@@ -920,6 +882,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginTop: 16,
+  },
+  mockWarning: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 8,
+    textAlign: 'center',
   },
   errorText: {
     fontSize: 20,
