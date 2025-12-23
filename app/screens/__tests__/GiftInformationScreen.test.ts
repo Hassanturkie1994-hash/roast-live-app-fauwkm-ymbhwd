@@ -143,7 +143,7 @@ describe('GiftInformationScreen - Sorting and Filtering', () => {
   });
 
   test('Gifts should be filterable by tier', () => {
-    const tiers: ('LOW' | 'MID' | 'HIGH' | 'ULTRA')[] = ['LOW', 'MID', 'HIGH', 'ULTRA'];
+    const tiers: Array<'LOW' | 'MID' | 'HIGH' | 'ULTRA'> = ['LOW', 'MID', 'HIGH', 'ULTRA'];
 
     tiers.forEach((tier) => {
       const filteredGifts = ROAST_GIFT_MANIFEST.filter((gift) => gift.tier === tier);
@@ -155,7 +155,7 @@ describe('GiftInformationScreen - Sorting and Filtering', () => {
   });
 
   test('Each tier should have at least one gift', () => {
-    const tiers: ('LOW' | 'MID' | 'HIGH' | 'ULTRA')[] = ['LOW', 'MID', 'HIGH', 'ULTRA'];
+    const tiers: Array<'LOW' | 'MID' | 'HIGH' | 'ULTRA'> = ['LOW', 'MID', 'HIGH', 'ULTRA'];
 
     tiers.forEach((tier) => {
       const giftsInTier = ROAST_GIFT_MANIFEST.filter((gift) => gift.tier === tier);

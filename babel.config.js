@@ -1,4 +1,3 @@
-
 module.exports = function (api) {
   api.cache(true);
 
@@ -19,18 +18,12 @@ module.exports = function (api) {
         {
           root: ["./"],
           extensions: [
-            ".web.tsx",
-            ".web.ts",
-            ".web.jsx",
-            ".web.js",
-            ".native.tsx",
-            ".native.ts",
-            ".ios.tsx",
             ".ios.ts",
-            ".android.tsx",
             ".android.ts",
-            ".tsx",
             ".ts",
+            ".ios.tsx",
+            ".android.tsx",
+            ".tsx",
             ".jsx",
             ".js",
             ".json",

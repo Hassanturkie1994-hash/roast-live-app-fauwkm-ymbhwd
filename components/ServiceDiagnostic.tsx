@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { agoraService } from '@/app/services/agoraService';
+import { cloudflareService } from '@/app/services/cloudflareService';
 
 interface DiagnosticResult {
   timestamp: string;
@@ -21,17 +21,6 @@ interface DiagnosticResult {
   serviceType: string;
 }
 
-/**
- * ServiceDiagnostic Component
- * 
- * Diagnostic tool for verifying Agora service integration.
- * This component checks that the Agora service is properly initialized
- * and all required methods are available.
- * 
- * LEGACY CLEANUP:
- * - Removed cloudflareService import (deprecated)
- * - Only checks Agora service (current implementation)
- */
 export function ServiceDiagnostic() {
   const [result, setResult] = useState<DiagnosticResult | null>(null);
 
@@ -39,30 +28,30 @@ export function ServiceDiagnostic() {
     console.log('🔍 [ServiceDiagnostic] Running diagnostic...');
 
     const checks = {
-      serviceExists: typeof agoraService !== 'undefined',
-      serviceIsObject: typeof agoraService === 'object' && agoraService !== null,
-      hasCreateLiveStream: agoraService && 'createLiveStream' in agoraService,
-      createLiveStreamIsFunction: agoraService && typeof agoraService.createLiveStream === 'function',
-      hasStartLive: agoraService && 'startLive' in agoraService,
-      startLiveIsFunction: agoraService && typeof agoraService.startLive === 'function',
-      hasStopLive: agoraService && 'stopLive' in agoraService,
-      stopLiveIsFunction: agoraService && typeof agoraService.stopLive === 'function',
-      hasVerifyService: agoraService && 'verifyService' in agoraService,
+      serviceExists: typeof cloudflareService !== 'undefined',
+      serviceIsObject: typeof cloudflareService === 'object' && cloudflareService !== null,
+      hasCreateLiveStream: cloudflareService && 'createLiveStream' in cloudflareService,
+      createLiveStreamIsFunction: cloudflareService && typeof cloudflareService.createLiveStream === 'function',
+      hasStartLive: cloudflareService && 'startLive' in cloudflareService,
+      startLiveIsFunction: cloudflareService && typeof cloudflareService.startLive === 'function',
+      hasStopLive: cloudflareService && 'stopLive' in cloudflareService,
+      stopLiveIsFunction: cloudflareService && typeof cloudflareService.stopLive === 'function',
+      hasVerifyService: cloudflareService && 'verifyService' in cloudflareService,
       verifyServiceResult: null as boolean | null,
     };
 
     // Run verifyService if available
-    if (checks.hasVerifyService && typeof agoraService.verifyService === 'function') {
+    if (checks.hasVerifyService && typeof cloudflareService.verifyService === 'function') {
       try {
-        checks.verifyServiceResult = agoraService.verifyService();
+        checks.verifyServiceResult = cloudflareService.verifyService();
       } catch (error) {
         console.error('Error running verifyService:', error);
         checks.verifyServiceResult = false;
       }
     }
 
-    const availableMethods = agoraService ? Object.keys(agoraService) : [];
-    const serviceType = typeof agoraService;
+    const availableMethods = cloudflareService ? Object.keys(cloudflareService) : [];
+    const serviceType = typeof cloudflareService;
 
     const diagnosticResult: DiagnosticResult = {
       timestamp: new Date().toISOString(),
@@ -90,7 +79,7 @@ export function ServiceDiagnostic() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Agora Service Diagnostic</Text>
+      <Text style={styles.title}>Service Diagnostic</Text>
       <Text style={styles.timestamp}>{result.timestamp}</Text>
 
       <View style={[styles.statusBadge, allChecksPassed ? styles.statusSuccess : styles.statusError]}>
@@ -120,15 +109,6 @@ export function ServiceDiagnostic() {
         {result.availableMethods.map((method) => (
           <Text key={method} style={styles.methodItem}>• {method}</Text>
         ))}
-      </View>
-
-      <View style={styles.infoSection}>
-        <Text style={styles.infoTitle}>ℹ️ Migration Complete</Text>
-        <Text style={styles.infoText}>
-          All streaming functionality now uses Agora RTC SDK.
-          {'\n\n'}
-          Legacy WebRTC and Cloudflare services have been removed.
-        </Text>
       </View>
     </ScrollView>
   );
@@ -207,24 +187,5 @@ const styles = StyleSheet.create({
     color: '#333333',
     marginBottom: 4,
     fontFamily: 'monospace',
-  },
-  infoSection: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: '#E3F2FD',
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#2196F3',
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1976D2',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#424242',
-    lineHeight: 20,
   },
 });

@@ -1,5 +1,5 @@
 
-import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { View, StyleSheet, Platform, ViewStyle } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
@@ -39,37 +39,32 @@ export const ARView = forwardRef<ARFilterEngine, ARViewProps>(
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
     const [currentFilter, setCurrentFilter] = useState<string | null>(null);
     const cameraRef = useRef<CameraView>(null);
-    const filterEngineRef = useRef<ARFilterEngine | null>(null);
 
     // Create filter engine interface
-    if (!filterEngineRef.current) {
-      filterEngineRef.current = {
-        applyFilter: (filterName: string) => {
-          console.log('🎨 [ARView] Applying filter:', filterName);
-          setCurrentFilter(filterName);
-          // TODO: Implement actual filter application when AR SDK is integrated
-        },
-        clearFilter: () => {
-          console.log('🎨 [ARView] Clearing filter');
-          setCurrentFilter(null);
-        },
-      };
-    }
-
-    const filterEngine = filterEngineRef.current;
+    const filterEngine: ARFilterEngine = {
+      applyFilter: (filterName: string) => {
+        console.log('🎨 [ARView] Applying filter:', filterName);
+        setCurrentFilter(filterName);
+        // TODO: Implement actual filter application when AR SDK is integrated
+      },
+      clearFilter: () => {
+        console.log('🎨 [ARView] Clearing filter');
+        setCurrentFilter(null);
+      },
+    };
 
     // Expose filter engine via ref
-    useImperativeHandle(ref, () => filterEngine, [filterEngine]);
+    useImperativeHandle(ref, () => filterEngine, []);
 
     // Notify parent when filter engine is ready
-    useEffect(() => {
-      if (onFilterEngineReady && filterEngine) {
+    React.useEffect(() => {
+      if (onFilterEngineReady) {
         onFilterEngineReady(filterEngine);
       }
-    }, [onFilterEngineReady, filterEngine]);
+    }, [onFilterEngineReady]);
 
     // Request camera permissions
-    useEffect(() => {
+    React.useEffect(() => {
       if (!cameraPermission?.granted && requestCameraPermission) {
         requestCameraPermission();
       }

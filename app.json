@@ -44,8 +44,7 @@
     },
     "web": {
       "favicon": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
-      "bundler": "metro",
-      "output": "single"
+      "bundler": "metro"
     },
     "plugins": [
       "expo-router",
@@ -55,20 +54,6 @@
           "cameraPermission": "Roast Live needs access to your camera to let you stream and use AR filters.",
           "microphonePermission": "Roast Live needs access to your microphone so others can hear you during the roast.",
           "recordAudioAndroid": true
-        }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "minSdkVersion": 24,
-            "compileSdkVersion": 34,
-            "targetSdkVersion": 34,
-            "buildToolsVersion": "34.0.0"
-          },
-          "ios": {
-            "deploymentTarget": "15.1"
-          }
         }
       ]
     ],

@@ -2,19 +2,6 @@
 // CRITICAL: Load polyfills FIRST before anything else
 import 'react-native-url-polyfill/auto';
 
-// Immediately after auto-import, add explicit guards to ensure polyfill is applied
-import { URL as PolyfillURL, URLSearchParams as PolyfillURLSearchParams } from 'react-native-url-polyfill';
-
-if (typeof global.URL === 'undefined') {
-  global.URL = PolyfillURL;
-}
-if (typeof global.URLSearchParams === 'undefined') {
-  global.URLSearchParams = PolyfillURLSearchParams;
-}
-
-// Log polyfill readiness BEFORE loading Expo Router
-console.log('[Polyfill] URL ready:', !!global.URL, 'URLSearchParams ready:', !!global.URLSearchParams);
-
 // Now load Expo Router entry
 import 'expo-router/entry';
 
