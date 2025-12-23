@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Roast Live",
-    "slug": "roast-live-app-fauwkm",
+    "slug": "Roast Live",
     "owner": "hasselite",
     "scheme": "roastlive",
     "version": "1.0.0",
@@ -13,7 +13,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hasselite.roastlive",
@@ -66,5 +68,6 @@
         "projectId": "fb484f3b-ad66-438e-b8a8-0620a968d51b"
       }
     }
-  }
+  },
+  "scheme": "Roast Live"
 }
