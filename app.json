@@ -1,21 +1,19 @@
 {
   "expo": {
     "name": "Roast Live",
-    "slug": "Roast Live",
+    "slug": "roast-live-app-fauwkm",
     "owner": "hasselite",
     "scheme": "roastlive",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+    "icon": "./assets/images/4c2b1c5e-b641-4b69-8db4-72171c03e08f.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+      "image": "./assets/images/4c2b1c5e-b641-4b69-8db4-72171c03e08f.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hasselite.roastlive",
@@ -28,7 +26,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+        "foregroundImage": "./assets/images/4c2b1c5e-b641-4b69-8db4-72171c03e08f.png",
         "backgroundColor": "#000000"
       },
       "package": "com.hasselite.roastlive",
@@ -63,8 +61,10 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "fb484f3b-ad66-438e-b8a8-0620a968d51b"
       }
     }
-  },
-  "scheme": "Roast Live"
+  }
 }
