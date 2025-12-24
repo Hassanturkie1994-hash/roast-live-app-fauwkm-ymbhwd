@@ -52,20 +52,29 @@ export const ARView = forwardRef<ARFilterEngine, ARViewProps>(
       setCurrentFilter(null);
     }, []);
 
-    const filterEngine: ARFilterEngine = {
+    // Create stable filter engine object
+    const filterEngineRef = useRef<ARFilterEngine>({
       applyFilter,
       clearFilter,
-    };
+    });
+
+    // Update ref methods when callbacks change
+    React.useEffect(() => {
+      filterEngineRef.current = {
+        applyFilter,
+        clearFilter,
+      };
+    }, [applyFilter, clearFilter]);
 
     // Expose filter engine via ref
-    useImperativeHandle(ref, () => filterEngine, [applyFilter, clearFilter]);
+    useImperativeHandle(ref, () => filterEngineRef.current, [applyFilter, clearFilter]);
 
     // Notify parent when filter engine is ready
     React.useEffect(() => {
       if (onFilterEngineReady) {
-        onFilterEngineReady(filterEngine);
+        onFilterEngineReady(filterEngineRef.current);
       }
-    }, [onFilterEngineReady, filterEngine]);
+    }, [onFilterEngineReady, applyFilter, clearFilter]);
 
     // Request camera permissions
     React.useEffect(() => {

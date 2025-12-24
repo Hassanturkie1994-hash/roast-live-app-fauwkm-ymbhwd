@@ -175,7 +175,7 @@ describe('GiftInformationScreen - Error Handling', () => {
   });
 
   test('Should validate manifest structure', () => {
-    const isValidManifest = (manifest: any): boolean => {
+    const isValidManifest = (manifest: unknown): boolean => {
       if (!manifest) return false;
       if (!Array.isArray(manifest)) return false;
       if (manifest.length === 0) return false;
@@ -222,7 +222,7 @@ describe('GiftInformationScreen - Animation and Sound Integration', () => {
 });
 
 // Export test utilities for use in other tests
-export const validateGiftManifest = (manifest: any): { valid: boolean; errors: string[] } => {
+export const validateGiftManifest = (manifest: unknown): { valid: boolean; errors: string[] } => {
   const errors: string[] = [];
 
   if (!manifest) {
@@ -240,22 +240,24 @@ export const validateGiftManifest = (manifest: any): { valid: boolean; errors: s
     return { valid: false, errors };
   }
 
-  manifest.forEach((gift: any, index: number) => {
-    if (!gift.giftId) errors.push(`Gift at index ${index} missing giftId`);
-    if (!gift.displayName) errors.push(`Gift at index ${index} missing displayName`);
-    if (!gift.soundProfile) errors.push(`Gift at index ${index} missing soundProfile`);
-    if (!gift.emoji) errors.push(`Gift at index ${index} missing emoji`);
+  manifest.forEach((gift: unknown, index: number) => {
+    const g = gift as Partial<RoastGift>;
+    if (!g.giftId) errors.push(`Gift at index ${index} missing giftId`);
+    if (!g.displayName) errors.push(`Gift at index ${index} missing displayName`);
+    if (!g.soundProfile) errors.push(`Gift at index ${index} missing soundProfile`);
+    if (!g.emoji) errors.push(`Gift at index ${index} missing emoji`);
   });
 
   return { valid: errors.length === 0, errors };
 };
 
-export const validateSoundDescriptions = (manifest: RoastGift[], translations: any): { valid: boolean; missing: string[] } => {
+export const validateSoundDescriptions = (manifest: RoastGift[], translations: unknown): { valid: boolean; missing: string[] } => {
   const missing: string[] = [];
 
   manifest.forEach((gift) => {
     const soundKey = gift.soundProfile;
-    const hasDescription = translations.gifts?.sounds?.[soundKey];
+    const t = translations as { gifts?: { sounds?: Record<string, string> } };
+    const hasDescription = t.gifts?.sounds?.[soundKey];
 
     if (!hasDescription) {
       missing.push(soundKey);

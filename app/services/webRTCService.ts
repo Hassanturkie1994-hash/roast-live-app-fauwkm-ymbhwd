@@ -12,14 +12,24 @@
  * 
  * REPLACEMENT:
  * - For streaming: Use `useAgoraEngine` hook from `@/hooks/useAgoraEngine`
- * - For co-host signaling: Use `streamGuestService` from `@/app/services/streamGuestService`
+ * - For co-host signaling: Use `streamGuestService` from `@/services/streamGuestService`
  * - For remote users: Access `remoteUids` from `useAgoraEngine` hook
  * 
  * DO NOT RE-ENABLE THIS SERVICE.
  * If you need peer-to-peer features, implement them via Agora RTC SDK.
  */
 
-export const webRTCService = {
+interface WebRTCService {
+  initialize: () => Promise<void>;
+  destroy: () => void;
+  getLocalStream: () => null;
+  getRemoteStreams: () => never[];
+  toggleAudio: () => void;
+  toggleVideo: () => void;
+}
+
+// Single export to fix lint error
+export const webRTCService: WebRTCService = {
   initialize: async () => {
     throw new Error('webRTCService is deprecated and native-only. Use Agora SDK instead.');
   },
