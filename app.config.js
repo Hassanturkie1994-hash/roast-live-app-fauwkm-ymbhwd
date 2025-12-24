@@ -70,11 +70,14 @@ module.exports = ({ config }) => {
 
     web: {
       bundler: "metro",
-      favicon:
-        "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
+      favicon: "./assets/images/f66cb126-9803-450a-8302-15c0e53a3af9.png",
     },
 
+    // ─────────────────────────────────────────────────────────────
+    // ✅ PLUGINS (IMPORTANT: expo-dev-client MUST be first)
+    // ─────────────────────────────────────────────────────────────
     plugins: [
+      "expo-dev-client",
       "expo-router",
 
       [
