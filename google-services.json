@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "121039693612",
+    "project_id": "roast-live-9a00c",
+    "storage_bucket": "roast-live-9a00c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:121039693612:android:fa790be4899df9b6c22e89",
+        "android_client_info": {
+          "package_name": "com.hasselite.roastlive"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFohuf3FkbRwNibhQtb0msPplRROeuk2Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
