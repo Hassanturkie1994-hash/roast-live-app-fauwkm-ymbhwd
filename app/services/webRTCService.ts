@@ -20,9 +20,8 @@
  */
 
 export const webRTCService = {
-  initialize: () => {
-    console.warn('⚠️ webRTCService is deprecated. Use Agora SDK instead.');
-    return Promise.resolve(false);
+  initialize: async () => {
+    throw new Error('webRTCService is deprecated and native-only. Use Agora SDK instead.');
   },
   destroy: () => {
     console.warn('⚠️ webRTCService is deprecated. Use Agora SDK instead.');
@@ -31,10 +30,4 @@ export const webRTCService = {
   getRemoteStreams: () => [],
   toggleAudio: () => console.warn('⚠️ webRTCService is deprecated. Use Agora SDK instead.'),
   toggleVideo: () => console.warn('⚠️ webRTCService is deprecated. Use Agora SDK instead.'),
-};
-
-export const webRTCService = {
-  initialize: async () => {
-    throw new Error('webRTCService is native-only. Do not use it on web/Expo Go.');
-  },
 };

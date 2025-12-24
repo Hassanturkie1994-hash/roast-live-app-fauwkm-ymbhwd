@@ -1,5 +1,5 @@
 
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState, useCallback } from 'react';
 import { View, StyleSheet, Platform, ViewStyle } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
@@ -40,28 +40,32 @@ export const ARView = forwardRef<ARFilterEngine, ARViewProps>(
     const [currentFilter, setCurrentFilter] = useState<string | null>(null);
     const cameraRef = useRef<CameraView>(null);
 
-    // Create filter engine interface
+    // Create filter engine interface with useCallback to ensure stable reference
+    const applyFilter = useCallback((filterName: string) => {
+      console.log('🎨 [ARView] Applying filter:', filterName);
+      setCurrentFilter(filterName);
+      // TODO: Implement actual filter application when AR SDK is integrated
+    }, []);
+
+    const clearFilter = useCallback(() => {
+      console.log('🎨 [ARView] Clearing filter');
+      setCurrentFilter(null);
+    }, []);
+
     const filterEngine: ARFilterEngine = {
-      applyFilter: (filterName: string) => {
-        console.log('🎨 [ARView] Applying filter:', filterName);
-        setCurrentFilter(filterName);
-        // TODO: Implement actual filter application when AR SDK is integrated
-      },
-      clearFilter: () => {
-        console.log('🎨 [ARView] Clearing filter');
-        setCurrentFilter(null);
-      },
+      applyFilter,
+      clearFilter,
     };
 
     // Expose filter engine via ref
-    useImperativeHandle(ref, () => filterEngine, []);
+    useImperativeHandle(ref, () => filterEngine, [applyFilter, clearFilter]);
 
     // Notify parent when filter engine is ready
     React.useEffect(() => {
       if (onFilterEngineReady) {
         onFilterEngineReady(filterEngine);
       }
-    }, [onFilterEngineReady]);
+    }, [onFilterEngineReady, filterEngine]);
 
     // Request camera permissions
     React.useEffect(() => {

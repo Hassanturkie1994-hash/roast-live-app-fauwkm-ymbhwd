@@ -19,7 +19,7 @@ import { useStreaming } from '@/contexts/StreamingContext';
 import { useLiveStreamStateMachine } from '@/contexts/LiveStreamStateMachine';
 import { streamService } from '@/app/services/streamService';
 import { agoraService } from '@/app/services/agoraService';
-import { useAgoraEngine } from '@/hooks/useAgoraEngine';
+import { useAgoraEngine } from '@/hooks/useAgoraEngine.native';
 import { useCameraEffects } from '@/contexts/CameraEffectsContext';
 import { useAIFaceEffects } from '@/contexts/AIFaceEffectsContext';
 import { useStreamConnection } from '@/hooks/useStreamConnection';
