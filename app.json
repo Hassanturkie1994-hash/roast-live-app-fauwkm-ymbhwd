@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "Roast Live",
@@ -68,6 +69,5 @@
         "projectId": "fb484f3b-ad66-438e-b8a8-0620a968d51b"
       }
     }
-  },
-  "scheme": "Roast Live"
+  }
 }
