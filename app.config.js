@@ -27,7 +27,7 @@ module.exports = ({ config }) => {
     // 
     // This can be re-enabled in the future after thorough testing.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    newArchEnabled: false,
+    newArchEnabled: true,
     
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // AUTOLINKING EXCLUSIONS
