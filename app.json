@@ -6,7 +6,6 @@
     "owner": "hasselite",
     "scheme": "roastlive",
     "version": "1.0.0",
-    "newArchEnabled": true,
     "orientation": "portrait",
     "icon": "./assets/images/4c2b1c5e-b641-4b69-8db4-72171c03e08f.png",
     "userInterfaceStyle": "automatic",
@@ -78,6 +77,5 @@
         "projectId": "fb484f3b-ad66-438e-b8a8-0620a968d51b"
       }
     }
-  },
-  "scheme": "Roast Live"
+  }
 }

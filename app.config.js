@@ -71,6 +71,14 @@ module.exports = ({ config }) => {
           recordAudioAndroid: true,
         },
       ],
+      
+      // Push notifications
+      [
+        'expo-notifications',
+        {
+          sounds: ['./assets/sounds/notification.wav'],
+        },
+      ],
     ],
   };
 };
