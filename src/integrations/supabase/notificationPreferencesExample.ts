@@ -1,5 +1,5 @@
 
-import { supabase } from './client';
+import { supabase } from '@/app/integrations/supabase/client';
 
 /**
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -155,7 +155,7 @@ export async function upsertNotificationPreferences(
  * Example usage in a React component:
  * 
  * ```tsx
- * import { upsertNotificationPreferences } from '@/integrations/supabase/notificationPreferencesExample';
+ * import { upsertNotificationPreferences } from '@/src/integrations/supabase/notificationPreferencesExample';
  * 
  * function NotificationSettings() {
  *   const handleSave = async () => {

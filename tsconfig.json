@@ -7,11 +7,17 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": ["./*"],
-      "@/services/*": ["./src/services/*"],
-      "@/hooks/*": ["./src/hooks/*"],
-      "@/integrations/*": ["./src/integrations/*"],
-      "@/utils/*": ["./src/utils/*"],
-      "@/types/*": ["./src/types/*"]
+      "@/app/*": ["./app/*"],
+      "@/components/*": ["./components/*"],
+      "@/constants/*": ["./constants/*"],
+      "@/contexts/*": ["./contexts/*"],
+      "@/hooks/*": ["./hooks/*"],
+      "@/services/*": ["./services/*"],
+      "@/src/*": ["./src/*"],
+      "@/styles/*": ["./styles/*"],
+      "@/types/*": ["./types/*"],
+      "@/utils/*": ["./utils/*"],
+      "@/modules/*": ["./modules/*"]
     }
   },
   "include": [

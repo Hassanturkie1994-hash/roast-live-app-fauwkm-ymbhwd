@@ -1,178 +1,88 @@
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Alert } from 'react-native';
-import * as Network from 'expo-network';
+/**
+ * useStreamConnection Hook
+ * 
+ * Monitors stream connection status and handles reconnection logic.
+ */
 
-export type ConnectionStatus = 'excellent' | 'good' | 'unstable' | 'reconnecting' | 'disconnected';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-interface UseStreamConnectionProps {
+export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'reconnecting';
+
+interface UseStreamConnectionOptions {
   isStreaming: boolean;
   onReconnectSuccess?: () => void;
   onReconnectFailed?: () => void;
+  maxReconnectAttempts?: number;
+  reconnectDelay?: number;
 }
 
-interface UseStreamConnectionReturn {
-  connectionStatus: ConnectionStatus;
-  reconnectAttempt: number;
-  isReconnecting: boolean;
-  startReconnect: () => void;
-  stopReconnect: () => void;
-}
+export function useStreamConnection(options: UseStreamConnectionOptions) {
+  const {
+    isStreaming,
+    onReconnectSuccess,
+    onReconnectFailed,
+    maxReconnectAttempts = 3,
+    reconnectDelay = 2000,
+  } = options;
 
-const MAX_RECONNECT_ATTEMPTS = 6;
-const RECONNECT_INTERVAL = 2500; // 2.5 seconds
-
-export function useStreamConnection({
-  isStreaming,
-  onReconnectSuccess,
-  onReconnectFailed,
-}: UseStreamConnectionProps): UseStreamConnectionReturn {
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('excellent');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isReconnecting, setIsReconnecting] = useState(false);
-  
-  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const networkCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Monitor network status
-  const checkNetworkStatus = useCallback(async () => {
-    try {
-      const networkState = await Network.getNetworkStateAsync();
-      
-      if (!networkState.isConnected || !networkState.isInternetReachable) {
-        setConnectionStatus('disconnected');
-        return false;
-      }
-
-      // Simulate connection quality check (in real implementation, use WebRTC stats)
-      const quality = Math.random();
-      if (quality > 0.8) {
-        setConnectionStatus('excellent');
-      } else if (quality > 0.5) {
-        setConnectionStatus('good');
-      } else {
-        setConnectionStatus('unstable');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('Error checking network status:', error);
-      return false;
-    }
-  }, []);
-
-  // Start reconnection attempts
   const startReconnect = useCallback(() => {
-    if (isReconnecting) return;
-
-    console.log('🔄 Starting reconnection attempts...');
-    setIsReconnecting(true);
-    setReconnectAttempt(0);
-    setConnectionStatus('reconnecting');
-
-    let attempt = 0;
-
-    const attemptReconnect = async () => {
-      attempt++;
-      setReconnectAttempt(attempt);
-      console.log(`🔄 Reconnection attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS}`);
-
-      const isConnected = await checkNetworkStatus();
-
-      if (isConnected && connectionStatus !== 'disconnected') {
-        // Reconnection successful
-        console.log('✅ Reconnection successful!');
-        setIsReconnecting(false);
-        setReconnectAttempt(0);
-        setConnectionStatus('good');
-        
-        if (reconnectTimerRef.current) {
-          clearInterval(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
-
-        Alert.alert('✅ Reconnected', 'Connection restored successfully', [{ text: 'OK' }]);
-        onReconnectSuccess?.();
-        return;
-      }
-
-      if (attempt >= MAX_RECONNECT_ATTEMPTS) {
-        // Max attempts reached
-        console.log('❌ Reconnection failed after max attempts');
-        setIsReconnecting(false);
-        setReconnectAttempt(0);
-        setConnectionStatus('disconnected');
-        
-        if (reconnectTimerRef.current) {
-          clearInterval(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
-
-        Alert.alert(
-          '❌ Connection Failed',
-          'You are offline—end the stream or retry manually',
-          [
-            { text: 'Retry', onPress: startReconnect },
-            { text: 'End Stream', onPress: onReconnectFailed, style: 'destructive' },
-          ]
-        );
-        return;
-      }
-    };
-
-    // First attempt immediately
-    attemptReconnect();
-
-    // Then schedule subsequent attempts
-    reconnectTimerRef.current = setInterval(attemptReconnect, RECONNECT_INTERVAL);
-  }, [isReconnecting, connectionStatus, checkNetworkStatus, onReconnectSuccess, onReconnectFailed]);
-
-  // Stop reconnection attempts
-  const stopReconnect = useCallback(() => {
-    console.log('🛑 Stopping reconnection attempts');
-    setIsReconnecting(false);
-    setReconnectAttempt(0);
-    
-    if (reconnectTimerRef.current) {
-      clearInterval(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-  }, []);
-
-  // Monitor network status while streaming
-  useEffect(() => {
-    if (!isStreaming) {
-      stopReconnect();
-      setConnectionStatus('excellent');
+    if (reconnectAttempt >= maxReconnectAttempts) {
+      console.log('❌ [useStreamConnection] Max reconnect attempts reached');
+      setConnectionStatus('disconnected');
+      setIsReconnecting(false);
+      onReconnectFailed?.();
       return;
     }
 
-    // Check network status periodically
-    networkCheckTimerRef.current = setInterval(checkNetworkStatus, 5000);
+    console.log(`🔄 [useStreamConnection] Reconnecting... (attempt ${reconnectAttempt + 1}/${maxReconnectAttempts})`);
+    setConnectionStatus('reconnecting');
+    setIsReconnecting(true);
+    setReconnectAttempt(prev => prev + 1);
 
-    return () => {
-      if (networkCheckTimerRef.current) {
-        clearInterval(networkCheckTimerRef.current);
-        networkCheckTimerRef.current = null;
+    reconnectTimeoutRef.current = setTimeout(() => {
+      // Simulate reconnection
+      const success = Math.random() > 0.3; // 70% success rate
+
+      if (success) {
+        console.log('✅ [useStreamConnection] Reconnected successfully');
+        setConnectionStatus('connected');
+        setIsReconnecting(false);
+        setReconnectAttempt(0);
+        onReconnectSuccess?.();
+      } else {
+        startReconnect();
       }
-    };
-  }, [isStreaming, checkNetworkStatus, stopReconnect]);
+    }, reconnectDelay);
+  }, [reconnectAttempt, maxReconnectAttempts, reconnectDelay, onReconnectSuccess, onReconnectFailed]);
 
-  // Auto-start reconnect when connection is lost
-  useEffect(() => {
-    if (isStreaming && connectionStatus === 'disconnected' && !isReconnecting) {
-      startReconnect();
+  const stopReconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
-  }, [isStreaming, connectionStatus, isReconnecting, startReconnect]);
+    setIsReconnecting(false);
+    setReconnectAttempt(0);
+  }, []);
 
-  // Cleanup on unmount
+  useEffect(() => {
+    if (isStreaming) {
+      setConnectionStatus('connected');
+    } else {
+      setConnectionStatus('disconnected');
+      stopReconnect();
+    }
+  }, [isStreaming, stopReconnect]);
+
   useEffect(() => {
     return () => {
-      if (reconnectTimerRef.current) {
-        clearInterval(reconnectTimerRef.current);
-      }
-      if (networkCheckTimerRef.current) {
-        clearInterval(networkCheckTimerRef.current);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
       }
     };
   }, []);

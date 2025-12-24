@@ -2,79 +2,88 @@
 /**
  * useSeasonRanking Hook
  * 
- * React hook for accessing season ranking data and subscribing to updates.
+ * Provides access to season ranking data and real-time updates.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/app/integrations/supabase/client';
-import { roastRankingService, RoastRankingEntry, RoastRankTier } from '@/services/roastRankingService';
 
-interface SeasonProgress {
-  season_id: string;
-  season_name: string;
-  season_score: number;
-  rank_tier: string | null;
-  current_rank: number;
-  total_creators: number;
-  percentile: number;
-  next_tier_threshold: number;
-  progress_to_next_tier: number;
+interface SeasonRanking {
+  rank: number;
+  creator_id: string;
+  creator_name: string;
+  total_points: number;
+  total_gifts_sek: number;
+  total_viewer_minutes: number;
+  peak_viewers: number;
 }
 
-export function useSeasonRanking(creatorId: string) {
+export function useSeasonRanking(seasonId?: string) {
   const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState<SeasonProgress | null>(null);
-  const [ranking, setRanking] = useState<RoastRankingEntry | null>(null);
-  const [tiers, setTiers] = useState<RoastRankTier[]>([]);
-  const [isNearRankUp, setIsNearRankUp] = useState(false);
+  const [rankings, setRankings] = useState<SeasonRanking[]>([]);
+  const [userRank, setUserRank] = useState<SeasonRanking | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadRankings = useCallback(async () => {
     try {
       setLoading(true);
 
-      // Get season progress
-      const { data: progressData, error: progressError } = await supabase
-        .rpc('get_creator_season_progress', { p_creator_id: creatorId });
+      let query = supabase
+        .from('creator_season_stats')
+        .select(`
+          *,
+          profiles:creator_id (
+            display_name,
+            username
+          )
+        `)
+        .order('total_points', { ascending: false })
+        .limit(100);
 
-      if (!progressError && progressData && progressData.length > 0) {
-        const prog = progressData[0] as SeasonProgress;
-        setProgress(prog);
-        setIsNearRankUp(prog.progress_to_next_tier >= 90);
+      if (seasonId) {
+        query = query.eq('season_id', seasonId);
       }
 
-      // Get full ranking entry
-      const rankingData = await roastRankingService.getUserRanking(creatorId);
-      setRanking(rankingData);
+      const { data, error } = await query;
 
-      // Get tiers
-      if (progressData && progressData.length > 0) {
-        const tiersData = await roastRankingService.getRankTiers(progressData[0].season_id);
-        setTiers(tiersData);
+      if (error) {
+        console.error('❌ [useSeasonRanking] Error fetching rankings:', error);
+        setLoading(false);
+        return;
       }
 
+      const formattedRankings: SeasonRanking[] = (data || []).map((stat, index) => ({
+        rank: index + 1,
+        creator_id: stat.creator_id,
+        creator_name: (stat.profiles as any)?.display_name || (stat.profiles as any)?.username || 'Unknown',
+        total_points: stat.total_points || 0,
+        total_gifts_sek: stat.total_gifts_sek || 0,
+        total_viewer_minutes: stat.total_viewer_minutes || 0,
+        peak_viewers: stat.peak_viewers || 0,
+      }));
+
+      setRankings(formattedRankings);
       setLoading(false);
     } catch (error) {
-      console.error('Error loading season ranking:', error);
+      console.error('❌ [useSeasonRanking] Exception loading rankings:', error);
       setLoading(false);
     }
-  }, [creatorId]);
+  }, [seasonId]);
 
   useEffect(() => {
-    loadData();
+    loadRankings();
 
-    // Subscribe to updates
+    // Subscribe to ranking updates
     const channel = supabase
-      .channel(`creator_rank_updates:${creatorId}`)
+      .channel('season_rankings')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'creator_season_scores',
-          filter: `creator_id=eq.${creatorId}`,
+          table: 'creator_season_stats',
         },
         () => {
-          loadData();
+          loadRankings();
         }
       )
       .subscribe();
@@ -82,18 +91,16 @@ export function useSeasonRanking(creatorId: string) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [creatorId, loadData]);
+  }, [loadRankings]);
 
   const refresh = useCallback(() => {
-    loadData();
-  }, [loadData]);
+    loadRankings();
+  }, [loadRankings]);
 
   return {
     loading,
-    progress,
-    ranking,
-    tiers,
-    isNearRankUp,
+    rankings,
+    userRank,
     refresh,
   };
 }
